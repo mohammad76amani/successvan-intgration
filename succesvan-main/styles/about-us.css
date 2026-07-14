@@ -1,0 +1,179 @@
+/* styles/about-us.css */
+/* ✅ این فایل را در globals.css ایمپورت کنید */
+
+/* ============ Fade Up Animation ============ */
+.about-fade-up {
+  opacity: 0;
+  transform: translate3d(0, 30px, 0);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.about-fade-up-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+}
+
+/* ============ Cards ============ */
+.about-card {
+  opacity: 0;
+  transform: translate3d(0, 30px, 0) scale(0.95);
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.about-card-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  will-change: auto;
+}
+
+.about-card-inner {
+  position: relative;
+  height: 100%;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  /* ✅ blur کمتر */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  transition:
+    border-color 0.3s ease,
+    background-color 0.3s ease,
+    transform 0.3s ease;
+  transform: translateZ(0); /* ✅ GPU layer ثابت */
+}
+
+@media (hover: hover) {
+  .about-card:hover .about-card-inner {
+    border-color: rgba(254, 154, 0, 0.5);
+    background: rgba(255, 255, 255, 0.06);
+    /* ✅ translateY بجای scale - بدون layout shift */
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+/* ============ Highlight Box ============ */
+.about-highlight-box {
+  display: inline-block;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  background: linear-gradient(
+    90deg,
+    rgba(254, 154, 0, 0.2),
+    rgba(254, 154, 0, 0.1)
+  );
+  border: 1px solid rgba(254, 154, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ============ CTA Button ============ */
+.about-cta-btn {
+  display: inline-block;
+  padding: 0.75rem 1.75rem;
+  border-radius: 1rem;
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: white;
+  background: linear-gradient(90deg, #fe9a00, #d97900);
+  box-shadow: 0 20px 40px -10px rgba(254, 154, 0, 0.5);
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .about-cta-btn {
+    padding: 1.25rem 2.5rem;
+  }
+}
+
+.about-cta-btn:hover {
+  transform: translate3d(0, -2px, 0);
+  box-shadow: 0 25px 50px -10px rgba(254, 154, 0, 0.7);
+}
+
+.about-cta-btn:active {
+  transform: translate3d(0, 0, 0);
+}
+
+.about-cta-btn:focus-visible {
+  outline: 2px solid #fe9a00;
+  outline-offset: 4px;
+}
+
+/* ============ Background Pulse Animations ============ */
+@keyframes about-pulse-slow {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes about-pulse-slower {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.15);
+  }
+}
+
+.animate-about-pulse-slow {
+  animation: about-pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity;
+}
+
+.animate-about-pulse-slower {
+  animation: about-pulse-slower 6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity;
+}
+
+/* ============ Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  .about-fade-up,
+  .about-card,
+  .about-card-inner,
+  .about-cta-btn,
+  .animate-about-pulse-slow,
+  .animate-about-pulse-slower {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ============ Mobile Optimization ============ */
+@media (max-width: 768px) {
+  .about-card-inner {
+    /* ✅ blur کمتر روی موبایل */
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .about-highlight-box {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  /* ✅ بدون hover effect روی موبایل */
+  .about-card:hover .about-card-inner {
+    transform: none;
+  }
+}

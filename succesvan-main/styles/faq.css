@@ -1,0 +1,188 @@
+/* styles/faq.css */
+/* ✅ این فایل را در globals.css ایمپورت کنید */
+
+/* ============ FAQ Item ============ */
+.faq-item {
+  opacity: 0;
+  transform: translate3d(0, 30px, 0);
+  transition:
+    opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.faq-item-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+}
+
+/* ============ FAQ Card ============ */
+.faq-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  /* ✅ blur کمتر */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+/* ============ Number Badge ============ */
+.faq-number {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.125rem;
+  transition:
+    background 0.3s ease,
+    color 0.3s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
+}
+
+@media (min-width: 1024px) {
+  .faq-number {
+    width: 3rem;
+    height: 3rem;
+  }
+}
+
+.faq-number-open {
+  transform: scale(1.08) rotate(6deg);
+}
+
+/* ============ Answer - با max-height transition ============ */
+.faq-answer {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.3s ease;
+  will-change: max-height, opacity;
+}
+
+.faq-answer-open {
+  /* ✅ مقدار بزرگ که برای محتوای طولانی هم کار کنه */
+  max-height: 2000px;
+  opacity: 1;
+  will-change: auto;
+}
+
+/* ============ Search Input ============ */
+.faq-search-input {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.faq-search-input:focus-visible {
+  outline: 2px solid #fe9a00;
+  outline-offset: 2px;
+}
+
+/* ============ Clear Button ============ */
+.faq-clear-btn:hover {
+  transform: translate3d(0, -2px, 0);
+}
+
+.faq-clear-btn:active {
+  transform: translate3d(0, 0, 0);
+}
+
+/* ============ CTA Box ============ */
+.faq-cta-box {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ============ CTA Buttons ============ */
+.faq-cta-btn-primary:hover {
+  transform: translate3d(0, -2px, 0);
+}
+
+.faq-cta-btn-primary:active {
+  transform: translate3d(0, 0, 0);
+}
+
+.faq-cta-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============ Focus Styles ============ */
+.faq-card button:focus-visible {
+  outline: 2px solid #fe9a00;
+  outline-offset: -2px;
+  border-radius: 1rem;
+}
+
+.faq-cta-btn-primary:focus-visible,
+.faq-cta-btn-secondary:focus-visible,
+.faq-clear-btn:focus-visible {
+  outline: 2px solid #fe9a00;
+  outline-offset: 4px;
+}
+
+/* ============ Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  .faq-item,
+  .faq-card,
+  .faq-number,
+  .faq-answer,
+  .faq-clear-btn,
+  .faq-cta-btn-primary,
+  .faq-cta-btn-secondary {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .faq-answer {
+    max-height: none !important;
+  }
+}
+
+/* ============ Mobile Optimization ============ */
+@media (max-width: 768px) {
+  .faq-card,
+  .faq-cta-box {
+    /* ✅ blur کمتر روی موبایل */
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .faq-search-input {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+}
+
+/* ============ Print Styles (Bonus!) ============ */
+@media print {
+  .faq-answer {
+    max-height: none !important;
+    opacity: 1 !important;
+  }
+
+  .faq-search-input,
+  .faq-cta-box {
+    display: none !important;
+  }
+}
+
+/* ============ Search Input - حذف کلیر دکمه پیش‌فرض ============ */
+.faq-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}

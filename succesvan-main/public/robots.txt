@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /dashboard/blog/edit/
+Disallow: /comentDashboard/
+Disallow: /register/
+
+Sitemap: https://successvanhire.co.uk/sitemap.xml

@@ -1,0 +1,255 @@
+/* styles/why-choose-us.css */
+/* ✅ این فایل را در globals.css ایمپورت کنید */
+
+/* ============ Fade Up Animation (سبک و GPU-accelerated) ============ */
+.wcu-fade-up {
+  opacity: 0;
+  transform: translate3d(0, 30px, 0);
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.wcu-fade-up-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto; /* ✅ بعد از انیمیشن خاموش */
+}
+
+/* ============ Cards ============ */
+.wcu-card {
+  position: relative;
+  height: 100%;
+  opacity: 0;
+  transform: translate3d(0, 40px, 0);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.wcu-card-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+}
+
+.wcu-card-inner {
+  position: relative;
+  height: 100%;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.5rem;
+  /* ✅ backdrop-filter سبک‌تر */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  /* ✅ transition فقط روی property های ضروری */
+  transition:
+    border-color 0.3s ease,
+    background-color 0.3s ease,
+    transform 0.3s ease;
+  /* ✅ GPU layer ثابت */
+  transform: translateZ(0);
+}
+
+@media (min-width: 1024px) {
+  .wcu-card-inner {
+    padding: 2rem;
+  }
+}
+
+/* ✅ Hover ساده و سبک - فقط border و background */
+@media (hover: hover) {
+  .wcu-card:hover .wcu-card-inner {
+    border-color: rgba(254, 154, 0, 0.4);
+    background: rgba(255, 255, 255, 0.06);
+    transform: translate3d(0, -4px, 0); /* ✅ بجای scale(1.05) */
+  }
+}
+
+/* ============ Icon ============ */
+.wcu-icon-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 1.5rem;
+}
+
+.wcu-icon-bg {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px -10px rgba(245, 158, 11, 0.4);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (min-width: 1024px) {
+  .wcu-icon-bg {
+    width: 5rem;
+    height: 5rem;
+  }
+}
+
+@media (hover: hover) {
+  .wcu-card:hover .wcu-icon-bg {
+    transform: scale(1.08) rotate(3deg);
+  }
+}
+
+.wcu-check-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 2rem;
+  height: 2rem;
+  background: #f59e0b;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.5);
+}
+
+.wcu-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.5),
+    transparent
+  );
+  margin-bottom: 1.5rem;
+}
+
+/* ============ Shimmer Text (سبک‌تر - فقط background-position) ============ */
+.wcu-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    #fbbf24 0%,
+    #f97316 50%,
+    #fbbf24 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: wcu-shimmer 4s linear infinite;
+  display: inline-block;
+}
+
+@keyframes wcu-shimmer {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* ============ CTA Box ============ */
+.wcu-cta-box {
+  display: inline-block;
+  padding: 2rem;
+  border-radius: 1.5rem;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.1),
+    rgba(234, 88, 12, 0.1)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 1024px) {
+  .wcu-cta-box {
+    padding: 3rem;
+  }
+}
+
+/* ============ CTA Buttons ============ */
+.wcu-cta-btn-primary {
+  position: relative;
+  display: inline-block;
+  padding: 1.25rem 2.5rem;
+  background: linear-gradient(90deg, #f59e0b, #ea580c);
+  color: white;
+  font-weight: 700;
+  font-size: 1.125rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 20px 40px -10px rgba(245, 158, 11, 0.4);
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease;
+}
+
+.wcu-cta-btn-primary:hover {
+  transform: translate3d(0, -2px, 0);
+  box-shadow: 0 25px 50px -10px rgba(245, 158, 11, 0.6);
+}
+
+.wcu-cta-btn-primary:active {
+  transform: translate3d(0, 0, 0);
+}
+
+.wcu-cta-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 2.5rem;
+  border: 2px solid rgba(245, 158, 11, 0.5);
+  color: white;
+  font-weight: 700;
+  font-size: 1.125rem;
+  border-radius: 1rem;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease;
+}
+
+.wcu-cta-btn-secondary:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.8);
+  transform: translate3d(0, -2px, 0);
+}
+
+/* ============ Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  .wcu-fade-up,
+  .wcu-card,
+  .wcu-shimmer-text,
+  .wcu-card-inner,
+  .wcu-icon-bg,
+  .wcu-cta-btn-primary,
+  .wcu-cta-btn-secondary {
+    transition: none !important;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ============ Mobile Optimization ============ */
+@media (max-width: 768px) {
+  /* ✅ روی موبایل blur کمتر */
+  .wcu-card-inner {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  
+  .wcu-cta-box {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  
+  /* ✅ روی موبایل hover effect نباشه */
+  .wcu-card:hover .wcu-card-inner {
+    transform: none;
+  }
+}

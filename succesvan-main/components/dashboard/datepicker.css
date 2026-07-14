@@ -1,0 +1,140 @@
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+.react-datepicker__input-container {
+  width: 100%;
+}
+
+.react-datepicker__input-container input {
+  width: 100%;
+}
+
+.react-datepicker {
+  background-color: #1a2847;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  font-family: inherit;
+}
+
+.react-datepicker__header {
+  background-color: #0f1a2e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.react-datepicker__day-name,
+.react-datepicker__day {
+  color: #e5e7eb;
+  width: 2rem;
+  line-height: 2rem;
+}
+
+.react-datepicker__day:hover {
+  background-color: rgba(254, 154, 0, 0.2);
+  color: #fe9a00;
+}
+
+.react-datepicker__day--selected {
+  background-color: #fe9a00;
+  color: #1a2847;
+}
+
+.react-datepicker__day--keyboard-selected {
+  background-color: rgba(254, 154, 0, 0.3);
+}
+
+.react-datepicker__current-month {
+  color: #e5e7eb;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: #e5e7eb;
+}
+
+.react-datepicker__month {
+  margin: 0.4rem;
+}
+
+.react-datepicker__time-container {
+  background-color: #1a2847;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.react-datepicker__time-container .react-datepicker__time {
+  background-color: #1a2847;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box {
+  background-color: #0f1a2e;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list {
+  background-color: #0f1a2e;
+  color: #e5e7eb;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item {
+  color: #e5e7eb;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item:hover {
+  background-color: rgba(254, 154, 0, 0.2);
+  color: #fe9a00;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item--selected {
+  background-color: #fe9a00;
+  color: #1a2847;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box .react-datepicker__time-list-item {
+  padding: 0.5rem;
+}
+.react-datepicker-time__header{
+  color:white
+}
+
+/* Full-width time-only dropdown for the office working-hours pickers.
+   The TimePicker field wrapper is position:relative, so the popper sizes
+   to the input width instead of the default narrow 85px column. */
+.office-time-popper {
+  width: 100%;
+  z-index: 60;
+}
+
+.office-time-popper .react-datepicker.react-datepicker--time-only {
+  width: 100%;
+}
+
+.office-time-popper .react-datepicker__triangle {
+  display: none;
+}
+
+.office-time-popper .react-datepicker__time-container,
+.office-time-popper .react-datepicker__time-container .react-datepicker__time,
+.office-time-popper
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box {
+  width: 100% !important;
+}
+
+.office-time-popper
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list {
+  max-height: 220px;
+}
+
+.office-time-popper
+  .react-datepicker__time-container
+  .react-datepicker__time
+  .react-datepicker__time-box
+  ul.react-datepicker__time-list
+  li.react-datepicker__time-list-item {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding-left: 0.85rem;
+}

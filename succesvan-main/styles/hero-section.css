@@ -1,0 +1,48 @@
+/* styles/hero-section.css - import در globals.css */
+
+/* ============ Hero Animations ============ */
+@keyframes hero-pulse-slow {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes hero-pulse-slower {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.08);
+  }
+}
+
+.animate-hero-pulse-slow {
+  animation: hero-pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity;
+}
+
+.animate-hero-pulse-slower {
+  animation: hero-pulse-slower 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: opacity;
+}
+
+/* ============ GPU Optimization ============ */
+.transform-gpu {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ============ Scrollbar (scoped) ============ */
+/* 
+   اگر می‌خواهید global باشد در globals.css بگذارید.
+   اگر فقط این سکشن: scope کنید.
+*/

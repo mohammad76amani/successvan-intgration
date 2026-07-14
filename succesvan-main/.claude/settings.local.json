@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/macbook/Desktop/repositories/successvvan/succesvan && grep -n \"isStatusOpen\\\\|newStatus\\\\|setNewStatus\\\\|handleStatusChange\\\\|Update Status\\\\|status\" components/dashboard/ReservationsManagement.tsx | head -60)",
+      "Read(//Users/macbook/Desktop/repositories/successvvan/**)",
+      "Bash(npx tsc *)",
+      "Bash(grep -n \"res.vehicle.title} \\(\\\\${res.vehicle.number}\\)\" components/dashboard/dashboard.tsx)",
+      "Bash(curl -s http://localhost:3000/api/time)",
+      "Bash(curl -s -X POST http://localhost:3000/api/reservations -H \"Content-Type: application/json\" -d '{\"userData\":{\"name\":\"Test\",\"phoneNumber\":\"+447000000000\",\"email\":\"t@t.com\"},\"reservationData\":{\"startDate\":\"2026-06-01T10:00:00.000Z\",\"endDate\":\"2026-06-02T10:00:00.000Z\",\"office\":\"000000000000000000000000\"}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/reservations -H \"Content-Type: application/json\" -d '{\"userData\":{},\"reservationData\":{\"startDate\":\"2026-07-20T10:00:00.000Z\",\"endDate\":\"2026-07-19T10:00:00.000Z\"}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/reservations -H \"Content-Type: application/json\" -d '{\"userData\":{},\"reservationData\":{}}')",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"next-server\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(npx tsx -e ' *)"
+    ]
+  }
+}

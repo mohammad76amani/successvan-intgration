@@ -1,0 +1,295 @@
+/* styles/footer.css */
+/* ✅ این فایل را در globals.css ایمپورت کنید */
+
+/* ============ Contact Links ============ */
+.footer-contact-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  color: rgb(156, 163, 175);
+  transition: color 0.3s ease;
+}
+
+.footer-contact-link:hover {
+  color: #fe9a00;
+}
+
+/* ============ Icon Box (with hover) ============ */
+.footer-icon-box {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fe9a00;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .footer-icon-box {
+    width: 3rem;
+    height: 3rem;
+  }
+}
+
+.footer-contact-link:hover .footer-icon-box {
+  background: rgba(254, 154, 0, 0.15);
+  border-color: rgba(254, 154, 0, 0.6);
+}
+
+/* ============ Static Icon Box (no hover) ============ */
+.footer-icon-box-static {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fe9a00;
+}
+
+@media (min-width: 768px) {
+  .footer-icon-box-static {
+    width: 3rem;
+    height: 3rem;
+  }
+}
+
+/* ============ Get Directions Link ============ */
+.footer-directions-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: #fe9a00;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: gap 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .footer-directions-link {
+    font-size: 0.875rem;
+  }
+}
+
+.footer-directions-link:hover {
+  gap: 0.75rem;
+}
+
+/* ============ Menu Links ============ */
+.footer-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: rgb(156, 163, 175);
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+.footer-menu-link svg {
+  color: #fe9a00;
+  opacity: 0;
+  margin-left: -1.25rem;
+  transition: opacity 0.3s ease, margin 0.3s ease;
+}
+
+.footer-menu-link:hover {
+  color: #fe9a00;
+}
+
+.footer-menu-link:hover svg {
+  opacity: 1;
+  margin-left: 0;
+}
+
+.footer-menu-link:hover span {
+  transform: translateX(0.25rem);
+}
+
+.footer-menu-link span {
+  transition: transform 0.3s ease;
+}
+
+.footer-menu-link-active {
+  color: #fe9a00;
+}
+
+/* ============ Social Box ============ */
+.footer-social-box {
+  background: rgba(15, 23, 42, 0.5);
+  /* ✅ blur کمتر */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-color: rgba(254, 154, 0, 0.25);
+}
+
+@media (max-width: 768px) {
+  .footer-social-box {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+}
+
+/* ============ Social Icons (با CSS فقط - بدون JS!) ============ */
+.social-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.social-icon svg {
+  transition: color 0.3s ease;
+}
+
+/* ✅ Hover روی دسکتاپ فقط */
+@media (hover: hover) and (pointer: fine) {
+  .social-icon svg {
+    color: #ffffff;
+  }
+
+  .social-icon:hover {
+    transform: translate3d(0, -3px, 0);
+    border-color: transparent;
+  }
+
+  /* Facebook */
+  .social-facebook {
+    background: rgba(24, 119, 242, 0.1);
+  }
+  .social-facebook:hover {
+    background: rgba(24, 119, 242, 0.3);
+    box-shadow: 0 0 30px rgba(24, 119, 242, 0.5);
+  }
+  .social-facebook:hover svg {
+    color: #1877f2;
+  }
+
+  /* Instagram */
+  .social-instagram {
+    background: rgba(228, 64, 95, 0.1);
+  }
+  .social-instagram:hover {
+    background: rgba(228, 64, 95, 0.3);
+    box-shadow: 0 0 30px rgba(228, 64, 95, 0.5);
+  }
+  .social-instagram:hover svg {
+    color: #e4405f;
+  }
+
+  /* X */
+  .social-x {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .social-x:hover {
+    background: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+  }
+  .social-x:hover svg {
+    color: #ffffff;
+  }
+
+  /* YouTube */
+  .social-youtube {
+    background: rgba(255, 0, 0, 0.1);
+  }
+  .social-youtube:hover {
+    background: rgba(255, 0, 0, 0.3);
+    box-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
+  }
+  .social-youtube:hover svg {
+    color: #ff0000;
+  }
+
+  /* WhatsApp */
+  .social-whatsapp {
+    background: rgba(37, 211, 102, 0.1);
+  }
+  .social-whatsapp:hover {
+    background: rgba(37, 211, 102, 0.3);
+    box-shadow: 0 0 30px rgba(37, 211, 102, 0.5);
+  }
+  .social-whatsapp:hover svg {
+    color: #25d366;
+  }
+}
+
+/* ✅ موبایل: همیشه رنگ اصلی */
+@media (hover: none) {
+  .social-facebook {
+    background: rgba(24, 119, 242, 0.15);
+  }
+  .social-facebook svg {
+    color: #1877f2;
+  }
+
+  .social-instagram {
+    background: rgba(228, 64, 95, 0.15);
+  }
+  .social-instagram svg {
+    color: #e4405f;
+  }
+
+  .social-x {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .social-x svg {
+    color: #ffffff;
+  }
+
+  .social-youtube {
+    background: rgba(255, 0, 0, 0.15);
+  }
+  .social-youtube svg {
+    color: #ff0000;
+  }
+
+  .social-whatsapp {
+    background: rgba(37, 211, 102, 0.15);
+  }
+  .social-whatsapp svg {
+    color: #25d366;
+  }
+}
+
+/* ============ Focus Styles (Accessibility) ============ */
+.social-icon:focus-visible,
+.footer-contact-link:focus-visible,
+.footer-menu-link:focus-visible,
+.footer-directions-link:focus-visible {
+  outline: 2px solid #fe9a00;
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* ============ Reduced Motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  .footer-contact-link,
+  .footer-icon-box,
+  .footer-menu-link,
+  .footer-menu-link span,
+  .footer-menu-link svg,
+  .footer-directions-link,
+  .social-icon,
+  .social-icon svg {
+    transition: none !important;
+  }
+}
