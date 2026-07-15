@@ -62,7 +62,8 @@ import AddPostBlog from "./addBlog";
 import BlogManagement from "./BlogManagement";
 import BucketManager from "./BucketManager";
 import TicketsManagement from "./TicketsManagement";
-import { FiFileText } from "react-icons/fi";
+import ContractsManagement from "./ContractsManagement";
+import { FiFileText, FiFile } from "react-icons/fi";
 import { useAuth } from "@/context/AuthContext";
 import AdminProfile from "./AdminProfile";
 import {
@@ -125,6 +126,12 @@ const menuItems: MenuItem[] = [
     label: "Reserves",
     icon: <FiClipboard />,
     color: "from-indigo-500 to-indigo-600",
+  },
+  {
+    id: "contracts",
+    label: "Contracts",
+    icon: <FiFile />,
+    color: "from-amber-500 to-orange-600",
   },
   {
     id: "Testimonial",
@@ -429,6 +436,7 @@ export default function Dashboard() {
           {displayedActiveTab === "addons" && <AddOnsContent />}
           {displayedActiveTab === "discounts" && <DiscountManagement />}
           {displayedActiveTab === "reserves" && <ReservationsManagement />}
+          {displayedActiveTab === "contracts" && <ContractsManagement />}
           {displayedActiveTab === "Testimonial" && <TestimonialsManagement />}
           {displayedActiveTab === "contacts" && <ContactsManagement />}
           {displayedActiveTab === "announcements" && <AnnouncementManagement />}

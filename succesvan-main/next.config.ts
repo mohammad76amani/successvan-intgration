@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
 
+  // CommonJS SDKs with dynamic internal requires that bundlers can't resolve
+  serverExternalPackages: ["docusign-esign", "pdfkit"],
+
   experimental: {
     optimizeCss: true,
   },

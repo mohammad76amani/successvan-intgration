@@ -5,13 +5,72 @@ import Verification from "@/model/verification";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { requireAuth } from "@/lib/auth";
 import { sendSMS } from "@/lib/sms";
+import {
+  normalizePostcode,
+  formatPostcodeForDisplay,
+  type RegistrationAddress,
+} from "@/lib/address";
 import jwt from "jsonwebtoken";
+
+const ADDRESS_SOURCES = ["ideal_postcodes", "manual"] as const;
+
+// Sanitize and re-validate the structured address on the server. Never trusts
+// the client's postcodeValidated flag, coordinates or udprn without checking.
+function buildAddressData(input: unknown): {
+  addressData: RegistrationAddress | null;
+  error?: string;
+} {
+  if (!input || typeof input !== "object") return { addressData: null };
+  const a = input as Record<string, unknown>;
+
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
+  const addressLine1 = str(a.addressLine1);
+  const townCity = str(a.townCity);
+  const postcode = str(a.postcode);
+
+  if (!addressLine1 || !townCity || !postcode) {
+    return {
+      addressData: null,
+      error: "Address line 1, town/city and postcode are required",
+    };
+  }
+  if (!normalizePostcode(postcode)) {
+    return { addressData: null, error: "A valid postcode is required" };
+  }
+
+  const source = ADDRESS_SOURCES.includes(a.addressSource as never)
+    ? (a.addressSource as RegistrationAddress["addressSource"])
+    : "manual";
+
+  // postcodeValidated is only trusted when the address came from a real lookup.
+  const postcodeValidated =
+    source === "ideal_postcodes" && a.postcodeValidated === true;
+
+  const addressData: RegistrationAddress = {
+    addressLine1,
+    addressLine2: str(a.addressLine2) || undefined,
+    townCity,
+    county: str(a.county) || undefined,
+    postcode: formatPostcodeForDisplay(postcode),
+    country: str(a.country) || "United Kingdom",
+    latitude: num(a.latitude),
+    longitude: num(a.longitude),
+    udprn: num(a.udprn),
+    addressSource: source,
+    postcodeValidated,
+  };
+
+  return { addressData };
+}
 
 export async function POST(req: NextRequest) {
   try {
     await connect();
     const body = await req.json();
-    const { action, phoneNumber, code, name, lastName, emailAddress, licenceAttached, address, postalCode, city, isAdminMode } = body;
+    const { action, phoneNumber, code, name, lastName, emailAddress, licenceAttached, address, postalCode, city, addressData, isAdminMode } = body;
 
     if (action === "send-code") {
       if (!phoneNumber) return errorResponse("Phone number required", 400);
@@ -114,14 +173,25 @@ export async function POST(req: NextRequest) {
       if (licenceAttached) {
         userData.licenceAttached = licenceAttached;
       }
-      if (address) {
-        userData.address = address;
-      }
-      if (postalCode) {
-        userData.postalCode = postalCode;
-      }
-      if (city) {
-        userData.city = city;
+
+      // Structured address from the UK postcode flow (re-validated server-side).
+      const { addressData: cleanAddress, error: addressError } =
+        buildAddressData(addressData);
+      if (addressError) return errorResponse(addressError, 400);
+
+      if (cleanAddress) {
+        userData.addressData = cleanAddress;
+        // Keep the legacy flat fields populated for backward compatibility.
+        userData.address = [cleanAddress.addressLine1, cleanAddress.addressLine2]
+          .filter(Boolean)
+          .join(", ");
+        userData.postalCode = cleanAddress.postcode;
+        userData.city = cleanAddress.townCity;
+      } else {
+        // Fall back to the legacy flat fields if no structured address was sent.
+        if (address) userData.address = address;
+        if (postalCode) userData.postalCode = postalCode;
+        if (city) userData.city = city;
       }
 
       const user = await User.create(userData);

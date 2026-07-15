@@ -7,7 +7,6 @@ import {
   FiMail,
   FiUser,
   FiPhone,
-  FiMapPin,
   FiHome,
   FiArrowLeft,
   FiCheck,
@@ -16,6 +15,21 @@ import {
 import gsap from "gsap";
 import { showToast } from "@/lib/toast";
 import { useAuth } from "@/context/AuthContext";
+import AddressFields from "./AddressFields";
+import type { RegistrationAddress } from "@/lib/address";
+
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+
+const emptyAddress: RegistrationAddress = {
+  addressLine1: "",
+  addressLine2: "",
+  townCity: "",
+  county: "",
+  postcode: "",
+  country: "United Kingdom",
+  addressSource: "manual",
+  postcodeValidated: false,
+};
 
 export default function AuthForm() {
   const { setUser } = useAuth();
@@ -27,10 +41,8 @@ export default function AuthForm() {
     emailAddress: "",
     phoneNumber: "",
     code: "",
-    address: "",
-    postalCode: "",
-    city: "",
   });
+  const [addressData, setAddressData] = useState<RegistrationAddress>(emptyAddress);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -116,7 +128,7 @@ export default function AuthForm() {
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth", {
+      const res = await fetch(`${apiBase}/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -145,7 +157,7 @@ export default function AuthForm() {
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth", {
+      const res = await fetch(`${apiBase}/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,10 +198,12 @@ export default function AuthForm() {
     } else if (!/\S+@\S+\.\S+/.test(formData.emailAddress)) {
       newErrors.emailAddress = "Email is invalid";
     }
-    if (!formData.address.trim()) newErrors.address = "Address is required";
-    if (!formData.postalCode.trim())
-      newErrors.postalCode = "Postal code is required";
-    if (!formData.city.trim()) newErrors.city = "City is required";
+    if (!addressData.postcode.trim())
+      newErrors.postcode = "Postcode is required";
+    if (!addressData.addressLine1.trim())
+      newErrors.addressLine1 = "Address line 1 is required";
+    if (!addressData.townCity.trim())
+      newErrors.townCity = "Town / city is required";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -206,7 +220,7 @@ export default function AuthForm() {
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth", {
+      const res = await fetch(`${apiBase}/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -215,9 +229,7 @@ export default function AuthForm() {
           name: formData.name,
           lastName: formData.lastName,
           emailAddress: formData.emailAddress,
-          address: formData.address,
-          postalCode: formData.postalCode,
-          city: formData.city,
+          addressData,
         }),
       });
       const data = await res.json();
@@ -360,7 +372,7 @@ export default function AuthForm() {
           className="relative bg-linear-to-br from-white/12 to-white/5 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-white/20 shadow-2xl shadow-black/20"
         >
           {/* Decorative corner accent */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-linear-to-br from-[#fe9a00]/20 to-transparent rounded-tr-3xl rounded-bl-25 pointer-events-none" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-linear-to-br from-[#fe9a00]/20 to-transparent rounded-tr-3xl rounded-bl-[100px] pointer-events-none" />
 
           {/* Header */}
           <div className="text-center mb-8 relative">
@@ -442,9 +454,9 @@ export default function AuthForm() {
                       }
                       aria-invalid={!!errors.phoneNumber}
                       className={`
-                        w-full pl-22 pr-4 py-4 
-                        bg-white/5 hover:bg-white/7 focus:bg-white/10
-                        border-2 rounded-xl 
+                        w-full pl-22 pr-4 py-4
+                        bg-white/5 hover:bg-white/[0.07] focus:bg-white/10
+                        border-2 rounded-xl
                         text-white text-base sm:text-lg placeholder-white/30
                         focus:outline-none transition-all duration-300
                         ${
@@ -501,10 +513,10 @@ export default function AuthForm() {
                         onKeyDown={(e) => handleCodeKeyDown(index, e)}
                         aria-label={`Digit ${index + 1} of verification code`}
                         className={`
-                          w-11 h-14 sm:w-14 sm:h-16 
+                          w-11 h-14 sm:w-14 sm:h-16
                           text-center text-xl sm:text-2xl font-bold
-                          bg-white/5 hover:bg-white/7 focus:bg-white/10
-                          border-2 rounded-xl 
+                          bg-white/5 hover:bg-white/[0.07] focus:bg-white/10
+                          border-2 rounded-xl
                           text-white
                           focus:outline-none transition-all duration-300
                           ${
@@ -571,8 +583,8 @@ export default function AuthForm() {
                         aria-invalid={!!errors.name}
                         className={`
                           w-full pl-12 pr-4 py-3.5
-                          bg-white/5 hover:bg-white/7 focus:bg-white/10
-                          border-2 rounded-xl 
+                          bg-white/5 hover:bg-white/[0.07] focus:bg-white/10
+                          border-2 rounded-xl
                           text-white placeholder-white/30
                           focus:outline-none transition-all duration-300
                           ${
@@ -611,8 +623,8 @@ export default function AuthForm() {
                         aria-invalid={!!errors.lastName}
                         className={`
                           w-full pl-12 pr-4 py-3.5
-                          bg-white/5 hover:bg-white/7 focus:bg-white/10
-                          border-2 rounded-xl 
+                          bg-white/5 hover:bg-white/[0.07] focus:bg-white/10
+                          border-2 rounded-xl
                           text-white placeholder-white/30
                           focus:outline-none transition-all duration-300
                           ${
@@ -653,8 +665,8 @@ export default function AuthForm() {
                       aria-invalid={!!errors.emailAddress}
                       className={`
                         w-full pl-12 pr-4 py-3.5
-                        bg-white/5 hover:bg-white/7 focus:bg-white/10
-                        border-2 rounded-xl 
+                        bg-white/5 hover:bg-white/[0.07] focus:bg-white/10
+                        border-2 rounded-xl
                         text-white placeholder-white/30
                         focus:outline-none transition-all duration-300
                         ${
@@ -672,129 +684,17 @@ export default function AuthForm() {
                   )}
                 </div>
 
-                {/* Address */}
-                <div className="relative group">
-                  <label
-                    htmlFor="address"
-                    className="block text-sm font-medium text-white/80 mb-2"
-                  >
-                    Street Address
-                  </label>
-                  <div className="relative">
-                    <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[#fe9a00] transition-colors" />
-                    <input
-                      type="text"
-                      id="address"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      placeholder="123 Main Street"
-                      required
-                      autoComplete="street-address"
-                      aria-invalid={!!errors.address}
-                      className={`
-                        w-full pl-12 pr-4 py-3.5
-                        bg-white/5 hover:bg-white/7 focus:bg-white/10
-                        border-2 rounded-xl 
-                        text-white placeholder-white/30
-                        focus:outline-none transition-all duration-300
-                        ${
-                          errors.address
-                            ? "border-red-500/50 focus:border-red-500"
-                            : "border-white/10 focus:border-[#fe9a00]"
-                        }
-                      `}
-                    />
-                  </div>
-                  {errors.address && (
-                    <p className="mt-1.5 text-red-400 text-xs" role="alert">
-                      {errors.address}
-                    </p>
-                  )}
-                </div>
-
-                {/* Postal Code & City */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="relative group">
-                    <label
-                      htmlFor="postalCode"
-                      className="block text-sm font-medium text-white/80 mb-2"
-                    >
-                      Postal Code
-                    </label>
-                    <div className="relative">
-                      <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[#fe9a00] transition-colors" />
-                      <input
-                        type="text"
-                        id="postalCode"
-                        name="postalCode"
-                        value={formData.postalCode}
-                        onChange={handleInputChange}
-                        placeholder="SW1A 1AA"
-                        required
-                        autoComplete="postal-code"
-                        aria-invalid={!!errors.postalCode}
-                        className={`
-                          w-full pl-12 pr-4 py-3.5
-                          bg-white/5 hover:bg-white/7 focus:bg-white/10
-                          border-2 rounded-xl 
-                          text-white placeholder-white/30
-                          focus:outline-none transition-all duration-300
-                          ${
-                            errors.postalCode
-                              ? "border-red-500/50 focus:border-red-500"
-                              : "border-white/10 focus:border-[#fe9a00]"
-                          }
-                        `}
-                      />
-                    </div>
-                    {errors.postalCode && (
-                      <p className="mt-1.5 text-red-400 text-xs" role="alert">
-                        {errors.postalCode}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="relative group">
-                    <label
-                      htmlFor="city"
-                      className="block text-sm font-medium text-white/80 mb-2"
-                    >
-                      City
-                    </label>
-                    <div className="relative">
-                      <FiHome className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-[#fe9a00] transition-colors" />
-                      <input
-                        type="text"
-                        id="city"
-                        name="city"
-                        value={formData.city}
-                        onChange={handleInputChange}
-                        placeholder="London"
-                        required
-                        autoComplete="address-level2"
-                        aria-invalid={!!errors.city}
-                        className={`
-                          w-full pl-12 pr-4 py-3.5
-                          bg-white/5 hover:bg-white/7 focus:bg-white/10
-                          border-2 rounded-xl 
-                          text-white placeholder-white/30
-                          focus:outline-none transition-all duration-300
-                          ${
-                            errors.city
-                              ? "border-red-500/50 focus:border-red-500"
-                              : "border-white/10 focus:border-[#fe9a00]"
-                          }
-                        `}
-                      />
-                    </div>
-                    {errors.city && (
-                      <p className="mt-1.5 text-red-400 text-xs" role="alert">
-                        {errors.city}
-                      </p>
-                    )}
-                  </div>
-                </div>
+                {/* Address (UK postcode lookup flow) */}
+                <AddressFields
+                  value={addressData}
+                  onChange={setAddressData}
+                  errors={errors}
+                  onClearError={(field) =>
+                    setErrors((prev) =>
+                      prev[field] ? { ...prev, [field]: "" } : prev,
+                    )
+                  }
+                />
 
                 {/* Terms checkbox */}
                 <div className="pt-2">
@@ -816,7 +716,7 @@ export default function AuthForm() {
                       />
                       <div
                         className={`
-                          w-5 h-5 rounded-md border-2 
+                          w-5 h-5 rounded-md border-2
                           flex items-center justify-center
                           transition-all duration-200
                           ${

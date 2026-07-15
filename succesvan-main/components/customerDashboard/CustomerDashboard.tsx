@@ -16,6 +16,7 @@ import {
   FiClock,
   FiPrinter,
   FiDownload,
+  FiFileText,
 } from "react-icons/fi";
 import ProfileContent from "./ProfileContent";
 import DynamicTableView from "../dashboard/DynamicTableView";
@@ -40,12 +41,18 @@ import {
   printReservationReceipt,
 } from "@/lib/printReservation";
 import ReservesContentPanel from "./ReservesContent";
+import ContractsContent from "./ContractsContent";
 
 const menuItems = [
   {
     id: "reserves",
     label: "My Reservations",
     icon: <FiClipboard />,
+  },
+  {
+    id: "contracts",
+    label: "My Agreements",
+    icon: <FiFileText />,
   },
   {
     id: "profile",
@@ -297,6 +304,7 @@ export default function CustomerDashboard() {
           )}
 
           {activeTab === "reserves" && <ReservesContentPanel />}
+          {activeTab === "contracts" && <ContractsContent />}
           {activeTab === "profile" && (
             <ProfileContent
               onLicenseUpdate={checkLicenseStatus}
