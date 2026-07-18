@@ -1105,6 +1105,9 @@ export default function ReservationModal({
     }
     return total + price;
   }, 0);
+  const hasCompletedCustomerAuth =
+    !isAdminMode && Boolean(user || customerUserId);
+
   return (
     <>
       <div
@@ -1119,7 +1122,11 @@ export default function ReservationModal({
                 {step > 1 && (
                   <button
                     onClick={() => {
-                      setStep((prev) => Math.max(1, prev - 1) as 1 | 2 | 3 | 4);
+                      setStep((prev) =>
+                        prev === 3 && hasCompletedCustomerAuth
+                          ? 1
+                          : (Math.max(1, prev - 1) as 1 | 2 | 3 | 4),
+                      );
                       // Scroll to top when going back
                       setTimeout(() => {
                         const modalBody =
@@ -1221,14 +1228,6 @@ export default function ReservationModal({
                                   }));
                                   // Open rules modal automatically
                                   setShowRulesModal(true);
-                                  // Scroll to top of modal body
-                                  const modalBody =
-                                    document.querySelector(
-                                      ".modal-body-scroll",
-                                    );
-                                  if (modalBody) {
-                                    modalBody.scrollTop = 0;
-                                  }
                                 }}
                                 className={`group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 ${
                                   isSelected
@@ -1378,14 +1377,6 @@ export default function ReservationModal({
                                   }));
                                   // Open rules modal automatically
                                   setShowRulesModal(true);
-                                  // Scroll to top of modal body
-                                  const modalBody =
-                                    document.querySelector(
-                                      ".modal-body-scroll",
-                                    );
-                                  if (modalBody) {
-                                    modalBody.scrollTop = 0;
-                                  }
                                 }}
                                 calculatedPrice={catPrice?.totalPrice}
                                 originalPrice={catPrice?.originalTotalPrice}
@@ -3109,7 +3100,7 @@ export default function ReservationModal({
                       );
                     }
 
-                    setStep(user ? 3 : 2);
+                    setStep(hasCompletedCustomerAuth ? 3 : 2);
 
                     const modalBody =
                       document.querySelector(".modal-body-scroll");
@@ -3119,7 +3110,9 @@ export default function ReservationModal({
                   }}
                   className="w-full min-h-12 sm:min-h-13 bg-[#fe9a00] hover:bg-orange-500 active:scale-[0.98] text-white font-black px-4 py-3 sm:py-3.5 rounded-xl transition-all duration-200 shadow-xl shadow-[#fe9a00]/25 text-sm sm:text-base"
                 >
-                  {user ? "Continue to Add-ons" : "Continue to Login"}
+                  {hasCompletedCustomerAuth
+                    ? "Continue to Add-ons"
+                    : "Continue to Login"}
                 </button>
               )}
 
@@ -3128,7 +3121,7 @@ export default function ReservationModal({
                   <button
                     id="gtm-step3-back"
                     onClick={() => {
-                      setStep(user ? 1 : 2);
+                      setStep(hasCompletedCustomerAuth ? 1 : 2);
 
                       const modalBody =
                         document.querySelector(".modal-body-scroll");
@@ -3225,6 +3218,7 @@ export default function ReservationModal({
       {showRulesModal && formData.category && (
         <CategoryRulesModal
           categoryId={formData.category}
+          showLoadingImmediately
           onClose={() => setShowRulesModal(false)}
         />
       )}

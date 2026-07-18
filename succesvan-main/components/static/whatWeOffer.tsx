@@ -117,7 +117,7 @@ export default function WhatWeOffer() {
               once: true,
             },
             delay: index * 0.1,
-          }
+          },
         );
       });
 
@@ -142,7 +142,7 @@ export default function WhatWeOffer() {
               once: true,
             },
             delay: index * 0.08,
-          }
+          },
         );
       });
     }, sectionRef);
@@ -153,11 +153,10 @@ export default function WhatWeOffer() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full   bg-[#0f172b]     py-28   overflow-hidden"
+      className="relative w-full   bg-[#0f172b]     pb-28 pt-36   overflow-hidden"
     >
       {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-         
         <div className="absolute top-1/4 right-1/4 w-125 h-125 bg-[#fe9a00]/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-1/4 left-1/4 w-125 h-125 bg-[#fe9a00]/10 rounded-full blur-3xl"></div>
       </div>

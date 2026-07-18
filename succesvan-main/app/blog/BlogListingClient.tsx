@@ -154,7 +154,7 @@ export default function BlogListingClient({
   return (
     <section
       ref={sectionRef}
-      className="py-20 bg-linear-to-br from-slate-900 via-slate-900 to-slate-950 relative overflow-hidden min-h-screen"
+      className="pb-28 pt-30  bg-linear-to-br from-slate-900 via-slate-900 to-slate-950 relative overflow-hidden min-h-screen"
     >
       {/* Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -164,10 +164,10 @@ export default function BlogListingClient({
 
       <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center my-16 md:my-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Our <span className="text-[#fe9a00] ">Blog & Insight</span>
           </h1>
-          <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+          <p className="text-slate-400 text-sm md:text-lg max-w-2xl mx-auto">
             Discover the latest insights, tips, and updates from our team.
           </p>
         </div>

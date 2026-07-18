@@ -152,7 +152,7 @@ export default function VanListingHome({
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-[#0f172b] pt-20 pb-40 md:pb-25  z-10"
+      className="relative w-full bg-[#0f172b]  md:pb-25  pb-28 pt-30  z-10"
     >
       {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -163,12 +163,11 @@ export default function VanListingHome({
         {/* Header */}
         {showHeader && (
           <div className="text-center mb-12 lg:mb-16">
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-4">
-              Choose Your
-              <br />
-              <span className="text-[#fe9a00]">Perfect Van</span>
+            <h2 className="text-2xl  lg:text-5xl font-black text-white mb-4">
+              Choose Your {" "}
+               <span className="text-[#fe9a00]">Perfect Van</span>
             </h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+            <p className="text-gray-400 text-sm md:text-base max-w-2xl mx-auto">
               Find the ideal van for your needs from our modern fleet
             </p>
           </div>
@@ -2755,6 +2754,7 @@ export function ReservationPanel({
           <CategoryRulesModal
             categoryId={van._id || ""}
             onClose={() => setShowRulesModal(false)}
+            showLoadingImmediately
           />
         )}
       </div>
