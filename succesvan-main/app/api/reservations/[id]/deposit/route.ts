@@ -44,7 +44,6 @@ export async function POST(
     const categoryDeposit = (
       reservation.category as {
         deposit?: {
-          amount?: number;
           fullPayDiscountPercent?: number;
           securePayPrice?: number;
           officePayPrice?: number;
@@ -54,7 +53,7 @@ export async function POST(
 
     const amount =
       option === "full"
-        ? (categoryDeposit?.amount ?? 0)
+        ? (reservation.totalPrice ?? 0)
         : option === "secure"
           ? (categoryDeposit?.securePayPrice ?? 0)
           : (categoryDeposit?.officePayPrice ?? 0);

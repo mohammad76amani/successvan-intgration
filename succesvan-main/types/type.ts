@@ -158,7 +158,6 @@ export interface Category {
   }[];
   extrahoursRate: number;
   deposit?: {
-    amount?: number;
     fullPayDiscountPercent?: number;
     securePayPrice?: number;
     officePayPrice?: number;

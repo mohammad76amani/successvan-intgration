@@ -16,11 +16,29 @@ import {
 import { Reservation } from "@/types/type";
 import { buildReservationJourney } from "@/lib/reservation-journey";
 import { statusBadgeClasses } from "@/lib/reservation-status";
+import ReservationJourneyPage from "./journey/ReservationJourneyPage";
+
+type TrackingModalState = {
+  reservationId: string;
+  initialSection?: string;
+};
 
 export default function ReservesContent() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [trackingModal, setTrackingModal] = useState<TrackingModalState | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!trackingModal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [trackingModal]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -77,16 +95,21 @@ export default function ReservesContent() {
   }
 
   return (
-    <div className="space-y-4">
+    <>
+      <div className="space-y-4">
       {reservations.map((reservation) => {
         const journey = buildReservationJourney(reservation);
-        const trackHref = `/customerDashboard/reservations/${journey.reservationId}`;
-        const actionHref = journey.nextAction.href?.startsWith("#")
-          ? `${trackHref}${journey.nextAction.href}`
-          : journey.nextAction.href || trackHref;
+        const actionSection = journey.nextAction.href?.startsWith("#")
+          ? journey.nextAction.href.slice(1)
+          : undefined;
         const actionIsStrong =
           journey.nextAction.type !== "none" &&
           journey.nextAction.type !== "contact_support";
+        const openTracker = (initialSection?: string) =>
+          setTrackingModal({
+            reservationId: journey.reservationId,
+            initialSection,
+          });
 
         return (
           <div
@@ -95,7 +118,7 @@ export default function ReservesContent() {
           >
             <div className="grid lg:grid-cols-[minmax(0,1fr)_300px]">
               <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
-                <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-28 sm:w-48 sm:shrink-0">
+                <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-48 sm:w-48 sm:shrink-0">
                   {journey.vehicleImage ? (
                     <Image
                       src={journey.vehicleImage}
@@ -159,13 +182,14 @@ export default function ReservesContent() {
                       </p>
                     )}
                   </div>
-                  <Link
-                    href={trackHref}
+                  <button
+                    type="button"
+                    onClick={() => openTracker()}
                     className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-[#fe9a00] hover:text-[#e68a00]"
                   >
                     Track booking
                     <FiArrowRight />
-                  </Link>
+                  </button>
                 </div>
               </div>
 
@@ -179,9 +203,22 @@ export default function ReservesContent() {
                 <p className="mt-1 text-sm text-gray-300">
                   {journey.nextAction.description}
                 </p>
-                {journey.nextAction.buttonLabel && (
+                {journey.nextAction.buttonLabel && actionSection && (
+                  <button
+                    type="button"
+                    onClick={() => openTracker(actionSection)}
+                    className={`mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-bold transition-colors ${
+                      actionIsStrong
+                        ? "bg-[#fe9a00] text-white hover:bg-[#e68a00]"
+                        : "bg-white/10 text-white hover:bg-white/20"
+                    }`}
+                  >
+                    {journey.nextAction.buttonLabel}
+                  </button>
+                )}
+                {journey.nextAction.buttonLabel && !actionSection && (
                   <Link
-                    href={actionHref}
+                    href={journey.nextAction.href || "#"}
                     className={`mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-bold transition-colors ${
                       actionIsStrong
                         ? "bg-[#fe9a00] text-white hover:bg-[#e68a00]"
@@ -207,6 +244,27 @@ export default function ReservesContent() {
           </div>
         );
       })}
-    </div>
+      </div>
+
+      {trackingModal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setTrackingModal(null);
+          }}
+        >
+          <div className="relative w-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-[#0f172b] shadow-2xl shadow-black/40">
+            <ReservationJourneyPage
+              reservationId={trackingModal.reservationId}
+              initialSection={trackingModal.initialSection}
+              embedded
+              onClose={() => setTrackingModal(null)}
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

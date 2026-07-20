@@ -20,6 +20,7 @@ import {
   FiUpload,
   FiTruck,
   FiUser,
+  FiX,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import type { Reservation } from "@/types/type";
@@ -219,8 +220,14 @@ function HelpStrip() {
 
 export default function ReservationJourneyPage({
   reservationId,
+  embedded = false,
+  initialSection,
+  onClose,
 }: {
   reservationId: string;
+  embedded?: boolean;
+  initialSection?: string;
+  onClose?: () => void;
 }) {
   const router = useRouter();
   const [reservation, setReservation] = useState<Reservation | null>(null);
@@ -288,12 +295,13 @@ export default function ReservationJourneyPage({
     if (!journey) return;
     setOpenSection((prev) => {
       if (prev) return prev;
-      const fromHash = window.location.hash.slice(1);
+      if (initialSection) return normalizeSectionId(initialSection);
+      const fromHash = embedded ? "" : window.location.hash.slice(1);
       if (fromHash) return normalizeSectionId(fromHash);
       return DEFAULT_SECTION[journey.mainStatus] ?? "summary";
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journey?.mainStatus]);
+  }, [journey?.mainStatus, initialSection, embedded]);
 
   const openAndScroll = (sectionId: string) => {
     const id = normalizeSectionId(sectionId);
@@ -366,14 +374,187 @@ export default function ReservationJourneyPage({
 
   if (notFound || !reservation || !journey) {
     return (
-      <div className="min-h-screen bg-[#0f172b] flex flex-col items-center justify-center gap-4 p-4">
+      <div
+        className={`flex flex-col items-center justify-center gap-4 p-4 ${
+          embedded ? "min-h-[360px]" : "min-h-screen bg-[#0f172b]"
+        }`}
+      >
         <p className="text-white font-bold text-lg">Booking not found</p>
-        <Link
-          href="/customerDashboard#reserves"
-          className="px-5 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold transition-colors"
-        >
-          Back to My Reservations
-        </Link>
+        {embedded ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold transition-colors"
+          >
+            Close
+          </button>
+        ) : (
+          <Link
+            href="/customerDashboard#reserves"
+            className="px-5 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold transition-colors"
+          >
+            Back to My Reservations
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  const journeyContent = (
+    <div
+      className={
+        embedded
+          ? "p-4 sm:p-5"
+          : "mx-auto max-w-6xl p-3 pb-24 sm:p-6 lg:pb-6"
+      }
+    >
+      <div className="space-y-5">
+        {/* ── Main reservation card ─────────────────────────── */}
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-5">
+              <div className="relative flex aspect-[16/9] w-full shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-60 sm:w-48">
+                {journey.vehicleImage ? (
+                  <Image
+                    src={journey.vehicleImage}
+                    alt={journey.vehicleName}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 100vw, 208px"
+                  />
+                ) : (
+                  <FiTruck className="text-gray-500 text-4xl" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
+                  >
+                    {journey.publicStatusLabel}
+                  </span>
+                </div>
+                <h2 className="text-2xl font-black text-white">
+                  {journey.vehicleName}
+                </h2>
+                <p className="text-sm font-bold text-gray-400">
+                  {journey.bookingReference}
+                </p>
+                <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
+                  <DateMeta
+                    icon={<FiCalendar />}
+                    label="Pickup"
+                    value={journey.pickupDateTime}
+                  />
+                  <DateMeta
+                    icon={<FiCalendar />}
+                    label="Return"
+                    value={journey.returnDateTime}
+                  />
+                  <DateMeta
+                    icon={<FiClock />}
+                    label="Duration"
+                    value={journey.durationLabel}
+                  />
+                </div>
+                {journey.collection?.location && (
+                  <p className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-400">
+                    <FiMapPin className="text-[#fe9a00]" />
+                    {journey.collection.location}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openAndScroll("summary")}
+                  className="mt-4 text-sm font-black text-[#fe9a00] hover:text-[#e68a00]"
+                >
+                  View details
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <NextActionCard
+            action={journey.nextAction}
+            onSectionLink={openAndScroll}
+          />
+        </div>
+
+        {!licenceComplete && (
+          <div className="rounded-2xl border border-[#fe9a00]/40 bg-[#fe9a00]/10 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-white">
+                  Driving licence required
+                </p>
+                <p className="mt-1 text-sm text-gray-300">
+                  Upload the front and back of your driving licence to keep this
+                  booking moving.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openAndScroll("documents")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e68a00]"
+              >
+                <FiUpload />
+                Upload Licence
+              </button>
+            </div>
+          </div>
+        )}
+
+        <JourneyTracker steps={trackerSteps} />
+        <DepositHighlight journey={journey} />
+        <HelpStrip />
+        <JourneyAccordions
+          reservation={reservation}
+          journey={journey}
+          contract={contract}
+          openSection={openSection}
+          onToggle={handleToggle}
+          onEditBooking={() => setIsEditOpen(true)}
+          onSignContract={handleSignContract}
+          onDownloadContract={handleDownloadContract}
+          onDepositUpdated={fetchData}
+          onLicenceUpdated={handleLicenceUpdated}
+          signBusy={signBusy}
+        />
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="max-h-[90vh] overflow-y-auto bg-[#0f172b]">
+        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#111b33]/95 px-4 py-4 backdrop-blur-xl sm:px-5">
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-black text-white md:text-xl">
+              Track booking
+            </h1>
+            <p className="text-xs font-bold text-[#fe9a00]">
+              {journey.bookingReference}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20"
+            aria-label="Close booking tracker"
+          >
+            <FiX />
+          </button>
+        </div>
+        {journeyContent}
+        <CustomerReservationEditModal
+          reservation={reservation}
+          isOpen={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          onUpdate={() => {
+            setIsEditOpen(false);
+            fetchData();
+          }}
+        />
       </div>
     );
   }
@@ -450,129 +631,7 @@ export default function ReservationJourneyPage({
           </div>
         </div>
 
-      <div className="mx-auto max-w-6xl p-3 pb-24 sm:p-6 lg:pb-6">
-        <div className="space-y-5">
-        {/* ── Main reservation card ─────────────────────────── */}
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
-          <div className="flex flex-col sm:flex-row gap-5">
-            <div className="relative flex aspect-[16/9] w-full shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-32 sm:w-52">
-              {journey.vehicleImage ? (
-                <Image
-                  src={journey.vehicleImage}
-                  alt={journey.vehicleName}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 640px) 100vw, 208px"
-                />
-              ) : (
-                <FiTruck className="text-gray-500 text-4xl" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
-                >
-                  {journey.publicStatusLabel}
-                </span>
-              </div>
-              <h2 className="text-2xl font-black text-white">
-                {journey.vehicleName}
-              </h2>
-              <p className="text-sm font-bold text-gray-400">
-                {journey.bookingReference}
-              </p>
-              <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
-                <DateMeta
-                  icon={<FiCalendar />}
-                  label="Pickup"
-                  value={journey.pickupDateTime}
-                />
-                <DateMeta
-                  icon={<FiCalendar />}
-                  label="Return"
-                  value={journey.returnDateTime}
-                />
-                <DateMeta
-                  icon={<FiClock />}
-                  label="Duration"
-                  value={journey.durationLabel}
-                />
-              </div>
-              {journey.collection?.location && (
-                <p className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-400">
-                  <FiMapPin className="text-[#fe9a00]" />
-                  {journey.collection.location}
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={() => openAndScroll("summary")}
-                className="mt-4 text-sm font-black text-[#fe9a00] hover:text-[#e68a00]"
-              >
-                View details
-              </button>
-            </div>
-          </div>
-          </div>
-
-          {/* ── Next action ───────────────────────────────────── */}
-          <NextActionCard
-            action={journey.nextAction}
-            onSectionLink={openAndScroll}
-          />
-        </div>
-
-        {/* ── Journey tracker ───────────────────────────────── */}
-        {!licenceComplete && (
-          <div className="rounded-2xl border border-[#fe9a00]/40 bg-[#fe9a00]/10 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-black text-white">
-                  Driving licence required
-                </p>
-                <p className="mt-1 text-sm text-gray-300">
-                  Upload the front and back of your driving licence to keep this
-                  booking moving.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => openAndScroll("documents")}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e68a00]"
-              >
-                <FiUpload />
-                Upload Licence
-              </button>
-            </div>
-          </div>
-        )}
-
-        <JourneyTracker steps={trackerSteps} />
-
-        {/* ── Deposit highlight ─────────────────────────────── */}
-        <DepositHighlight journey={journey} />
-
-        {/* ── Compact help strip ────────────────────────────── */}
-        <HelpStrip />
-
-        {/* ── Expandable sections ───────────────────────────── */}
-        <JourneyAccordions
-          reservation={reservation}
-          journey={journey}
-          contract={contract}
-          openSection={openSection}
-          onToggle={handleToggle}
-          onEditBooking={() => setIsEditOpen(true)}
-          onSignContract={handleSignContract}
-          onDownloadContract={handleDownloadContract}
-          onDepositUpdated={fetchData}
-          onLicenceUpdated={handleLicenceUpdated}
-          signBusy={signBusy}
-        />
-        </div>
-      </div>
+        {journeyContent}
 
         <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#111b33]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-2xl backdrop-blur-xl lg:hidden">
           {mobileNavItems.map((item) => (

@@ -266,7 +266,7 @@ export function buildReservationJourney(
     | {
         name?: string;
         image?: string;
-        deposit?: { amount?: number; securePayPrice?: number };
+        deposit?: { securePayPrice?: number };
       }
     | undefined;
   const vehicle = reservation.vehicle as { title?: string } | undefined;
@@ -290,9 +290,10 @@ export function buildReservationJourney(
     steps: buildSteps(reservation, status),
     nextAction: buildNextAction(reservation, status),
     deposit: (() => {
-      // Fall back to the category's configured deposit fee until the
-      // customer has chosen an option.
-      const amount = deposit?.amount ?? category?.deposit?.amount;
+      // Fall back to the reservation total until the customer has chosen an
+      // option. Full deposit is the booking total; secure/office amounts are
+      // snapshotted into reservation.deposit.amount after selection.
+      const amount = deposit?.amount ?? reservation.totalPrice;
       if (amount === undefined && !deposit?.status) return undefined;
       return {
         amount: amount ?? 0,

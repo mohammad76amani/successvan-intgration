@@ -34,14 +34,14 @@ export default function DepositPanel({
   onUpdated: () => void;
 }) {
   const deposit = reservation.deposit;
-  const config = (reservation.category as Reservation["category"])?.deposit as
-    | {
-        amount?: number;
-        fullPayDiscountPercent?: number;
-        securePayPrice?: number;
-        officePayPrice?: number;
-      }
-    | undefined;
+  const config =
+    ((reservation.category as Reservation["category"])?.deposit as
+      | {
+          fullPayDiscountPercent?: number;
+          securePayPrice?: number;
+          officePayPrice?: number;
+        }
+      | undefined) ?? {};
 
   const [selected, setSelected] = useState<DepositOption | null>(
     deposit?.option ?? null,
@@ -60,7 +60,7 @@ export default function DepositPanel({
 
   const optionAmount = (option: DepositOption) =>
     option === "full"
-      ? (config?.amount ?? 0)
+      ? (reservation.totalPrice ?? 0)
       : option === "secure"
         ? (config?.securePayPrice ?? 0)
         : (config?.officePayPrice ?? 0);
@@ -175,17 +175,6 @@ export default function DepositPanel({
     );
   }
 
-  // ── No deposit configured for this category ──────────────────
-  if (!config || !config.amount) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-gray-400 bg-black/20 rounded-lg p-3">
-        <FiClock className="shrink-0" />
-        No deposit has been requested for this booking yet. We&apos;ll let you
-        know when it&apos;s due.
-      </div>
-    );
-  }
-
   // ── Choose option + pay + upload receipt ─────────────────────
   const options: Array<{
     key: DepositOption;
@@ -197,8 +186,8 @@ export default function DepositPanel({
     {
       key: "full",
       title: DEPOSIT_OPTION_LABELS.full,
-      price: config.amount,
-      note: "Fully refundable after the van is returned.",
+      price: reservation.totalPrice ?? 0,
+      note: "Pay the full booking total now by bank transfer.",
       badge:
         (config.fullPayDiscountPercent ?? 0) > 0
           ? `${config.fullPayDiscountPercent}% off your rental`

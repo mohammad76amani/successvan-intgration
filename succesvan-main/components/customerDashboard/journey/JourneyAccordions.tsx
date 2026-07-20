@@ -3,15 +3,8 @@
 import { useState } from "react";
 import Image from "next/image";
 import {
-  FiChevronDown,
-  FiFileText,
-  FiCreditCard,
   FiMapPin,
-  FiTruck,
-  FiSearch,
-  FiRefreshCw,
   FiClock,
-  FiClipboard,
   FiUpload,
   FiCheckCircle,
   FiAlertCircle,
@@ -63,38 +56,18 @@ function Placeholder({ text }: { text: string }) {
 
 function Section({
   id,
-  icon,
-  title,
   open,
-  onToggle,
   children,
 }: {
   id: JourneySectionId;
-  icon: React.ReactNode;
-  title: string;
   open: boolean;
-  onToggle: (id: JourneySectionId) => void;
   children: React.ReactNode;
 }) {
+  if (!open) return null;
+
   return (
-    <div
-      id={id}
-      className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden shadow-2xl shadow-black/10 backdrop-blur-xl"
-    >
-      <button
-        type="button"
-        onClick={() => onToggle(id)}
-        className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/5 transition-colors"
-      >
-        <span className="flex items-center gap-3 text-white font-bold text-sm">
-          <span className="text-[#fe9a00]">{icon}</span>
-          {title}
-        </span>
-        <FiChevronDown
-          className={`text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && <div className="px-5 pb-5">{children}</div>}
+    <div id={id} className="pt-4">
+      {children}
     </div>
   );
 }
@@ -104,7 +77,6 @@ export default function JourneyAccordions({
   journey,
   contract,
   openSection,
-  onToggle,
   onEditBooking,
   onSignContract,
   onDownloadContract,
@@ -208,6 +180,12 @@ export default function JourneyAccordions({
 
   const canEdit = journey.mainStatus === "pending";
   const licenceComplete = licence.front && licence.back;
+  const activeStep =
+    journey.steps.find((step) =>
+      ["current", "blocked", "failed"].includes(step.state),
+    ) ||
+    [...journey.steps].reverse().find((step) => step.state === "completed") ||
+    journey.steps[0];
 
   const LicenceUploadCard = ({
     side,
@@ -282,14 +260,30 @@ export default function JourneyAccordions({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
+      <div className="border-b border-white/10 pb-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-500">
+          Current step
+        </p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-white">
+              {journey.nextAction.title}
+            </h3>
+            <p className="mt-1 text-sm text-gray-400">
+              {journey.nextAction.description}
+            </p>
+          </div>
+          <span className="inline-flex w-fit rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
+            {activeStep?.label || journey.publicStatusLabel}
+          </span>
+        </div>
+      </div>
+
       {/* ── Booking summary ─────────────────────────────────── */}
       <Section
         id="summary"
-        icon={<FiClipboard />}
-        title="Booking summary"
         open={openSection === "summary"}
-        onToggle={onToggle}
       >
         <Row label="Booking reference" value={journey.bookingReference} />
         <Row label="Vehicle" value={journey.vehicleName} />
@@ -339,10 +333,7 @@ export default function JourneyAccordions({
       {/* ── Documents ───────────────────────────────────────── */}
       <Section
         id="documents"
-        icon={<FiUpload />}
-        title="Documents"
         open={openSection === "documents"}
-        onToggle={onToggle}
       >
         <div className="space-y-2">
           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
@@ -389,10 +380,7 @@ export default function JourneyAccordions({
       {/* ── Payment & deposit ──────────────────────────────── */}
       <Section
         id="deposit"
-        icon={<FiCreditCard />}
-        title="Payment & deposit"
         open={openSection === "deposit"}
-        onToggle={onToggle}
       >
         <DepositPanel reservation={reservation} onUpdated={onDepositUpdated} />
       </Section>
@@ -400,10 +388,7 @@ export default function JourneyAccordions({
       {/* ── Contract ────────────────────────────────────────── */}
       <Section
         id="contract"
-        icon={<FiFileText />}
-        title="Rental agreement"
         open={openSection === "contract"}
-        onToggle={onToggle}
       >
         {contract ? (
           <>
@@ -455,10 +440,7 @@ export default function JourneyAccordions({
       {/* ── Collection & return ────────────────────────────── */}
       <Section
         id="collection"
-        icon={<FiMapPin />}
-        title="Collection & return"
         open={openSection === "collection"}
-        onToggle={onToggle}
       >
         <Row label="Pickup location" value={journey.collection?.location} />
         <Row label="Pickup time" value={journey.pickupDateTime} />
@@ -492,10 +474,7 @@ export default function JourneyAccordions({
       {/* ── Handover form ──────────────────────────────────── */}
       <Section
         id="handover"
-        icon={<FiTruck />}
-        title="Handover form"
         open={openSection === "handover"}
-        onToggle={onToggle}
       >
         {handover?.completedAt ? (
           <>
@@ -531,10 +510,7 @@ export default function JourneyAccordions({
       {/* ── Return inspection ──────────────────────────────── */}
       <Section
         id="inspection"
-        icon={<FiSearch />}
-        title="Return inspection"
         open={openSection === "inspection"}
-        onToggle={onToggle}
       >
         {inspection?.completedAt ? (
           <>
@@ -573,10 +549,7 @@ export default function JourneyAccordions({
       {/* ── Refund summary ─────────────────────────────────── */}
       <Section
         id="refund"
-        icon={<FiRefreshCw />}
-        title="Refund summary"
         open={openSection === "refund"}
-        onToggle={onToggle}
       >
         {refund && journey.refund ? (
           <>
@@ -645,10 +618,7 @@ export default function JourneyAccordions({
       {/* ── Activity timeline ──────────────────────────────── */}
       <Section
         id="timeline"
-        icon={<FiClock />}
-        title="Activity timeline"
         open={openSection === "timeline"}
-        onToggle={onToggle}
       >
         {(reservation.statusHistory?.length ?? 0) > 0 ? (
           <div className="space-y-3">
