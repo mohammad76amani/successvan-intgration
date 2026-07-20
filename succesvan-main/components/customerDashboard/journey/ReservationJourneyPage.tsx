@@ -17,6 +17,7 @@ import {
   FiLock,
   FiMapPin,
   FiMessageSquare,
+  FiUpload,
   FiTruck,
   FiUser,
 } from "react-icons/fi";
@@ -81,6 +82,19 @@ const normalizeSectionId = (id: string): JourneySectionId => {
     : "summary";
 };
 
+const getLicenceStateFromStorage = () => {
+  if (typeof window === "undefined") return { front: false, back: false };
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    return {
+      front: Boolean(user?.licenceAttached?.front),
+      back: Boolean(user?.licenceAttached?.back),
+    };
+  } catch {
+    return { front: false, back: false };
+  }
+};
+
 function DateMeta({
   icon,
   label,
@@ -97,7 +111,7 @@ function DateMeta({
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
           {label}
         </p>
-        <p className="text-sm font-bold text-slate-900">{value}</p>
+        <p className="text-sm font-bold text-white">{value}</p>
       </div>
     </div>
   );
@@ -113,14 +127,14 @@ function DepositHighlight({
   if (depositAmount === undefined) return null;
 
   return (
-    <div className="grid gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[1fr_1.4fr_1fr]">
+    <div className="grid gap-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl shadow-black/10 backdrop-blur-xl lg:grid-cols-[1fr_1.4fr_1fr]">
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-black text-slate-950">
+            <p className="text-sm font-black text-white">
               Deposit amount
             </p>
-            <p className="mt-4 text-2xl font-black text-slate-950">
+            <p className="mt-4 text-2xl font-black text-white">
               £{depositAmount}
             </p>
           </div>
@@ -129,7 +143,7 @@ function DepositHighlight({
           </span>
         </div>
         {journey.deposit?.dueAt && (
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-gray-400">
             Due by <span className="font-semibold">{journey.deposit.dueAt}</span>
           </p>
         )}
@@ -139,9 +153,9 @@ function DepositHighlight({
         </p>
       </div>
 
-      <div className="border-y border-slate-200 p-5 lg:border-x lg:border-y-0">
-        <p className="text-sm font-black text-slate-950">Why deposit?</p>
-        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+      <div className="border-y border-white/10 p-5 lg:border-x lg:border-y-0">
+        <p className="text-sm font-black text-white">Why deposit?</p>
+        <p className="mt-3 text-sm leading-relaxed text-gray-300">
           The deposit secures your booking and is refunded after the van is
           returned and inspected.
         </p>
@@ -155,12 +169,12 @@ function DepositHighlight({
       </div>
 
       <div className="p-5">
-        <p className="text-sm font-black text-slate-950">We accept</p>
+        <p className="text-sm font-black text-white">We accept</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {["VISA", "MC", "Apple Pay", "G Pay"].map((method) => (
             <span
               key={method}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700"
+              className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-black text-gray-200"
             >
               {method}
             </span>
@@ -173,11 +187,11 @@ function DepositHighlight({
 
 function HelpStrip() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-black text-slate-950">Need help?</p>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm font-black text-white">Need help?</p>
+          <p className="text-sm text-gray-400">
             Our support team is here to help with your booking.
           </p>
         </div>
@@ -190,10 +204,10 @@ function HelpStrip() {
             <div key={item.title} className="flex items-start gap-2">
               <span className="mt-1 text-lg text-green-500">{item.icon}</span>
               <div>
-                <p className="text-xs font-black text-slate-800">
+                <p className="text-xs font-black text-white">
                   {item.title}
                 </p>
-                <p className="text-[11px] text-slate-500">{item.text}</p>
+                <p className="text-[11px] text-gray-500">{item.text}</p>
               </div>
             </div>
           ))}
@@ -216,6 +230,7 @@ export default function ReservationJourneyPage({
   const [openSection, setOpenSection] = useState<JourneySectionId | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [signBusy, setSignBusy] = useState(false);
+  const [licence, setLicence] = useState(getLicenceStateFromStorage);
 
   const fetchData = useCallback(async () => {
     try {
@@ -253,6 +268,20 @@ export default function ReservationJourneyPage({
   const journey = reservation
     ? buildReservationJourney(reservation, contract)
     : null;
+  const licenceComplete = licence.front && licence.back;
+  const trackerSteps =
+    journey && !licenceComplete
+      ? [
+          journey.steps[0],
+          {
+            key: "licence",
+            label: "Licence",
+            state: "blocked" as const,
+            description: "Upload both sides of your driving licence.",
+          },
+          ...journey.steps.slice(1),
+        ]
+      : (journey?.steps ?? []);
 
   // Open the most relevant accordion once data is loaded.
   useEffect(() => {
@@ -279,6 +308,11 @@ export default function ReservationJourneyPage({
 
   const handleToggle = (id: JourneySectionId) => {
     setOpenSection((prev) => (prev === id ? null : id));
+  };
+
+  const handleLicenceUpdated = () => {
+    setLicence(getLicenceStateFromStorage());
+    fetchData();
   };
 
   const handleSignContract = async () => {
@@ -417,22 +451,22 @@ export default function ReservationJourneyPage({
         </div>
 
       <div className="mx-auto max-w-6xl p-3 pb-24 sm:p-6 lg:pb-6">
-        <div className="space-y-5 rounded-[1.75rem] bg-slate-50 p-4 shadow-2xl shadow-black/20 sm:p-6">
+        <div className="space-y-5">
         {/* ── Main reservation card ─────────────────────────── */}
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
           <div className="flex flex-col sm:flex-row gap-5">
-            <div className="relative flex h-36 w-full shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 sm:h-32 sm:w-48">
+            <div className="relative flex aspect-[16/9] w-full shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-32 sm:w-52">
               {journey.vehicleImage ? (
                 <Image
                   src={journey.vehicleImage}
                   alt={journey.vehicleName}
                   fill
-                  className="object-contain p-2"
-                  sizes="(max-width: 640px) 100vw, 192px"
+                  className="object-cover"
+                  sizes="(max-width: 640px) 100vw, 208px"
                 />
               ) : (
-                <FiTruck className="text-slate-400 text-4xl" />
+                <FiTruck className="text-gray-500 text-4xl" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -443,10 +477,10 @@ export default function ReservationJourneyPage({
                   {journey.publicStatusLabel}
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-slate-950">
+              <h2 className="text-2xl font-black text-white">
                 {journey.vehicleName}
               </h2>
-              <p className="text-sm font-bold text-slate-500">
+              <p className="text-sm font-bold text-gray-400">
                 {journey.bookingReference}
               </p>
               <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
@@ -467,7 +501,7 @@ export default function ReservationJourneyPage({
                 />
               </div>
               {journey.collection?.location && (
-                <p className="mt-4 flex items-center gap-2 text-sm font-medium text-slate-500">
+                <p className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-400">
                   <FiMapPin className="text-[#fe9a00]" />
                   {journey.collection.location}
                 </p>
@@ -491,7 +525,31 @@ export default function ReservationJourneyPage({
         </div>
 
         {/* ── Journey tracker ───────────────────────────────── */}
-        <JourneyTracker steps={journey.steps} />
+        {!licenceComplete && (
+          <div className="rounded-2xl border border-[#fe9a00]/40 bg-[#fe9a00]/10 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-white">
+                  Driving licence required
+                </p>
+                <p className="mt-1 text-sm text-gray-300">
+                  Upload the front and back of your driving licence to keep this
+                  booking moving.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openAndScroll("documents")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e68a00]"
+              >
+                <FiUpload />
+                Upload Licence
+              </button>
+            </div>
+          </div>
+        )}
+
+        <JourneyTracker steps={trackerSteps} />
 
         {/* ── Deposit highlight ─────────────────────────────── */}
         <DepositHighlight journey={journey} />
@@ -510,12 +568,13 @@ export default function ReservationJourneyPage({
           onSignContract={handleSignContract}
           onDownloadContract={handleDownloadContract}
           onDepositUpdated={fetchData}
+          onLicenceUpdated={handleLicenceUpdated}
           signBusy={signBusy}
         />
         </div>
       </div>
 
-        <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-slate-200 bg-white px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-2xl lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#111b33]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-2xl backdrop-blur-xl lg:hidden">
           {mobileNavItems.map((item) => (
             <Link
               key={item.label}
@@ -523,7 +582,7 @@ export default function ReservationJourneyPage({
               className={`flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold ${
                 item.label === "Booking"
                   ? "text-[#fe9a00]"
-                  : "text-slate-500"
+                  : "text-gray-400"
               }`}
             >
               <span className="text-lg">{item.icon}</span>

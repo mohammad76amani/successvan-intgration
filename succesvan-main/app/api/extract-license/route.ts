@@ -57,3 +57,5 @@
 //     return NextResponse.json({ error: "Failed to extract license data" }, { status: 500 });
 //   }
 // }
+
+export {};

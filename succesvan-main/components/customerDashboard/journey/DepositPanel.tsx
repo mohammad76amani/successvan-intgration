@@ -20,8 +20,8 @@ import {
 function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-sm py-1">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-slate-950 font-semibold text-right">{value ?? "-"}</span>
+      <span className="text-gray-400">{label}</span>
+      <span className="text-white font-semibold text-right">{value ?? "-"}</span>
     </div>
   );
 }
@@ -166,7 +166,7 @@ export default function DepositPanel({
             href={deposit.receiptUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg text-sm font-semibold transition-colors"
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors"
           >
             <FiDownload /> View receipt
           </a>
@@ -178,7 +178,7 @@ export default function DepositPanel({
   // ── No deposit configured for this category ──────────────────
   if (!config || !config.amount) {
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+      <div className="flex items-center gap-2 text-sm text-gray-400 bg-black/20 rounded-lg p-3">
         <FiClock className="shrink-0" />
         No deposit has been requested for this booking yet. We&apos;ll let you
         know when it&apos;s due.
@@ -230,18 +230,18 @@ export default function DepositPanel({
             className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
               selected === option.key
                 ? "border-[#fe9a00] bg-[#fe9a00]/10"
-                : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                : "border-white/10 bg-black/20 hover:border-white/20"
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-950 font-semibold text-sm">
+              <span className="text-white font-semibold text-sm">
                 {option.title}
               </span>
               <span className="text-[#fe9a00] font-black">
                 £{option.price}
               </span>
             </div>
-            <p className="text-slate-500 text-xs mt-1">{option.note}</p>
+            <p className="text-gray-400 text-xs mt-1">{option.note}</p>
             {option.badge && (
               <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-semibold">
                 <FiPercent className="text-[10px]" /> {option.badge}
@@ -254,27 +254,27 @@ export default function DepositPanel({
       {/* Bank details + receipt upload for transfer options */}
       {selected && selected !== "office" && (
         <>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <p className="text-slate-500 text-xs mb-2">
+          <div className="bg-black/20 border border-white/10 rounded-xl p-4">
+            <p className="text-gray-400 text-xs mb-2">
               Transfer{" "}
               <span className="text-[#fe9a00] font-black">
                 £{optionAmount(selected)}
               </span>{" "}
               to this card, then upload your payment receipt:
             </p>
-            <div className="flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg p-3">
+            <div className="flex items-center justify-between gap-2 bg-black/20 border border-white/10 rounded-lg p-3">
               <div>
-                <p className="text-slate-950 font-black tracking-wider">
+                <p className="text-white font-black tracking-wider">
                   {DEPOSIT_PAYMENT_DETAILS.cardNumber}
                 </p>
-                <p className="text-slate-500 text-xs mt-0.5">
+                <p className="text-gray-400 text-xs mt-0.5">
                   {DEPOSIT_PAYMENT_DETAILS.accountName}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={copyCardNumber}
-                className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-900 transition-colors cursor-pointer"
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
                 title="Copy card number"
               >
                 <FiCopy />
@@ -283,17 +283,17 @@ export default function DepositPanel({
           </div>
 
           <label className="block">
-            <span className="text-slate-950 text-sm font-semibold mb-2 flex items-center gap-2">
+            <span className="text-white text-sm font-semibold mb-2 flex items-center gap-2">
               <FiUpload className="text-[#fe9a00]" /> Payment receipt
             </span>
             <input
               type="file"
               accept="image/*,.pdf"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-slate-500 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#fe9a00]/20 file:text-[#fe9a00] file:font-semibold file:cursor-pointer cursor-pointer"
+              className="w-full text-sm text-gray-400 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#fe9a00]/20 file:text-[#fe9a00] file:font-semibold file:cursor-pointer cursor-pointer"
             />
             {file && (
-              <p className="text-slate-500 text-xs mt-1">{file.name}</p>
+              <p className="text-gray-400 text-xs mt-1">{file.name}</p>
             )}
           </label>
         </>

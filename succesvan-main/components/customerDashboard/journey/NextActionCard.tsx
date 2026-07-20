@@ -18,10 +18,10 @@ export default function NextActionCard({
     <span
       className={`inline-flex w-full items-center justify-center px-5 py-3 rounded-lg font-semibold text-sm transition-colors ${
         action.disabled
-          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+          ? "bg-white/10 text-gray-500 cursor-not-allowed"
           : highlight
             ? "bg-[#fe9a00] hover:bg-[#e68a00] text-white"
-            : "bg-slate-900 hover:bg-slate-800 text-white"
+            : "bg-white/10 hover:bg-white/20 text-white"
       }`}
     >
       {action.buttonLabel}
@@ -32,25 +32,25 @@ export default function NextActionCard({
     <div
       className={`rounded-2xl p-5 border shadow-sm ${
         highlight
-          ? "bg-white border-orange-200"
-          : "bg-white border-slate-200"
+          ? "bg-[#fe9a00]/10 border-[#fe9a00]/40"
+          : "bg-white/5 border-white/10"
       }`}
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div
             className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-              highlight ? "bg-[#fe9a00] text-white" : "bg-slate-100 text-slate-500"
+              highlight ? "bg-[#fe9a00] text-white" : "bg-white/10 text-gray-300"
             }`}
           >
             <FiZap />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-400">
               Next Action
             </p>
-            <h3 className="text-slate-950 font-black mt-1">{action.title}</h3>
-            <p className="text-slate-600 text-sm mt-1 leading-relaxed">
+            <h3 className="text-white font-black mt-1">{action.title}</h3>
+            <p className="text-gray-300 text-sm mt-1 leading-relaxed">
               {action.description}
             </p>
           </div>
@@ -73,8 +73,8 @@ export default function NextActionCard({
         {action.buttonLabel && action.disabled && (
           <div className="shrink-0">{button}</div>
         )}
-        <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500">
-          <FiLock className="text-slate-400" />
+        <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-400">
+          <FiLock className="text-gray-500" />
           Secure payment
         </p>
       </div>

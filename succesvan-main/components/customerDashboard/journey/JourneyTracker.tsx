@@ -3,40 +3,44 @@
 import { FiCheck, FiAlertCircle, FiX } from "react-icons/fi";
 import type { ReservationJourneyStep } from "@/types/reservation-journey";
 
+type DisplayJourneyStep = Omit<ReservationJourneyStep, "key"> & {
+  key: string;
+};
+
 const stateStyles = {
   completed: {
     circle: "bg-green-500 border-green-500 text-white",
-    label: "text-slate-800",
-    meta: "text-slate-500",
+    label: "text-white",
+    meta: "text-gray-400",
     bar: "bg-green-500",
   },
   current: {
-    circle: "bg-white border-[#fe9a00] text-[#fe9a00]",
+    circle: "bg-[#fe9a00] border-[#fe9a00] text-white",
     label: "text-[#fe9a00]",
-    meta: "text-slate-500",
-    bar: "bg-slate-200",
+    meta: "text-gray-400",
+    bar: "bg-white/10",
   },
   blocked: {
-    circle: "bg-white border-[#fe9a00] text-[#fe9a00] animate-pulse",
+    circle: "bg-[#fe9a00] border-[#fe9a00] text-white animate-pulse",
     label: "text-[#fe9a00]",
-    meta: "text-slate-500",
-    bar: "bg-slate-200",
+    meta: "text-gray-400",
+    bar: "bg-white/10",
   },
   failed: {
     circle: "bg-red-500 border-red-500 text-white",
-    label: "text-red-600",
-    meta: "text-slate-500",
-    bar: "bg-slate-200",
+    label: "text-red-400",
+    meta: "text-gray-400",
+    bar: "bg-white/10",
   },
   upcoming: {
-    circle: "bg-white border-slate-200 text-slate-400",
-    label: "text-slate-500",
-    meta: "text-slate-400",
-    bar: "bg-slate-200",
+    circle: "bg-transparent border-white/20 text-gray-500",
+    label: "text-gray-500",
+    meta: "text-gray-500",
+    bar: "bg-white/10",
   },
 } as const;
 
-function StepIcon({ step, index }: { step: ReservationJourneyStep; index: number }) {
+function StepIcon({ step, index }: { step: DisplayJourneyStep; index: number }) {
   if (step.state === "completed") return <FiCheck className="text-sm" />;
   if (step.state === "failed") return <FiX className="text-sm" />;
   if (step.state === "blocked") return <FiAlertCircle className="text-sm" />;
@@ -46,11 +50,11 @@ function StepIcon({ step, index }: { step: ReservationJourneyStep; index: number
 export default function JourneyTracker({
   steps,
 }: {
-  steps: ReservationJourneyStep[];
+  steps: DisplayJourneyStep[];
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-      <h3 className="text-slate-950 font-black mb-5">Booking progress</h3>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
+      <h3 className="text-white font-black mb-5">Booking progress</h3>
 
       {/* Desktop: horizontal stepper */}
       <div className="hidden md:flex items-start">
@@ -63,7 +67,7 @@ export default function JourneyTracker({
                   className={`absolute right-1/2 top-4 h-0.5 w-full -translate-y-1/2 ${
                     steps[idx - 1].state === "completed"
                       ? "bg-green-500"
-                      : "bg-slate-200"
+                      : "bg-white/10"
                   }`}
                 />
               )}
@@ -100,12 +104,12 @@ export default function JourneyTracker({
                 {idx < steps.length - 1 && (
                   <div
                     className={`w-0.5 flex-1 min-h-5 ${
-                      step.state === "completed" ? "bg-green-500" : "bg-slate-200"
+                      step.state === "completed" ? "bg-green-500" : "bg-white/10"
                     }`}
                   />
                 )}
               </div>
-              <div className="flex flex-1 items-center justify-between gap-3 border-b border-slate-100 pb-4 pt-1.5 last:border-b-0">
+              <div className="flex flex-1 items-center justify-between gap-3 border-b border-white/10 pb-4 pt-1.5 last:border-b-0">
                 <div>
                   <p className={`text-sm font-bold ${style.label}`}>
                     {step.label}

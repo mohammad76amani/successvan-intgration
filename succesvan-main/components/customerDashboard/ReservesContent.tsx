@@ -42,7 +42,7 @@ export default function ReservesContent() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-gray-400 shadow-sm backdrop-blur-xl">
         Loading reservations...
       </div>
     );
@@ -50,20 +50,20 @@ export default function ReservesContent() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
-        <p className="font-semibold text-red-600">{error}</p>
+      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+        <p className="font-semibold text-red-300">{error}</p>
       </div>
     );
   }
 
   if (reservations.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-        <FiClipboard className="text-slate-300 text-5xl mx-auto mb-4" />
-        <h3 className="text-xl font-black text-slate-950 mb-2">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-10 text-center shadow-2xl shadow-black/10 backdrop-blur-xl">
+        <FiClipboard className="text-gray-500 text-5xl mx-auto mb-4" />
+        <h3 className="text-xl font-black text-white mb-2">
           No reservations yet
         </h3>
-        <p className="text-slate-500 mb-6">
+        <p className="text-gray-400 mb-6">
           Start by creating your first reservation
         </p>
         <Link
@@ -77,7 +77,7 @@ export default function ReservesContent() {
   }
 
   return (
-    <div className="space-y-4 rounded-[1.75rem] bg-slate-50 p-3 sm:p-5">
+    <div className="space-y-4">
       {reservations.map((reservation) => {
         const journey = buildReservationJourney(reservation);
         const trackHref = `/customerDashboard/reservations/${journey.reservationId}`;
@@ -91,21 +91,21 @@ export default function ReservesContent() {
         return (
           <div
             key={journey.reservationId}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+            className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl shadow-black/10 backdrop-blur-xl transition-colors hover:border-[#fe9a00]/35"
           >
             <div className="grid lg:grid-cols-[minmax(0,1fr)_300px]">
               <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
-                <div className="relative flex h-32 w-full items-center justify-center overflow-hidden rounded-xl bg-slate-50 sm:h-28 sm:w-44 sm:shrink-0">
+                <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-28 sm:w-48 sm:shrink-0">
                   {journey.vehicleImage ? (
                     <Image
                       src={journey.vehicleImage}
                       alt={journey.vehicleName}
                       fill
-                      className="object-contain p-2"
-                      sizes="(max-width: 640px) 100vw, 176px"
+                      className="object-cover"
+                      sizes="(max-width: 640px) 100vw, 192px"
                     />
                   ) : (
-                    <FiTruck className="text-5xl text-slate-300" />
+                    <FiTruck className="text-5xl text-gray-500" />
                   )}
                 </div>
 
@@ -115,35 +115,45 @@ export default function ReservesContent() {
                   >
                     {journey.publicStatusLabel}
                   </span>
-                  <h3 className="truncate text-lg font-black text-slate-950">
+                  <h3 className="truncate text-lg font-black text-white">
                     {journey.vehicleName}
                   </h3>
-                  <p className="mb-3 text-sm font-bold text-slate-500">
+                  <p className="mb-3 text-sm font-bold text-gray-400">
                     Booking #{journey.bookingReference}
                   </p>
-                  <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                    <p className="flex items-center gap-2">
-                      <FiCalendar className="shrink-0 text-slate-400" />
-                      <span className="font-semibold text-slate-950">
-                        {journey.pickupDateTime}
+                  <div className="grid gap-2 text-sm text-gray-400 sm:grid-cols-2">
+                    <p className="flex items-start gap-2">
+                      <FiCalendar className="mt-0.5 shrink-0 text-[#fe9a00]" />
+                      <span>
+                        <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                          Pickup
+                        </span>
+                        <span className="font-semibold text-white">
+                          {journey.pickupDateTime}
+                        </span>
+                      </span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <FiCalendar className="mt-0.5 shrink-0 text-[#fe9a00]" />
+                      <span>
+                        <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                          Return
+                        </span>
+                        <span className="font-semibold text-white">
+                          {journey.returnDateTime}
+                        </span>
                       </span>
                     </p>
                     <p className="flex items-center gap-2">
-                      <FiCalendar className="shrink-0 text-slate-400" />
-                      <span className="font-semibold text-slate-950">
-                        {journey.returnDateTime}
-                      </span>
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <FiClock className="shrink-0 text-slate-400" />
-                      <span className="font-semibold text-slate-950">
+                      <FiClock className="shrink-0 text-[#fe9a00]" />
+                      <span className="font-semibold text-white">
                         {journey.durationLabel}
                       </span>
                     </p>
                     {reservation.office?.name && (
                       <p className="flex items-center gap-2">
-                        <FiMapPin className="shrink-0 text-slate-400" />
-                        <span className="font-semibold text-slate-950">
+                        <FiMapPin className="shrink-0 text-[#fe9a00]" />
+                        <span className="font-semibold text-white">
                           {reservation.office.name}
                         </span>
                       </p>
@@ -159,14 +169,14 @@ export default function ReservesContent() {
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 bg-slate-50 p-4 lg:border-l lg:border-t-0 lg:p-5">
-                <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">
+              <div className="border-t border-white/10 bg-black/10 p-4 lg:border-l lg:border-t-0 lg:p-5">
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-gray-400">
                   Next Action
                 </p>
-                <h4 className="font-black text-slate-950">
+                <h4 className="font-black text-white">
                   {journey.nextAction.title}
                 </h4>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-gray-300">
                   {journey.nextAction.description}
                 </p>
                 {journey.nextAction.buttonLabel && (
@@ -175,14 +185,14 @@ export default function ReservesContent() {
                     className={`mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-bold transition-colors ${
                       actionIsStrong
                         ? "bg-[#fe9a00] text-white hover:bg-[#e68a00]"
-                        : "bg-slate-900 text-white hover:bg-slate-800"
+                        : "bg-white/10 text-white hover:bg-white/20"
                     }`}
                   >
                     {journey.nextAction.buttonLabel}
                   </Link>
                 )}
                 {actionIsStrong ? (
-                  <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-400">
+                  <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-400">
                     <FiShield />
                     Secure payment
                   </p>

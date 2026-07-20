@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Image from "next/image";
 import {
   FiChevronDown,
   FiFileText,
@@ -17,11 +17,13 @@ import {
   FiAlertCircle,
   FiDownload,
   FiEdit3,
+  FiUploadCloud,
 } from "react-icons/fi";
 import type { Reservation } from "@/types/type";
 import type { ReservationJourneyViewModel } from "@/types/reservation-journey";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import { statusLabel } from "@/lib/reservation-status";
+import { showToast } from "@/lib/toast";
 import DepositPanel from "./DepositPanel";
 
 export type JourneySectionId =
@@ -44,15 +46,15 @@ function authHeaders(): Record<string, string> {
 function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-sm py-1">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-slate-950 font-semibold text-right">{value ?? "-"}</span>
+      <span className="text-gray-400">{label}</span>
+      <span className="text-white font-semibold text-right">{value ?? "-"}</span>
     </div>
   );
 }
 
 function Placeholder({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-lg p-3">
+    <div className="flex items-center gap-2 text-sm text-gray-400 bg-black/20 rounded-lg p-3">
       <FiClock className="shrink-0" />
       {text}
     </div>
@@ -77,19 +79,19 @@ function Section({
   return (
     <div
       id={id}
-      className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm"
+      className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden shadow-2xl shadow-black/10 backdrop-blur-xl"
     >
       <button
         type="button"
         onClick={() => onToggle(id)}
-        className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/5 transition-colors"
       >
-        <span className="flex items-center gap-3 text-slate-950 font-bold text-sm">
+        <span className="flex items-center gap-3 text-white font-bold text-sm">
           <span className="text-[#fe9a00]">{icon}</span>
           {title}
         </span>
         <FiChevronDown
-          className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && <div className="px-5 pb-5">{children}</div>}
@@ -107,6 +109,7 @@ export default function JourneyAccordions({
   onSignContract,
   onDownloadContract,
   onDepositUpdated,
+  onLicenceUpdated,
   signBusy,
 }: {
   reservation: Reservation;
@@ -118,31 +121,165 @@ export default function JourneyAccordions({
   onSignContract: () => void;
   onDownloadContract: (kind: "signed" | "certificate") => void;
   onDepositUpdated: () => void;
+  onLicenceUpdated: () => void;
   signBusy: boolean;
 }) {
-  const [licence] = useState<{ front?: boolean; back?: boolean }>(() => {
+  type LicenceSide = "front" | "back";
+  type LicenceState = { front?: string; back?: string };
+
+  const getStoredLicence = (): LicenceState => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) return {};
     try {
       const userData = JSON.parse(storedUser);
       return {
-        front: Boolean(userData?.licenceAttached?.front),
-        back: Boolean(userData?.licenceAttached?.back),
+        front: userData?.licenceAttached?.front,
+        back: userData?.licenceAttached?.back,
       };
     } catch {
       return {};
     }
+  };
+
+  const [licence, setLicence] = useState<LicenceState>(getStoredLicence);
+  const [uploadingLicence, setUploadingLicence] = useState({
+    front: false,
+    back: false,
   });
+
+  const uploadImage = async (file: File) => {
+    const maxSize = 15 * 1024 * 1024;
+    if (file.size > maxSize) throw new Error("File size must be less than 15MB");
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Please upload an image file");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    const uploadRes = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+    const uploadData = await uploadRes.json();
+    if (uploadData.error) throw new Error(uploadData.error);
+    return uploadData.url as string;
+  };
+
+  const updateUserLicence = async (nextLicence: LicenceState) => {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!storedUser?._id) throw new Error("User not loaded");
+
+    const res = await fetch(`/api/users/${storedUser._id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ licenceAttached: nextLicence }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "Upload failed");
+    localStorage.setItem("user", JSON.stringify(data.data));
+    return data.data?.licenceAttached as LicenceState;
+  };
+
+  const handleLicenceUpload = async (file: File, side: LicenceSide) => {
+    setUploadingLicence((prev) => ({ ...prev, [side]: true }));
+    try {
+      const url = await uploadImage(file);
+      const nextLicence = { ...licence, [side]: url };
+      const updatedLicence = await updateUserLicence(nextLicence);
+      setLicence(updatedLicence || nextLicence);
+      onLicenceUpdated();
+      showToast.success(`Licence ${side} uploaded`);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploadingLicence((prev) => ({ ...prev, [side]: false }));
+    }
+  };
 
   const handover = reservation.handover;
   const inspection = reservation.inspection;
   const refund = reservation.refund;
-  const user = reservation.user as
+  const reservationUser = reservation.user as
     | { name?: string; lastName?: string; emaildata?: { emailAddress?: string }; phoneData?: { phoneNumber?: string } }
     | undefined;
 
   const canEdit = journey.mainStatus === "pending";
   const licenceComplete = licence.front && licence.back;
+
+  const LicenceUploadCard = ({
+    side,
+    title,
+  }: {
+    side: LicenceSide;
+    title: string;
+  }) => {
+    const imageUrl = licence[side];
+    const busy = uploadingLicence[side];
+
+    return (
+      <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-white">{title}</h4>
+            <p className="text-xs text-gray-500">
+              {imageUrl ? "Uploaded" : "Required for booking checks"}
+            </p>
+          </div>
+          {imageUrl && (
+            <span className="rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-semibold text-green-400">
+              Ready
+            </span>
+          )}
+        </div>
+        {imageUrl ? (
+          <div className="relative h-36 overflow-hidden rounded-lg border border-white/10 bg-black/20">
+            <Image
+              src={imageUrl}
+              alt={`${title} licence`}
+              fill
+              sizes="(max-width: 768px) 100vw, 320px"
+              className="object-cover"
+            />
+            <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#e68a00]">
+              <FiUpload />
+              {busy ? "Uploading" : "Change"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={busy}
+                onChange={(event) =>
+                  event.target.files?.[0] &&
+                  handleLicenceUpload(event.target.files[0], side)
+                }
+              />
+            </label>
+          </div>
+        ) : (
+          <label className="flex h-36 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/20 text-center transition-colors hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5">
+            <FiUploadCloud className="mb-2 text-2xl text-[#fe9a00]" />
+            <span className="text-sm font-semibold text-white">
+              {busy ? "Uploading" : `Upload ${title}`}
+            </span>
+            <span className="mt-1 text-xs text-gray-500">Image, max 15MB</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={busy}
+              onChange={(event) =>
+                event.target.files?.[0] &&
+                handleLicenceUpload(event.target.files[0], side)
+              }
+            />
+          </label>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -164,9 +301,9 @@ export default function JourneyAccordions({
           label="Gear"
           value={reservation.selectedGear === "automatic" ? "Automatic" : "Manual"}
         />
-        <Row label="Driver" value={[user?.name, user?.lastName].filter(Boolean).join(" ") || "-"} />
-        <Row label="Phone" value={user?.phoneData?.phoneNumber} />
-        <Row label="Email" value={user?.emaildata?.emailAddress} />
+        <Row label="Driver" value={[reservationUser?.name, reservationUser?.lastName].filter(Boolean).join(" ") || "-"} />
+        <Row label="Phone" value={reservationUser?.phoneData?.phoneNumber} />
+        <Row label="Email" value={reservationUser?.emaildata?.emailAddress} />
         {(reservation.addOns?.length ?? 0) > 0 && (
           <Row
             label="Add-ons"
@@ -208,31 +345,39 @@ export default function JourneyAccordions({
         onToggle={onToggle}
       >
         <div className="space-y-2">
-          <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-            <span className="text-sm text-slate-950 font-semibold">
-              Driving licence
-            </span>
-            {licenceComplete ? (
-              <span className="inline-flex items-center gap-1 text-green-400 text-sm font-semibold">
-                <FiCheckCircle /> Uploaded
-              </span>
-            ) : (
-              <Link
-                href="/customerDashboard#profile"
-                className="inline-flex items-center gap-1 text-[#fe9a00] text-sm font-semibold hover:underline"
-              >
-                <FiAlertCircle /> Upload in Profile
-              </Link>
-            )}
+          <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-white">
+                  Driving licence
+                </h4>
+                <p className="text-xs text-gray-500">
+                  Upload both sides here. You do not need to leave this booking.
+                </p>
+              </div>
+              {licenceComplete ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-semibold text-green-400">
+                  <FiCheckCircle /> Complete
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#fe9a00]/15 px-2.5 py-1 text-xs font-semibold text-[#fe9a00]">
+                  <FiAlertCircle /> Required
+                </span>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <LicenceUploadCard side="front" title="Front side" />
+              <LicenceUploadCard side="back" title="Back side" />
+            </div>
           </div>
           {["Proof of address", "ID card / passport", "Payment card proof"].map(
             (doc) => (
               <div
                 key={doc}
-                className="flex items-center justify-between bg-slate-50 rounded-lg p-3"
+                className="flex items-center justify-between rounded-lg bg-black/15 p-3"
               >
-                <span className="text-sm text-slate-950 font-semibold">{doc}</span>
-                <span className="text-slate-500 text-sm">
+                <span className="text-sm text-white font-semibold">{doc}</span>
+                <span className="text-gray-500 text-sm">
                   Bring to collection if requested
                 </span>
               </div>
@@ -295,7 +440,7 @@ export default function JourneyAccordions({
                 <button
                   type="button"
                   onClick={() => onDownloadContract("signed")}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
                 >
                   <FiDownload /> Download signed contract
                 </button>
@@ -328,7 +473,7 @@ export default function JourneyAccordions({
             }
           />
         )}
-        <p className="text-slate-500 text-sm mt-2">
+        <p className="text-gray-400 text-sm mt-2">
           Bring your driving licence and booking reference. Please return the
           van with the same fuel level and on time to avoid extra charges.
         </p>
@@ -337,7 +482,7 @@ export default function JourneyAccordions({
             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(reservation.office.address)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg text-sm font-semibold transition-colors"
+            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors"
           >
             <FiMapPin /> Get Directions
           </a>
@@ -488,7 +633,7 @@ export default function JourneyAccordions({
                 value={new Date(refund.expectedBy).toLocaleDateString("en-GB")}
               />
             )}
-            <p className="text-slate-500 text-xs mt-2">
+            <p className="text-gray-500 text-xs mt-2">
               Refunds usually reach your account within 5–10 working days.
             </p>
           </>
@@ -516,16 +661,16 @@ export default function JourneyAccordions({
                   )}
                 </div>
                 <div className="pb-2">
-                  <p className="text-slate-950 text-sm font-semibold">
+                  <p className="text-white text-sm font-semibold">
                     {statusLabel(entry.status)}
                   </p>
-                  <p className="text-slate-500 text-xs">
+                  <p className="text-gray-500 text-xs">
                     {new Date(entry.changedAt).toLocaleString("en-GB", {
                       timeZone: "Europe/London",
                     })}
                   </p>
                   {entry.note && (
-                    <p className="text-slate-500 text-xs mt-0.5">{entry.note}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{entry.note}</p>
                   )}
                 </div>
               </div>
