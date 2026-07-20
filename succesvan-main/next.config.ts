@@ -8,12 +8,6 @@ const nextConfig: NextConfig = {
   // CommonJS SDKs with dynamic internal requires that bundlers can't resolve
   serverExternalPackages: ["docusign-esign", "pdfkit"],
 
-  experimental: {
-    optimizeCss: true,
-  },
-
-
-
   // REDIRECTING
   async redirects() {
     return [
@@ -249,8 +243,10 @@ const nextConfig: NextConfig = {
 
 
 
-  // Turbopack configuration (required for Next.js 16+)
-  turbopack: {},
+  // Keep Next.js scoped to this app when the parent folder has another lockfile.
+  turbopack: {
+    root: process.cwd(),
+  },
 };
 
 // PWA Configuration - only for webpack build

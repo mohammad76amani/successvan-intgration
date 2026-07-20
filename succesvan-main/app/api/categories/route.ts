@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connect from "@/lib/data";
 import Category from "@/model/category";
+import "@/model/type";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { categoryNameToSlug } from "@/lib/category-slug";
 import { requireAuth } from "@/lib/auth";
