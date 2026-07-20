@@ -26,6 +26,7 @@ import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
 import "./datepicker.css";
 import AdminCreateReservationModal from "./AdminCreateReservationModal";
+import ReservationOperationsPanel from "./ReservationOperationsPanel";
 import {
   calculateOfficeExtensionPrices,
   findSpecialDayForDate,
@@ -36,6 +37,13 @@ import {
   isSameCalendarDate,
 } from "@/lib/specialDaySchedule";
 import { printReservationReceipt } from "@/lib/printReservation";
+import { clientAuthHeaders } from "@/lib/client-auth";
+import {
+  ADMIN_STATUS_OPTIONS,
+  DEPOSIT_OPTION_LABELS,
+  statusBadgeClasses,
+  statusLabel,
+} from "@/lib/reservation-status";
 import {
   createLondonDateTime,
   formatDateForStorage,
@@ -91,6 +99,9 @@ export default function ReservationsManagement() {
   const [isEditDatesOpen, setIsEditDatesOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("");
   const [cancelReason, setCancelReason] = useState("");
+  const [depositTransactionRef, setDepositTransactionRef] = useState("");
+  const [depositFailureReason, setDepositFailureReason] = useState("");
+  const [depositBusy, setDepositBusy] = useState(false);
   const [newVehicle, setNewVehicle] = useState("");
   const [vehicles, setVehicles] = useState<
     {
@@ -763,7 +774,7 @@ export default function ReservationsManagement() {
 
       const res = await fetch(`/api/reservations/${selectedReservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(updateData),
       });
 
@@ -815,6 +826,46 @@ export default function ReservationsManagement() {
     await handleStatusChange({ totalPrice: price });
   };
 
+  const handleDepositVerification = async (action: "approve" | "reject") => {
+    if (!selectedReservation?._id) return;
+    if (action === "reject" && !depositFailureReason.trim()) {
+      showToast.error("Add a reason for rejecting the receipt");
+      return;
+    }
+
+    setDepositBusy(true);
+    try {
+      const res = await fetch(
+        `/api/reservations/${selectedReservation._id}/deposit`,
+        {
+          method: "PATCH",
+          headers: clientAuthHeaders(true),
+          body: JSON.stringify({
+            action,
+            transactionRef: depositTransactionRef,
+            failureReason: depositFailureReason,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Verification failed");
+
+      setSelectedReservation(data.data);
+      setDepositTransactionRef("");
+      setDepositFailureReason("");
+      await mutateRef.current?.();
+      showToast.success(
+        action === "approve" ? "Deposit verified" : "Deposit receipt rejected",
+      );
+    } catch (error) {
+      showToast.error(
+        error instanceof Error ? error.message : "Verification failed",
+      );
+    } finally {
+      setDepositBusy(false);
+    }
+  };
+
   const handleDatesUpdate = async () => {
     if (
       !selectedReservation ||
@@ -851,7 +902,7 @@ export default function ReservationsManagement() {
 
       const res = await fetch(`/api/reservations/${selectedReservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({
           startDate: createLondonDateTime(startDate, editTimes.startTime),
           endDate: createLondonDateTime(endDate, editTimes.endTime),
@@ -940,13 +991,7 @@ export default function ReservationsManagement() {
             key: "status",
             label: "Status",
             type: "select",
-            options: [
-              { _id: "pending", name: "Pending" },
-              { _id: "confirmed", name: "Confirmed" },
-              { _id: "delivered", name: "Collected" },
-              { _id: "completed", name: "Completed" },
-              { _id: "canceled", name: "Canceled" },
-            ],
+            options: ADMIN_STATUS_OPTIONS,
           },
           {
             key: "office",
@@ -1138,39 +1183,13 @@ export default function ReservationsManagement() {
           {
             key: "status",
             label: "Status",
-            render: (value: string) => {
-              const statusText =
-                value === "delivered"
-                  ? "collected"
-                  : value === "pending"
-                    ? "pending"
-                    : value === "confirmed"
-                      ? "confirmed"
-                      : value === "completed"
-                        ? "completed"
-                        : value === "canceled"
-                          ? "canceled"
-                          : value;
-              return (
-                <span
-                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                    value === "pending"
-                      ? "bg-yellow-500/20 text-yellow-400"
-                      : value === "confirmed"
-                        ? "bg-blue-500/20 text-blue-400"
-                        : value === "delivered"
-                          ? "bg-purple-500/20 text-purple-400"
-                          : value === "completed"
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : value === "canceled"
-                              ? "bg-red-500/20 text-red-400"
-                              : "bg-gray-500/20 text-gray-400"
-                  }`}
-                >
-                  {statusText}
-                </span>
-              );
-            },
+            render: (value: string) => (
+              <span
+                className={`px-2 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(value)}`}
+              >
+                {statusLabel(value, true)}
+              </span>
+            ),
           },
           {
             key: "_id",
@@ -1248,19 +1267,9 @@ export default function ReservationsManagement() {
             label: "Status",
             render: (value: string) => (
               <span
-                className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                  value === "confirmed"
-                    ? "bg-green-500/20 text-green-400"
-                    : value === "pending"
-                    ? "bg-yellow-500/20 text-yellow-400"
-                    : value === "delivered"
-                    ? "bg-purple-500/20 text-purple-400"
-                    : value === "canceled"
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-blue-500/20 text-blue-400"
-                }`}
+                className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(value)}`}
               >
-                {value === "delivered" ? "collected" : value}
+                {statusLabel(value, true)}
               </span>
             ),
           },
@@ -2193,7 +2202,7 @@ export default function ReservationsManagement() {
                             `/api/reservations/${selectedReservation._id}`,
                             {
                               method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
+                              headers: clientAuthHeaders(true),
                               body: JSON.stringify({
                                 vehicle: newVehicle,
                                 status: "delivered",
@@ -2242,26 +2251,103 @@ export default function ReservationsManagement() {
                 )}
               </div>
 
+              <ReservationOperationsPanel
+                reservation={selectedReservation}
+                onUpdated={(updated) => {
+                  setSelectedReservation(updated);
+                  void mutateRef.current?.();
+                }}
+              />
+
+              {selectedReservation.deposit && (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-white font-semibold">Deposit</h3>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-gray-200 capitalize">
+                      {selectedReservation.deposit.status?.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-gray-400 text-xs">Option</p>
+                      <p className="text-white font-semibold">
+                        {selectedReservation.deposit.option
+                          ? DEPOSIT_OPTION_LABELS[selectedReservation.deposit.option]
+                          : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs">Amount</p>
+                      <p className="text-white font-semibold">
+                        £{selectedReservation.deposit.amount ?? 0}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedReservation.deposit.receiptUrl && (
+                    <a
+                      href={selectedReservation.deposit.receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex text-sm font-semibold text-[#fe9a00] hover:underline"
+                    >
+                      View uploaded receipt
+                    </a>
+                  )}
+                  {selectedReservation.deposit.failureReason && (
+                    <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-200">
+                      {selectedReservation.deposit.failureReason}
+                    </p>
+                  )}
+                  {selectedReservation.deposit.status === "pending" && (
+                    <div className="space-y-2 border-t border-white/10 pt-3">
+                      <input
+                        value={depositTransactionRef}
+                        onChange={(event) =>
+                          setDepositTransactionRef(event.target.value)
+                        }
+                        placeholder="Transaction reference (optional)"
+                        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                      />
+                      <textarea
+                        value={depositFailureReason}
+                        onChange={(event) =>
+                          setDepositFailureReason(event.target.value)
+                        }
+                        placeholder="Rejection reason (required only when rejecting)"
+                        rows={2}
+                        className="w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={depositBusy}
+                          onClick={() => handleDepositVerification("reject")}
+                          className="rounded-lg bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                        >
+                          Reject receipt
+                        </button>
+                        <button
+                          type="button"
+                          disabled={depositBusy}
+                          onClick={() => handleDepositVerification("approve")}
+                          className="rounded-lg bg-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                        >
+                          Verify payment
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Status Management */}
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-white font-semibold">Current Status</h3>
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      selectedReservation.status === "confirmed"
-                        ? "bg-green-500/20 text-green-400"
-                        : selectedReservation.status === "pending"
-                          ? "bg-yellow-500/20 text-yellow-400"
-                          : selectedReservation.status === "delivered"
-                            ? "bg-purple-500/20 text-purple-400"
-                            : selectedReservation.status === "canceled"
-                              ? "bg-red-500/20 text-red-400"
-                              : "bg-blue-500/20 text-blue-400"
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(selectedReservation.status)}`}
                   >
-                    {selectedReservation.status === "delivered"
-                      ? "collected"
-                      : selectedReservation.status}
+                    {statusLabel(selectedReservation.status, true)}
                   </span>
                 </div>
                 {selectedReservation.status === "canceled" &&
@@ -2285,13 +2371,7 @@ export default function ReservationsManagement() {
                 {isStatusOpen && (
                   <div className="mt-3 space-y-2">
                     <CustomSelect
-                      options={[
-                        { _id: "pending", name: "Pending" },
-                        { _id: "confirmed", name: "Confirmed" },
-                        { _id: "delivered", name: "Collected " },
-                        { _id: "completed", name: "Completed" },
-                        { _id: "canceled", name: "Canceled" },
-                      ]}
+                      options={ADMIN_STATUS_OPTIONS}
                       value={newStatus}
                       onChange={setNewStatus}
                       placeholder="Select new status"

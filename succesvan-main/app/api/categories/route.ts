@@ -3,6 +3,8 @@ import connect from "@/lib/data";
 import Category from "@/model/category";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { categoryNameToSlug } from "@/lib/category-slug";
+import { requireAuth } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -174,6 +176,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return addCorsHeaders(errorResponse("Admin access is required", 403));
+    }
     await connect();
     const body = await req.json();
     const category = await Category.create(body);
@@ -188,6 +194,9 @@ export async function POST(req: NextRequest) {
 
     return addCorsHeaders(successResponse(category, 201));
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return addCorsHeaders(errorResponse("Unauthorized", 401));
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return addCorsHeaders(errorResponse(message, 400));
   }
@@ -195,6 +204,10 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return addCorsHeaders(errorResponse("Admin access is required", 403));
+    }
     await connect();
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -217,6 +230,9 @@ export async function PATCH(req: NextRequest) {
 
     return addCorsHeaders(successResponse(category));
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return addCorsHeaders(errorResponse("Unauthorized", 401));
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return addCorsHeaders(errorResponse(message, 400));
   }
@@ -224,12 +240,19 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return addCorsHeaders(errorResponse("Admin access is required", 403));
+    }
     await connect();
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     await Category.findByIdAndDelete(id);
     return addCorsHeaders(successResponse({ message: "Category deleted" }));
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return addCorsHeaders(errorResponse("Unauthorized", 401));
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return addCorsHeaders(errorResponse(message, 400));
   }

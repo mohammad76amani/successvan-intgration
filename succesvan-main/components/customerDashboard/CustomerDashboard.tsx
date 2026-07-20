@@ -22,6 +22,7 @@ import ProfileContent from "./ProfileContent";
 import DynamicTableView from "../dashboard/DynamicTableView";
 import { Reservation } from "@/types/type";
 import { showToast } from "@/lib/toast";
+import { clientAuthHeaders } from "@/lib/client-auth";
 import { Range, DateRange } from "react-date-range";
 import { usePriceCalculation } from "@/hooks/usePriceCalculation";
 import { generateTimeSlots } from "@/utils/timeSlots";
@@ -885,7 +886,7 @@ function ReservesContent() {
     try {
       const res = await fetch(`/api/reservations/${selectedReservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: "canceled" }),
       });
 
@@ -923,7 +924,7 @@ function ReservesContent() {
 
       const res = await fetch(`/api/reservations/${selectedReservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),

@@ -37,6 +37,7 @@ import {
   FiZap,
   FiUser,
 } from "react-icons/fi";
+import { clientAuthHeaders } from "@/lib/client-auth";
 import { HiOutlineSparkles } from "react-icons/hi2";
 import { useStats } from "../../hooks/useStats";
 import { useRecentReservations } from "../../hooks/useRecentReservations";
@@ -699,7 +700,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
     try {
       const patchRes = await fetch(`/api/reservations/${reservationId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: "completed", vehicle: null }),
       });
       if (!patchRes.ok) {
@@ -740,7 +741,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
     try {
       const vRes = await fetch(`/api/vehicles/${selectedVehicleId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ available: false }),
       });
       if (!vRes.ok) {
@@ -783,17 +784,53 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
     string,
     { bg: string; text: string; dot: string; label: string }
   > = {
+    pending: {
+      bg: "bg-yellow-500/10",
+      text: "text-yellow-400",
+      dot: "bg-yellow-400",
+      label: "Pending",
+    },
     confirmed: {
       bg: "bg-green-500/10",
       text: "text-green-400",
       dot: "bg-green-400",
       label: "Confirmed",
     },
-    pending: {
-      bg: "bg-yellow-500/10",
-      text: "text-yellow-400",
-      dot: "bg-yellow-400",
-      label: "Pending",
+    deposit_pending: {
+      bg: "bg-orange-500/10",
+      text: "text-orange-400",
+      dot: "bg-orange-400",
+      label: "Deposit Payment",
+    },
+    deposit_paid: {
+      bg: "bg-teal-500/10",
+      text: "text-teal-400",
+      dot: "bg-teal-400",
+      label: "Deposit Paid",
+    },
+    contract_pending: {
+      bg: "bg-orange-500/10",
+      text: "text-orange-400",
+      dot: "bg-orange-400",
+      label: "Contract Signing",
+    },
+    contract_signed: {
+      bg: "bg-teal-500/10",
+      text: "text-teal-400",
+      dot: "bg-teal-400",
+      label: "Contract Signed",
+    },
+    ready_for_collection: {
+      bg: "bg-cyan-500/10",
+      text: "text-cyan-400",
+      dot: "bg-cyan-400",
+      label: "Ready for Collection",
+    },
+    handover_in_progress: {
+      bg: "bg-purple-500/10",
+      text: "text-purple-400",
+      dot: "bg-purple-400",
+      label: "Handover",
     },
     delivered: {
       bg: "bg-purple-500/10",
@@ -801,11 +838,53 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       dot: "bg-purple-400",
       label: "Collected",
     },
+    vehicle_returned: {
+      bg: "bg-sky-500/10",
+      text: "text-sky-400",
+      dot: "bg-sky-400",
+      label: "Returned",
+    },
+    return_inspection: {
+      bg: "bg-sky-500/10",
+      text: "text-sky-400",
+      dot: "bg-sky-400",
+      label: "Inspection",
+    },
+    deposit_review: {
+      bg: "bg-indigo-500/10",
+      text: "text-indigo-400",
+      dot: "bg-indigo-400",
+      label: "Deposit Review",
+    },
+    refund_processing: {
+      bg: "bg-indigo-500/10",
+      text: "text-indigo-400",
+      dot: "bg-indigo-400",
+      label: "Refund Processing",
+    },
+    refund_completed: {
+      bg: "bg-emerald-500/10",
+      text: "text-emerald-400",
+      dot: "bg-emerald-400",
+      label: "Refund Completed",
+    },
     completed: {
       bg: "bg-blue-500/10",
       text: "text-blue-400",
       dot: "bg-blue-400",
       label: "Completed",
+    },
+    canceled: {
+      bg: "bg-red-500/10",
+      text: "text-red-400",
+      dot: "bg-red-400",
+      label: "Canceled",
+    },
+    expired: {
+      bg: "bg-gray-500/10",
+      text: "text-gray-400",
+      dot: "bg-gray-400",
+      label: "Expired",
     },
   };
 

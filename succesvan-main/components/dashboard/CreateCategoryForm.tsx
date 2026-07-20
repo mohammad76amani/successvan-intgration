@@ -6,6 +6,7 @@ import { showToast } from "@/lib/toast";
 import { Category, Type } from "@/types/type";
 import DynamicTableView from "./DynamicTableView";
 import CustomSelect from "@/components/ui/CustomSelect";
+import { clientAuthHeaders } from "@/lib/client-auth";
 type MutateFn = () => Promise<void>;
 
 export default function CategoriesContent() {
@@ -30,6 +31,12 @@ export default function CategoriesContent() {
     requiredLicense: "",
     pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
     extrahoursRate: "",
+    deposit: {
+      amount: "",
+      fullPayDiscountPercent: "",
+      securePayPrice: "",
+      officePayPrice: "",
+    },
     fuel: "",
     gear: {
       availableTypes: [] as string[],
@@ -121,6 +128,12 @@ export default function CategoriesContent() {
       requiredLicense: "",
       pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: "",
+      deposit: {
+        amount: "",
+        fullPayDiscountPercent: "",
+        securePayPrice: "",
+        officePayPrice: "",
+      },
       fuel: "",
       gear: {
         availableTypes: [] as string[],
@@ -170,6 +183,14 @@ export default function CategoriesContent() {
         pricePerDay: String(t.pricePerDay || ""),
       })) || [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: String((item as any).extrahoursRate || ""),
+      deposit: {
+        amount: String(item.deposit?.amount ?? ""),
+        fullPayDiscountPercent: String(
+          item.deposit?.fullPayDiscountPercent ?? "",
+        ),
+        securePayPrice: String(item.deposit?.securePayPrice ?? ""),
+        officePayPrice: String(item.deposit?.officePayPrice ?? ""),
+      },
       fuel: item.fuel || "",
       gear: {
         availableTypes: (item.gear as any)?.availableTypes || [],
@@ -213,6 +234,7 @@ export default function CategoriesContent() {
         requiredLicense: (item as any).requiredLicense,
         pricingTiers: (item as any).pricingTiers || [],
         extrahoursRate: (item as any).extrahoursRate,
+        deposit: item.deposit,
         fuel: item.fuel,
         gear: item.gear,
         seats: item.seats,
@@ -222,7 +244,7 @@ export default function CategoriesContent() {
 
       const res = await fetch("/api/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(payload),
       });
 
@@ -256,7 +278,7 @@ export default function CategoriesContent() {
 
       const res = await fetch(`/api/categories/${item._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -324,6 +346,13 @@ export default function CategoriesContent() {
           pricePerDay: parseFloat(t.pricePerDay),
         })),
         extrahoursRate: parseFloat(formData.extrahoursRate),
+        deposit: {
+          amount: parseFloat(formData.deposit.amount) || 0,
+          fullPayDiscountPercent:
+            parseFloat(formData.deposit.fullPayDiscountPercent) || 0,
+          securePayPrice: parseFloat(formData.deposit.securePayPrice) || 0,
+          officePayPrice: parseFloat(formData.deposit.officePayPrice) || 0,
+        },
         fuel: formData.fuel,
         gear: {
           availableTypes: formData.gear.availableTypes,
@@ -344,7 +373,7 @@ export default function CategoriesContent() {
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(payload),
       });
 
@@ -971,6 +1000,48 @@ export default function CategoriesContent() {
                   min="0"
                   className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
                 />
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                <div>
+                  <h3 className="text-white font-semibold">Deposit settings</h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Configure the choices shown to customers for this category.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    ["amount", "Full refundable deposit (£)"],
+                    ["fullPayDiscountPercent", "Full-payment discount (%)"],
+                    ["securePayPrice", "Safe & Secure price (£)"],
+                    ["officePayPrice", "Office payment price (£)"],
+                  ].map(([field, label]) => (
+                    <label key={field} className="text-gray-400 text-sm">
+                      <span className="mb-2 block">{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={field === "fullPayDiscountPercent" ? 100 : undefined}
+                        step="0.01"
+                        value={
+                          formData.deposit[
+                            field as keyof typeof formData.deposit
+                          ]
+                        }
+                        onChange={(event) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            deposit: {
+                              ...prev.deposit,
+                              [field]: event.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full px-4 py-3 bg-[#0f172b] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <div>

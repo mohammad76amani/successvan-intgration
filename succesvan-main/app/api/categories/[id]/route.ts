@@ -4,6 +4,8 @@ import connect from "@/lib/data";
 import Category from "@/model/category";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { categoryNameToSlug } from "@/lib/category-slug";
+import { requireAuth } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +65,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return addCorsHeaders(errorResponse("Admin access is required", 403));
+    }
     await connect();
     const { id } = await params;
     const body = await req.json();
@@ -73,6 +79,9 @@ export async function PATCH(
     if (!category) return addCorsHeaders(errorResponse("Category not found", 404));
     return addCorsHeaders(successResponse(category));
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return addCorsHeaders(errorResponse("Unauthorized", 401));
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return addCorsHeaders(errorResponse(message, 400));
   }
@@ -83,12 +92,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return addCorsHeaders(errorResponse("Admin access is required", 403));
+    }
     await connect();
     const { id } = await params;
     const category = await Category.findByIdAndDelete(id);
     if (!category) return addCorsHeaders(errorResponse("Category not found", 404));
     return addCorsHeaders(successResponse({ message: "Category deleted" }));
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return addCorsHeaders(errorResponse("Unauthorized", 401));
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return addCorsHeaders(errorResponse(message, 500));
   }

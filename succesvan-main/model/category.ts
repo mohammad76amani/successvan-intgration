@@ -41,6 +41,18 @@ const categorySchema = new mongoose.Schema(
       },
     ],
     extrahoursRate: { type: Number, required: true, min: 0 },
+    // Deposit rules for this category. The customer picks one of three ways
+    // to cover the deposit:
+    //  - full:   pay the full (refundable) deposit up front by bank transfer
+    //            and get fullPayDiscountPercent off the rental price
+    //  - secure: pay the smaller non-refundable securePayPrice
+    //  - office: pay the deposit at the office (officePayPrice fee, if any)
+    deposit: {
+      amount: { type: Number, min: 0, default: 0 },
+      fullPayDiscountPercent: { type: Number, min: 0, max: 100, default: 0 },
+      securePayPrice: { type: Number, min: 0, default: 0 },
+      officePayPrice: { type: Number, min: 0, default: 0 },
+    },
     fuel: {
       type: String,
       enum: ["gas", "diesel", "electric", "hybrid"],

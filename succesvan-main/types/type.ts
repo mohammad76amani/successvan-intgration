@@ -1,3 +1,10 @@
+import type {
+  ReservationStatus,
+  DepositStatus,
+  DepositOption,
+  RefundStatus,
+} from "@/lib/reservation-status";
+
 // Office ----------------------------------------------------------------------------
 export interface WorkingTimeWindow {
   isOpen?: boolean;
@@ -150,6 +157,12 @@ export interface Category {
     pricePerDay: number;
   }[];
   extrahoursRate: number;
+  deposit?: {
+    amount?: number;
+    fullPayDiscountPercent?: number;
+    securePayPrice?: number;
+    officePayPrice?: number;
+  };
   fuel: "gas" | "diesel" | "electric" | "hybrid";
   gear: {
     availableTypes: string[];
@@ -222,7 +235,13 @@ export interface Reservation {
   pickupTime?: string;
   returnTime?: string;
   totalPrice: number;
-  status: "pending" | "confirmed" | "canceled" | "completed" | "delivered";
+  status: ReservationStatus;
+  statusHistory?: Array<{
+    status: ReservationStatus;
+    changedAt: Date | string;
+    source?: "admin" | "customer" | "system";
+    note?: string;
+  }>;
   cancelReason?: string;
   driverAge: number;
   messege?: string;
@@ -240,6 +259,68 @@ export interface Reservation {
   manualPriceNote?: string;
   perInvoice?: boolean;
   reservationType?: "Office" | "Website";
+  deposit?: {
+    amount?: number;
+    option?: DepositOption;
+    status?: DepositStatus;
+    dueAt?: Date | string;
+    paidAt?: Date | string;
+    method?: string;
+    transactionRef?: string;
+    receiptUrl?: string;
+    receiptUploadedAt?: Date | string;
+    verifiedAt?: Date | string;
+    verifiedBy?: string;
+    failureReason?: string;
+    discountPercent?: number;
+  };
+  collectionCode?: string;
+  handover?: {
+    startedAt?: Date | string;
+    startMileage?: number;
+    startFuelLevel?: string;
+    conditionNotes?: string;
+    existingDamages?: string[];
+    photos?: string[];
+    customerSignature?: string;
+    staffSignature?: string;
+    keyCount?: number;
+    equipment?: string[];
+    completedAt?: Date | string;
+  };
+  inspection?: {
+    receivedAt?: Date | string;
+    returnMileage?: number;
+    returnFuelLevel?: string;
+    newDamages?: string[];
+    lateReturn?: boolean;
+    lateMinutes?: number;
+    cleaningIssue?: boolean;
+    missingEquipment?: string[];
+    photos?: string[];
+    notes?: string;
+    completedAt?: Date | string;
+  };
+  refund?: {
+    depositPaid?: number;
+    charges?: {
+      fuel?: number;
+      late?: number;
+      damage?: number;
+      cleaning?: number;
+      missingEquipment?: number;
+      other?: number;
+    };
+    chargeReason?: string;
+    evidence?: string[];
+    deductionsTotal?: number;
+    refundAmount?: number;
+    status?: RefundStatus;
+    reference?: string;
+    expectedBy?: Date | string;
+    approvedAt?: Date | string;
+    processedAt?: Date | string;
+  };
   createdAt?: Date;
   updatedAt?: Date;
 }

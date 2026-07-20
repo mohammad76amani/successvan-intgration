@@ -14,6 +14,7 @@ import {
 } from "react-icons/fi";
 import { Reservation } from "@/types/type";
 import { showToast } from "@/lib/toast";
+import { clientAuthHeaders } from "@/lib/client-auth";
 import { usePriceCalculation } from "@/hooks/usePriceCalculation";
 import { generateTimeSlots } from "@/utils/timeSlots";
 import TimeSelect from "@/components/ui/TimeSelect";
@@ -683,7 +684,7 @@ export default function CustomerReservationEditModal({
     try {
       const res = await fetch(`/api/reservations/${reservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: "canceled", userEdited: true }),
       });
 
@@ -721,7 +722,7 @@ export default function CustomerReservationEditModal({
 
       const res = await fetch(`/api/reservations/${reservation._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({
           startDate: createLondonDateTime(startDate, editTimes.startTime),
           endDate: createLondonDateTime(endDate, editTimes.endTime),

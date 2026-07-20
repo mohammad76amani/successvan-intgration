@@ -2,6 +2,11 @@ import connect from "@/lib/data";
 import Vehicle from "@/model/vehicle";
 import Reservation from "@/model/reservation";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import {
+  PRE_PICKUP_STATUSES,
+  ON_RENT_STATUSES,
+  SLOT_BLOCKING_STATUSES,
+} from "@/lib/reservation-status";
 
 export async function GET() {
   try {
@@ -16,7 +21,7 @@ export async function GET() {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const inUseCount = await Reservation.countDocuments({
-      status: "delivered",
+      status: { $in: ON_RENT_STATUSES },
       startDate: { $lt: tomorrow },
       endDate: { $gte: today },
     });
@@ -36,7 +41,7 @@ export async function GET() {
         $lt: tomorrow,
       },
       status: {
-        $in: ["pending", "confirmed"],
+        $in: PRE_PICKUP_STATUSES,
       },
     })
       .populate({
@@ -56,7 +61,7 @@ export async function GET() {
         $lt: tomorrow,
       },
       status: {
-        $in: ["pending", "confirmed", "delivered"],
+        $in: SLOT_BLOCKING_STATUSES,
       },
     })
       .populate({

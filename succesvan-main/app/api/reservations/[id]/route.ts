@@ -5,22 +5,41 @@ import User from "@/model/user";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendStatusNotification } from "@/lib/notification-scheduler";
 import { deleteImage } from "@/lib/s3";
+import { requireAuth } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
+import {
+  normalizeReservationStatus,
+  CUSTOMER_CANCELABLE_STATUSES,
+  NOTIFIABLE_STATUS_MAP,
+} from "@/lib/reservation-status";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAuth(req);
     await connect();
     const { id } = await params;
     const reservation = await Reservation.findById(id)
       .populate("user", "-password")
       .populate("office")
+      .populate("category")
       .populate("vehicle")
       .populate("addOns.addOn");
     if (!reservation) return errorResponse("Reservation not found", 404);
+    const ownerId =
+      typeof reservation.user === "object" && reservation.user?._id
+        ? reservation.user._id
+        : reservation.user;
+    if (!canAccessDashboard(auth.role) && String(ownerId) !== String(auth.userId)) {
+      return errorResponse("Forbidden", 403);
+    }
     return successResponse(reservation);
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 500);
   }
@@ -31,17 +50,34 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAuth(req);
     await connect();
     const { id } = await params;
     const body = (await req.json()) as Record<string, unknown>;
     
     const oldReservation = await Reservation.findById(id);
     if (!oldReservation) return errorResponse("Reservation not found", 404);
+    const isCustomerRequest = !canAccessDashboard(auth.role);
+    if (
+      isCustomerRequest &&
+      String(oldReservation.user) !== String(auth.userId)
+    ) {
+      return errorResponse("Forbidden", 403);
+    }
+
+    // Normalize/validate the requested status against the journey enum.
+    if (body.status !== undefined) {
+      const normalized = normalizeReservationStatus(body.status);
+      if (!normalized) {
+        return errorResponse(`Invalid reservation status: ${body.status}`, 400);
+      }
+      body.status = normalized;
+    }
 
     let updatePayload: Record<string, unknown> = body;
 
-    if (body.userEdited === true) {
-      if (oldReservation.status !== "pending") {
+    if (isCustomerRequest) {
+      if (!CUSTOMER_CANCELABLE_STATUSES.includes(oldReservation.status)) {
         return errorResponse(
           "Only pending reservations can be edited from the customer dashboard.",
           403,
@@ -81,7 +117,31 @@ export async function PATCH(
       );
     }
     
-    const reservation = await Reservation.findByIdAndUpdate(id, updatePayload, {
+    // Record the status change in the journey timeline.
+    const requestedStatus =
+      typeof updatePayload.status === "string" ? updatePayload.status : undefined;
+    let updateDoc: Record<string, unknown> = updatePayload;
+    if (requestedStatus && requestedStatus !== oldReservation.status) {
+      const fields = { ...updatePayload };
+      delete fields.userEdited;
+      updateDoc = {
+        ...fields,
+        $push: {
+          statusHistory: {
+            status: requestedStatus,
+            changedAt: new Date(),
+            source: isCustomerRequest ? "customer" : "admin",
+            note:
+              requestedStatus === "canceled" &&
+              typeof updatePayload.cancelReason === "string"
+                ? updatePayload.cancelReason
+                : undefined,
+          },
+        },
+      };
+    }
+
+    const reservation = await Reservation.findByIdAndUpdate(id, updateDoc, {
       new: true,
       runValidators: true,
     })
@@ -95,7 +155,7 @@ export async function PATCH(
       .populate("addOns.addOn");
     
     // Send admin edited notification if flagged
-    if (body.adminEdited === true) {
+    if (!isCustomerRequest && body.adminEdited === true) {
       try {
         const { sendReservationEditedNotification } = await import("@/lib/notification-scheduler");
         await sendReservationEditedNotification(id);
@@ -108,7 +168,7 @@ export async function PATCH(
     }
     
     // Send SMS to admin if user edited
-    if (body.userEdited === true) {
+    if (isCustomerRequest) {
       try {
         const User = (await import("@/model/user")).default;
         const admins = await User.find({ role: "admin" });
@@ -139,27 +199,19 @@ export async function PATCH(
       }
     }
     
-    // Send status notification if status changed
-    const nextStatus =
-      typeof updatePayload.status === "string"
-        ? updatePayload.status
-        : undefined;
+    // Send status notification if status changed. New journey statuses map
+    // onto the four legacy SMS messages via NOTIFIABLE_STATUS_MAP; statuses
+    // without a mapping stay silent.
+    const nextStatus = requestedStatus;
 
     if (oldReservation.status !== nextStatus && nextStatus) {
-      type NotifiableStatus =
-        | "confirmed"
-        | "canceled"
-        | "delivered"
-        | "completed";
-      const validStatuses: NotifiableStatus[] = [
-        "confirmed",
-        "canceled",
-        "delivered",
-        "completed",
-      ];
-      if (validStatuses.includes(nextStatus as NotifiableStatus)) {
+      const notifiable =
+        NOTIFIABLE_STATUS_MAP[
+          nextStatus as keyof typeof NOTIFIABLE_STATUS_MAP
+        ];
+      if (notifiable) {
         try {
-          await sendStatusNotification(id, nextStatus as NotifiableStatus);
+          await sendStatusNotification(id, notifiable);
         } catch (error) {
           console.log(
             "Status notification error:",
@@ -235,6 +287,9 @@ export async function PATCH(
     
     return successResponse(reservation);
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 400);
   }
@@ -245,12 +300,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return errorResponse("Admin access is required", 403);
+    }
     await connect();
     const { id } = await params;
     const reservation = await Reservation.findByIdAndDelete(id);
     if (!reservation) return errorResponse("Reservation not found", 404);
     return successResponse({ message: "Reservation deleted" });
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 500);
   }
