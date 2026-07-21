@@ -70,6 +70,56 @@ const formatLondonTime = (value: string | Date) =>
       })
     : "-";
 
+function DepositVerificationBadge({
+  reservation,
+}: {
+  reservation?: Reservation;
+}) {
+  const deposit = reservation?.deposit;
+
+  if (!deposit?.status || deposit.status === "not_paid") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-gray-400">
+        <FiClock className="text-xs" />
+        Not paid
+      </span>
+    );
+  }
+
+  if (deposit.status === "pending" && deposit.receiptUrl) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#fe9a00]/20 px-2 py-1 text-[11px] font-bold text-[#fe9a00] ring-1 ring-[#fe9a00]/30">
+        <FiClock className="text-xs" />
+        Receipt uploaded
+      </span>
+    );
+  }
+
+  if (deposit.status === "paid") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-300">
+        <FiCheck className="text-xs" />
+        Verified
+      </span>
+    );
+  }
+
+  if (deposit.status === "failed") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-semibold text-red-300">
+        <FiX className="text-xs" />
+        Rejected
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-1 text-[11px] font-semibold text-sky-300 capitalize">
+      {deposit.status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 const getReservationDateForEdit = (
   reservation: Reservation,
   type: "start" | "end",
@@ -1189,6 +1239,13 @@ export default function ReservationsManagement() {
               >
                 {statusLabel(value, true)}
               </span>
+            ),
+          },
+          {
+            key: "deposit",
+            label: "Deposit",
+            render: (_value: Reservation["deposit"], row?: Reservation) => (
+              <DepositVerificationBadge reservation={row} />
             ),
           },
           {

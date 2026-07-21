@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FiCheckCircle, FiClock, FiFileText, FiRefreshCw } from "react-icons/fi";
@@ -40,7 +40,7 @@ function SigningCompleteContent() {
   const [loading, setLoading] = useState(Boolean(contractId));
   const [error, setError] = useState("");
 
-  const refreshStatus = async () => {
+  const refreshStatus = useCallback(async () => {
     if (!contractId) return;
     setLoading(true);
     setError("");
@@ -57,11 +57,29 @@ function SigningCompleteContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [contractId]);
 
   useEffect(() => {
-    refreshStatus();
-  }, [contractId]);
+    let cancelled = false;
+    let attempts = 0;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    const pollStatus = async () => {
+      if (cancelled || !contractId) return;
+      attempts += 1;
+      await refreshStatus();
+      if (!cancelled && attempts < 5) {
+        timeout = setTimeout(pollStatus, 2500);
+      }
+    };
+
+    pollStatus();
+
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [contractId, refreshStatus]);
 
   const completed = contract?.status === "completed";
   const declined = contract?.status === "declined";

@@ -417,6 +417,23 @@ export interface User {
     front?: string;
     back?: string;
   };
+  licenceDetails?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    fullName?: string | null;
+    dateOfBirth?: string | null;
+    address?: string | null;
+    postcode?: string | null;
+    licenseNumber?: string | null;
+    licenceNumber?: string | null;
+    issueDate?: string | null;
+    expirationDate?: string | null;
+    expiryDate?: string | null;
+    issuingCountry?: string | null;
+    issuingAuthority?: string | null;
+    licenceCategories?: string[];
+    extractedAt?: string | Date;
+  };
   avatar?: string;
 }
 

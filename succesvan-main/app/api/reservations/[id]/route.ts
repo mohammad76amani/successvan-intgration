@@ -7,6 +7,7 @@ import { sendStatusNotification } from "@/lib/notification-scheduler";
 import { deleteImage } from "@/lib/s3";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
+import { createContractForBooking } from "@/lib/contracts/service";
 import {
   normalizeReservationStatus,
   CUSTOMER_CANCELABLE_STATUSES,
@@ -203,6 +204,88 @@ export async function PATCH(
     // onto the four legacy SMS messages via NOTIFIABLE_STATUS_MAP; statuses
     // without a mapping stay silent.
     const nextStatus = requestedStatus;
+
+    const adminMarkedDepositPaid =
+      !isCustomerRequest &&
+      (requestedStatus === "deposit_paid" ||
+        (typeof body.deposit === "object" &&
+          body.deposit !== null &&
+          (body.deposit as { status?: unknown }).status === "paid" &&
+          oldReservation.deposit?.status !== "paid"));
+
+    if (adminMarkedDepositPaid) {
+      const depositPaidAt = new Date();
+      const reservationForContract = await Reservation.findById(id);
+
+      if (
+        reservationForContract &&
+        ["confirmed", "deposit_pending", "deposit_paid"].includes(
+          reservationForContract.status,
+        )
+      ) {
+        reservationForContract.deposit = {
+          ...(reservationForContract.deposit?.toObject?.() ??
+            reservationForContract.deposit ??
+            {}),
+          amount:
+            reservationForContract.deposit?.amount ??
+            reservationForContract.totalPrice,
+          status: "paid",
+          paidAt: reservationForContract.deposit?.paidAt ?? depositPaidAt,
+          verifiedAt:
+            reservationForContract.deposit?.verifiedAt ?? depositPaidAt,
+          verifiedBy:
+            reservationForContract.deposit?.verifiedBy ??
+            (auth.userId as never),
+        };
+
+        await reservationForContract.save();
+
+        try {
+          await createContractForBooking(
+            id,
+            { actorId: auth.userId, source: "admin" },
+            true,
+          );
+
+          const latestReservation = await Reservation.findById(id)
+            .populate("user", "-password")
+            .populate("office")
+            .populate("category")
+            .populate({
+              path: "vehicle",
+              select: "title number",
+            })
+            .populate("addOns.addOn");
+
+          if (latestReservation) {
+            latestReservation.status = "contract_pending";
+            latestReservation.statusHistory.push({
+              status: "contract_pending",
+              changedAt: new Date(),
+              source: "system",
+              note: "Deposit marked paid by admin. Rental agreement created and sent for customer signature.",
+            });
+            await latestReservation.save();
+            return successResponse(latestReservation);
+          }
+        } catch (contractError) {
+          console.error(
+            "Automatic contract creation failed:",
+            contractError instanceof Error
+              ? contractError.message
+              : "Unknown contract error",
+          );
+          reservationForContract.statusHistory.push({
+            status: "deposit_paid",
+            changedAt: new Date(),
+            source: "system",
+            note: "Deposit marked paid, but automatic contract creation needs admin attention.",
+          });
+          await reservationForContract.save();
+        }
+      }
+    }
 
     if (oldReservation.status !== nextStatus && nextStatus) {
       const notifiable =

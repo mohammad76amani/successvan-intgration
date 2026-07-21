@@ -98,6 +98,7 @@ export default function JourneyAccordions({
 }) {
   type LicenceSide = "front" | "back";
   type LicenceState = { front?: string; back?: string };
+  type LicenceDetails = Record<string, string | string[] | null | undefined>;
 
   const getStoredLicence = (): LicenceState => {
     const storedUser = localStorage.getItem("user");
@@ -137,7 +138,21 @@ export default function JourneyAccordions({
     return uploadData.url as string;
   };
 
-  const updateUserLicence = async (nextLicence: LicenceState) => {
+  const extractLicenceDetails = async (file: File) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch("/api/extract-license", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) return undefined;
+    return (await res.json()) as LicenceDetails;
+  };
+
+  const updateUserLicence = async (
+    nextLicence: LicenceState,
+    licenceDetails?: LicenceDetails,
+  ) => {
     const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
     if (!storedUser?._id) throw new Error("User not loaded");
 
@@ -147,7 +162,10 @@ export default function JourneyAccordions({
         "Content-Type": "application/json",
         ...authHeaders(),
       },
-      body: JSON.stringify({ licenceAttached: nextLicence }),
+      body: JSON.stringify({
+        licenceAttached: nextLicence,
+        ...(licenceDetails ? { licenceDetails } : {}),
+      }),
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || "Upload failed");
@@ -158,9 +176,12 @@ export default function JourneyAccordions({
   const handleLicenceUpload = async (file: File, side: LicenceSide) => {
     setUploadingLicence((prev) => ({ ...prev, [side]: true }));
     try {
-      const url = await uploadImage(file);
+      const [url, licenceDetails] = await Promise.all([
+        uploadImage(file),
+        extractLicenceDetails(file).catch(() => undefined),
+      ]);
       const nextLicence = { ...licence, [side]: url };
-      const updatedLicence = await updateUserLicence(nextLicence);
+      const updatedLicence = await updateUserLicence(nextLicence, licenceDetails);
       setLicence(updatedLicence || nextLicence);
       onLicenceUpdated();
       showToast.success(`Licence ${side} uploaded`);

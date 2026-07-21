@@ -9,8 +9,20 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const licenseDataSchema = z.object({
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  fullName: z.string().nullable(),
+  dateOfBirth: z.string().nullable(),
+  address: z.string().nullable(),
+  postcode: z.string().nullable(),
   licenseNumber: z.string().nullable(),
+  licenceNumber: z.string().nullable(),
+  issueDate: z.string().nullable(),
   expirationDate: z.string().nullable(),
+  expiryDate: z.string().nullable(),
+  issuingCountry: z.string().nullable(),
+  issuingAuthority: z.string().nullable(),
+  licenceCategories: z.array(z.string()).default([]),
 });
 
 type ImageInput = {
@@ -100,14 +112,14 @@ export async function POST(request: NextRequest) {
       model: process.env.OPENAI_LICENSE_MODEL || "gpt-5.6-luna",
       store: false,
       instructions:
-        "Extract the requested fields from the driver licence image. Copy the licence number exactly. Return the expiration date as YYYY-MM-DD when it is readable and unambiguous; otherwise return null. Return null for any unreadable field.",
+        "Extract driver identity fields from the driver licence image for a UK vehicle hire agreement. Copy names, address, postcode, licence number, issuing authority, issuing country, and licence categories exactly as readable. Return dateOfBirth, issueDate, expirationDate, and expiryDate as YYYY-MM-DD when readable and unambiguous; otherwise return null. licenseNumber and licenceNumber must contain the same licence number when readable. expirationDate and expiryDate must contain the same expiry date when readable. Return null for any unreadable scalar field and an empty array when licence categories are unreadable.",
       input: [
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text: "Extract the licence number and expiration date from this driver licence.",
+              text: "Extract the hirer's licence details needed for a vehicle hire agreement: full name, first name, last name, date of birth, address, postcode, licence number, issue date, expiry date, issuing country, issuing authority, and driving categories.",
             },
             {
               type: "input_image",

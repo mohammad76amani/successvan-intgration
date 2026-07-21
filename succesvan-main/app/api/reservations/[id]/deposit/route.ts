@@ -6,6 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendSMS } from "@/lib/sms";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
+import { createContractForBooking } from "@/lib/contracts/service";
 import {
   DEPOSIT_OPTIONS,
   type DepositOption,
@@ -83,6 +84,19 @@ export async function POST(
       discountPercent:
         option === "full" ? (categoryDeposit?.fullPayDiscountPercent ?? 0) : 0,
     };
+
+    if (receiptUrl && ["confirmed", "deposit_pending"].includes(reservation.status)) {
+      reservation.status = "deposit_pending";
+      reservation.statusHistory = [
+        ...(reservation.statusHistory || []),
+        {
+          status: "deposit_pending",
+          changedAt: new Date(),
+          source: "customer",
+          note: "Customer uploaded deposit receipt. Admin verification required.",
+        },
+      ];
+    }
     await reservation.save();
 
     // Let the admins know a deposit needs verification.
@@ -183,6 +197,47 @@ export async function PATCH(
     }
 
     await reservation.save();
+
+    if (body.action === "approve") {
+      try {
+        await createContractForBooking(
+          id,
+          { actorId: auth.userId, source: "admin" },
+          true,
+        );
+
+        const latestReservation = await Reservation.findById(id);
+        if (
+          latestReservation &&
+          ["deposit_paid", "contract_pending"].includes(latestReservation.status)
+        ) {
+          latestReservation.status = "contract_pending";
+          latestReservation.statusHistory.push({
+            status: "contract_pending",
+            changedAt: new Date(),
+            source: "system",
+            note: "Rental agreement created and sent for customer signature.",
+          });
+          await latestReservation.save();
+          return successResponse(latestReservation);
+        }
+      } catch (contractError) {
+        console.error(
+          "Automatic contract creation failed:",
+          contractError instanceof Error
+            ? contractError.message
+            : "Unknown contract error",
+        );
+        reservation.statusHistory.push({
+          status: "deposit_paid",
+          changedAt: new Date(),
+          source: "system",
+          note: "Deposit verified, but automatic contract creation needs admin attention.",
+        });
+        await reservation.save();
+      }
+    }
+
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import connect from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/api-response";
-import { listCustomerContracts } from "@/lib/contracts/service";
+import {
+  listCustomerContracts,
+  refreshContractStatus,
+} from "@/lib/contracts/service";
 import { buildReservationJourney } from "@/lib/reservation-journey";
 import Reservation from "@/model/reservation";
 
@@ -15,7 +18,7 @@ export async function GET(
     const { reservationId } = await params;
     await connect();
 
-    const reservation = await Reservation.findOne({
+    let reservation = await Reservation.findOne({
       _id: reservationId,
       user: userId,
     })
@@ -28,10 +31,43 @@ export async function GET(
 
     if (!reservation) return errorResponse("Reservation not found", 404);
 
-    const contracts = await listCustomerContracts(userId, {
+    let contracts = await listCustomerContracts(userId, {
       bookingId: reservationId,
     });
-    const contract = contracts[0] ?? null;
+    let contract = contracts[0] ?? null;
+
+    if (
+      contract?.docusign?.envelopeId &&
+      ["sent", "delivered", "viewed", "signing"].includes(contract.status)
+    ) {
+      try {
+        await refreshContractStatus(contract._id, {
+          actorId: userId,
+          source: "customer",
+        });
+        contracts = await listCustomerContracts(userId, {
+          bookingId: reservationId,
+        });
+        contract = contracts[0] ?? null;
+        reservation = await Reservation.findOne({
+          _id: reservationId,
+          user: userId,
+        })
+          .populate("user", "-password")
+          .populate("office")
+          .populate("category")
+          .populate("vehicle")
+          .populate("addOns.addOn")
+          .lean();
+      } catch (refreshError) {
+        console.log(
+          "Customer journey contract refresh error:",
+          refreshError instanceof Error
+            ? refreshError.message
+            : "Unknown error",
+        );
+      }
+    }
 
     return successResponse({
       reservation,

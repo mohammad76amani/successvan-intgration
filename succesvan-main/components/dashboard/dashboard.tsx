@@ -1655,12 +1655,22 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             ) : (
               <div className="space-y-2.5">
                 {reservations.map((res: any) => {
-                  const sc = statusMap[res.status] || {
-                    bg: "bg-gray-500/10",
-                    text: "text-gray-400",
-                    dot: "bg-gray-400",
-                    label: res.status,
-                  };
+                  const hasReceiptToVerify =
+                    res.deposit?.status === "pending" &&
+                    Boolean(res.deposit?.receiptUrl);
+                  const sc = hasReceiptToVerify
+                    ? {
+                        bg: "bg-orange-500/10",
+                        text: "text-orange-400",
+                        dot: "bg-orange-400",
+                        label: "Receipt uploaded",
+                      }
+                    : statusMap[res.status] || {
+                        bg: "bg-gray-500/10",
+                        text: "text-gray-400",
+                        dot: "bg-gray-400",
+                        label: res.status,
+                      };
                   return (
                     <div
                       key={res._id}

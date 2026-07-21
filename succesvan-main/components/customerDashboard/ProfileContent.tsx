@@ -47,6 +47,7 @@ interface UserData {
     front?: string;
     back?: string;
   };
+  licenceDetails?: Record<string, string | string[] | null | undefined>;
 }
 
 type LicenceSide = "front" | "back";
@@ -196,6 +197,17 @@ export default function ProfileContent({
     return uploadData.url as string;
   };
 
+  const extractLicenceDetails = async (file: File) => {
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch("/api/extract-license", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) return undefined;
+    return (await res.json()) as UserData["licenceDetails"];
+  };
+
   const deleteUploadedImage = async (url: string) => {
     const deleteRes = await fetch(
       `/api/upload/delete?url=${encodeURIComponent(url)}`,
@@ -276,12 +288,16 @@ export default function ProfileContent({
 
     setUploading((prev) => ({ ...prev, [side]: true }));
     try {
-      const url = await uploadImage(file);
+      const [url, licenceDetails] = await Promise.all([
+        uploadImage(file),
+        extractLicenceDetails(file).catch(() => undefined),
+      ]);
       const data = await updateUser({
         licenceAttached: {
           ...user.licenceAttached,
           [side]: url,
         },
+        ...(licenceDetails ? { licenceDetails } : {}),
       });
       showToast.success(`Licence ${side} uploaded`);
       syncUser(data);
