@@ -26,6 +26,9 @@ import {
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import { useAuth } from "@/context/AuthContext";
+import LicenceDetailsReviewModal, {
+  type LicenceDetailsReview,
+} from "./LicenceDetailsReviewModal";
 
 interface UserData {
   _id: string;
@@ -47,13 +50,38 @@ interface UserData {
     front?: string;
     back?: string;
   };
-  licenceDetails?: Record<string, string | string[] | null | undefined>;
+  licenceDetails?: LicenceDetailsReview;
 }
 
 type LicenceSide = "front" | "back";
+type PendingLicenceReview = {
+  file: File;
+  previewUrl: string;
+  details: LicenceDetailsReview;
+};
 type DeleteTarget =
   | { type: "avatar" }
   | { type: "licence"; side: LicenceSide };
+
+function profileFieldsFromLicence(details: LicenceDetailsReview) {
+  const firstName = details.firstName?.trim();
+  const lastName = details.lastName?.trim();
+  const fullName = details.fullName?.trim();
+  const fallbackParts = fullName ? fullName.split(/\s+/).filter(Boolean) : [];
+
+  return {
+    ...(firstName || fallbackParts.length > 1
+      ? { name: firstName || fallbackParts.slice(0, -1).join(" ") }
+      : {}),
+    ...(lastName || fallbackParts.length > 1
+      ? { lastName: lastName || fallbackParts.at(-1) || "" }
+      : {}),
+    ...(details.address?.trim() ? { address: details.address.trim() } : {}),
+    ...(details.postcode?.trim()
+      ? { postalCode: details.postcode.trim() }
+      : {}),
+  };
+}
 
 const emptyFormData = {
   name: "",
@@ -94,6 +122,9 @@ export default function ProfileContent({
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarDeleting, setAvatarDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [pendingLicenceReview, setPendingLicenceReview] =
+    useState<PendingLicenceReview | null>(null);
+  const [licenceReviewSaving, setLicenceReviewSaving] = useState(false);
 
   const fullName = `${user?.name || ""} ${user?.lastName || ""}`.trim();
   const completedAddressFields = [
@@ -122,6 +153,7 @@ export default function ProfileContent({
   const syncUser = useCallback((nextUser: UserData) => {
     setUser(nextUser);
     setAuthUser(nextUser);
+    localStorage.setItem("user", JSON.stringify(nextUser));
   }, [setAuthUser]);
 
   const resetForm = useCallback((nextUser: UserData | null) => {
@@ -204,7 +236,12 @@ export default function ProfileContent({
       method: "POST",
       body: formData,
     });
-    if (!res.ok) return undefined;
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      throw new Error(
+        payload?.error || "Could not scan the front licence image",
+      );
+    }
     return (await res.json()) as UserData["licenceDetails"];
   };
 
@@ -288,16 +325,27 @@ export default function ProfileContent({
 
     setUploading((prev) => ({ ...prev, [side]: true }));
     try {
-      const [url, licenceDetails] = await Promise.all([
-        uploadImage(file),
-        extractLicenceDetails(file).catch(() => undefined),
-      ]);
+      if (side === "front") {
+        const licenceDetails = await extractLicenceDetails(file);
+        setPendingLicenceReview({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          details: {
+            ...licenceDetails,
+            isFrontSide: true,
+            sourceSide: "front",
+          },
+        });
+        showToast.success("Licence scanned. Please confirm the details.");
+        return;
+      }
+
+      const url = await uploadImage(file);
       const data = await updateUser({
         licenceAttached: {
           ...user.licenceAttached,
           [side]: url,
         },
-        ...(licenceDetails ? { licenceDetails } : {}),
       });
       showToast.success(`Licence ${side} uploaded`);
       syncUser(data);
@@ -307,6 +355,44 @@ export default function ProfileContent({
       showToast.error(message || "Upload failed");
     } finally {
       setUploading((prev) => ({ ...prev, [side]: false }));
+    }
+  };
+
+  const closeLicenceReview = () => {
+    if (pendingLicenceReview?.previewUrl) {
+      URL.revokeObjectURL(pendingLicenceReview.previewUrl);
+    }
+    setPendingLicenceReview(null);
+  };
+
+  const confirmLicenceDetails = async (licenceDetails: LicenceDetailsReview) => {
+    if (!user || !pendingLicenceReview) return;
+    setLicenceReviewSaving(true);
+    setUploading((prev) => ({ ...prev, front: true }));
+    try {
+      const url = await uploadImage(pendingLicenceReview.file);
+      const data = await updateUser({
+        ...profileFieldsFromLicence(licenceDetails),
+        licenceAttached: {
+          ...user.licenceAttached,
+          front: url,
+        },
+        licenceDetails: {
+          ...licenceDetails,
+          isFrontSide: true,
+          sourceSide: "front",
+        },
+      });
+      showToast.success("Licence front and details saved");
+      syncUser(data);
+      onLicenseUpdate?.();
+      closeLicenceReview();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      showToast.error(message || "Could not save licence details");
+    } finally {
+      setLicenceReviewSaving(false);
+      setUploading((prev) => ({ ...prev, front: false }));
     }
   };
 
@@ -499,6 +585,56 @@ export default function ProfileContent({
             />
           </label>
         )}
+      </div>
+    );
+  };
+
+  const renderLicenceDetails = () => {
+    const details = user?.licenceDetails;
+    if (!details?.isFrontSide) return null;
+
+    const rows = [
+      ["Full name", details.fullName],
+      ["Licence number", details.licenceNumber || details.licenseNumber],
+      ["Date of birth", details.dateOfBirth],
+      ["Expiry date", details.expiryDate || details.expirationDate],
+      ["Issue date", details.issueDate],
+      ["Postcode", details.postcode],
+      ["Address", details.address],
+      ["Authority", details.issuingAuthority],
+      ["Categories", details.licenceCategories?.join(", ")],
+    ].filter(([, value]) => Boolean(value));
+
+    if (rows.length === 0) return null;
+
+    return (
+      <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/8 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-black text-white">
+              Saved licence details
+            </h4>
+            <p className="text-xs text-gray-400">
+              These confirmed details will be used on your rental agreement.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-bold text-green-400">
+            <FiCheckCircle />
+            Confirmed
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="rounded-lg bg-black/20 px-3 py-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                {label}
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-white">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
@@ -717,6 +853,8 @@ export default function ProfileContent({
           {renderLicenceCard("front", "Front Side")}
           {renderLicenceCard("back", "Back Side")}
         </div>
+
+        {renderLicenceDetails()}
       </section>
 
       {deleteTarget && (
@@ -770,6 +908,15 @@ export default function ProfileContent({
           </div>
         </div>
       )}
+
+      <LicenceDetailsReviewModal
+        open={Boolean(pendingLicenceReview)}
+        imagePreview={pendingLicenceReview?.previewUrl}
+        details={pendingLicenceReview?.details ?? null}
+        saving={licenceReviewSaving}
+        onCancel={closeLicenceReview}
+        onConfirm={confirmLicenceDetails}
+      />
     </div>
   );
 }

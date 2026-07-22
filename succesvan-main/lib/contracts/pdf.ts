@@ -13,6 +13,8 @@ export type ContractPdfReservation = {
     postalCode?: string;
     city?: string;
     licenceDetails?: {
+      isFrontSide?: boolean;
+      sourceSide?: "front" | "back" | "unknown";
       fullName?: string | null;
       dateOfBirth?: string | null;
       address?: string | null;
@@ -119,7 +121,9 @@ function formatCurrency(value?: number) {
 
 function customerName(reservation: ContractPdfReservation) {
   return (
-    reservation.user?.licenceDetails?.fullName ||
+    (reservation.user?.licenceDetails?.isFrontSide
+      ? reservation.user.licenceDetails.fullName
+      : undefined) ||
     `${reservation.user?.name || ""} ${reservation.user?.lastName || ""}`.trim()
   );
 }
@@ -207,7 +211,9 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
 
   const reservation = input.reservation;
   const name = customerName(reservation) || "Customer";
-  const licence = reservation.user?.licenceDetails;
+  const licence = reservation.user?.licenceDetails?.isFrontSide
+    ? reservation.user.licenceDetails
+    : undefined;
   const bookingReference = valueOrDash(
     reservation.reservationCode || reservation._id,
   );

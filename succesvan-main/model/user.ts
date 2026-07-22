@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
       back: { type: String },
     },
     licenceDetails: {
+      isFrontSide: { type: Boolean },
+      sourceSide: { type: String, enum: ["front", "back", "unknown"] },
       firstName: { type: String },
       lastName: { type: String },
       fullName: { type: String },

@@ -290,6 +290,7 @@ export async function createContractForBooking(
   bookingId: string,
   actor: ActorInput,
   sendNow = false,
+  options: { recreateEnvelope?: boolean } = {},
 ) {
   await connect();
   objectId(bookingId, "BOOKING_NOT_FOUND");
@@ -302,7 +303,45 @@ export async function createContractForBooking(
     .populate("bookingId");
 
   if (existing) {
-    if (!existing.sourceDocument?.storageKey) {
+    if (existing.status === "completed") {
+      return serializeContract(
+        await Contract.findById(existing._id).populate("bookingId"),
+      );
+    }
+
+    if (
+      options.recreateEnvelope &&
+      existing.docusign?.envelopeId &&
+      existing.status !== "completed"
+    ) {
+      try {
+        await voidRentalAgreementEnvelope(
+          existing.docusign.envelopeId,
+          "Recreated after vehicle assignment.",
+        );
+      } catch (voidError) {
+        console.error(
+          "Could not void existing DocuSign envelope before recreation:",
+          voidError instanceof Error ? voidError.message : "Unknown error",
+        );
+      }
+      existing.docusign.envelopeId = undefined;
+      existing.docusign.envelopeStatus = undefined;
+      existing.docusign.voidedAt = new Date();
+      existing.docusign.voidReason = "Recreated after vehicle assignment.";
+      existing.sourceDocument = {};
+      existing.status = "ready";
+      addAudit(
+        existing,
+        "docusign_envelope_recreate_started",
+        actor.source,
+        actor.actorId,
+        { reason: "vehicle_assigned" },
+      );
+      await existing.save();
+    }
+
+    if (!existing.sourceDocument?.storageKey || options.recreateEnvelope) {
       const reservation = await loadReservation(bookingId);
       await generateAndStoreSourcePdf(existing, reservation.toObject(), actor);
     }

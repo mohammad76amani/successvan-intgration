@@ -95,6 +95,10 @@ const buildSteps = (
   reservation: Reservation,
   status: ReservationStatus,
 ): ReservationJourneyStep[] => {
+  const officeDepositSelected = reservation.deposit?.option === "office";
+  const waitingForVehicleAfterOfficePay =
+    officeDepositSelected &&
+    ["confirmed", "deposit_pending", "deposit_paid"].includes(status);
   const problem = isProblemStatus(status);
   // For a canceled/expired booking, the journey stopped at the step
   // of the last healthy status in the history.
@@ -107,10 +111,14 @@ const buildSteps = (
     }
   }
 
-  const currentStep = STATUS_TO_PUBLIC_STEP[referenceStatus];
+  const currentStep = waitingForVehicleAfterOfficePay
+    ? "vehicle_assignment"
+    : STATUS_TO_PUBLIC_STEP[referenceStatus];
   const currentIdx = PUBLIC_JOURNEY_STEPS.indexOf(currentStep);
   const journeyDone = status === "completed";
-  const actionRequired = ACTION_REQUIRED_STATUSES.includes(status);
+  const actionRequired =
+    ACTION_REQUIRED_STATUSES.includes(status) &&
+    !waitingForVehicleAfterOfficePay;
 
   return PUBLIC_JOURNEY_STEPS.map((key, idx) => {
     let state: JourneyStepState;
@@ -123,8 +131,17 @@ const buildSteps = (
     }
     return {
       key,
-      label: PUBLIC_STEP_LABELS[key],
+      label:
+        waitingForVehicleAfterOfficePay && key === "deposit"
+          ? "Pay at office"
+          : waitingForVehicleAfterOfficePay && key === "vehicle_assignment"
+            ? "Vehicle assignment"
+            : PUBLIC_STEP_LABELS[key],
       state,
+      description:
+        waitingForVehicleAfterOfficePay && key === "vehicle_assignment"
+          ? "We’ll assign your van before collection."
+          : undefined,
       date:
         state === "completed" || state === "current" || state === "blocked"
           ? stepDate(reservation, key)
@@ -137,6 +154,7 @@ const buildNextAction = (
   reservation: Reservation,
   status: ReservationStatus,
 ): ReservationNextAction => {
+  const officeDepositSelected = reservation.deposit?.option === "office";
   switch (status) {
     case "pending":
       return {
@@ -149,6 +167,16 @@ const buildNextAction = (
       };
     case "confirmed":
     case "deposit_pending":
+      if (officeDepositSelected) {
+        return {
+          type: "none",
+          title: "Vehicle assignment pending",
+          description:
+            "Your pay-at-office choice is saved. We’ll assign your van before collection. When you arrive at the office, you’ll pay the deposit, sign the agreement, and complete vehicle handover.",
+          buttonLabel: "View Collection Details",
+          href: "#collection",
+        };
+      }
       return {
         type: "pay_deposit",
         title: "Pay your deposit",
@@ -159,9 +187,11 @@ const buildNextAction = (
     case "deposit_paid":
       return {
         type: "none",
-        title: "Deposit received",
+        title: "Vehicle assignment pending",
         description:
-          "Thanks — your deposit is in. We're preparing your rental agreement now.",
+          officeDepositSelected
+            ? "We’ll assign your van before collection. When you arrive at the office, we’ll complete the agreement and handover with you."
+            : "Your deposit is received. We’ll assign your van next, then your contract will be ready to sign.",
       };
     case "contract_pending":
       return {

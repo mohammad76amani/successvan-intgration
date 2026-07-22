@@ -4,6 +4,7 @@ import Reservation from "@/model/reservation";
 import User from "@/model/user";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendStatusNotification } from "@/lib/notification-scheduler";
+import { sendSMS } from "@/lib/sms";
 import { deleteImage } from "@/lib/s3";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
@@ -73,6 +74,29 @@ export async function PATCH(
         return errorResponse(`Invalid reservation status: ${body.status}`, 400);
       }
       body.status = normalized;
+    }
+
+    const adminAssignedVehicle =
+      !isCustomerRequest &&
+      typeof body.vehicle === "string" &&
+      body.vehicle.trim() &&
+      String(body.vehicle) !== String(oldReservation.vehicle || "");
+
+    if (
+      adminAssignedVehicle &&
+      body.status === "delivered" &&
+      [
+        "pending",
+        "confirmed",
+        "deposit_pending",
+        "deposit_paid",
+        "contract_pending",
+      ].includes(oldReservation.status)
+    ) {
+      body.status =
+        oldReservation.deposit?.status === "paid"
+          ? "deposit_paid"
+          : oldReservation.status;
     }
 
     let updatePayload: Record<string, unknown> = body;
@@ -154,6 +178,8 @@ export async function PATCH(
         select: "title number",
       })
       .populate("addOns.addOn");
+
+    if (!reservation) return errorResponse("Reservation not found", 404);
     
     // Send admin edited notification if flagged
     if (!isCustomerRequest && body.adminEdited === true) {
@@ -215,72 +241,109 @@ export async function PATCH(
 
     if (adminMarkedDepositPaid) {
       const depositPaidAt = new Date();
-      const reservationForContract = await Reservation.findById(id);
+      const reservationForDeposit = await Reservation.findById(id);
 
       if (
-        reservationForContract &&
+        reservationForDeposit &&
         ["confirmed", "deposit_pending", "deposit_paid"].includes(
-          reservationForContract.status,
+          reservationForDeposit.status,
         )
       ) {
-        reservationForContract.deposit = {
-          ...(reservationForContract.deposit?.toObject?.() ??
-            reservationForContract.deposit ??
+        reservationForDeposit.deposit = {
+          ...(reservationForDeposit.deposit?.toObject?.() ??
+            reservationForDeposit.deposit ??
             {}),
           amount:
-            reservationForContract.deposit?.amount ??
-            reservationForContract.totalPrice,
+            reservationForDeposit.deposit?.amount ??
+            reservationForDeposit.totalPrice,
           status: "paid",
-          paidAt: reservationForContract.deposit?.paidAt ?? depositPaidAt,
+          paidAt: reservationForDeposit.deposit?.paidAt ?? depositPaidAt,
           verifiedAt:
-            reservationForContract.deposit?.verifiedAt ?? depositPaidAt,
+            reservationForDeposit.deposit?.verifiedAt ?? depositPaidAt,
           verifiedBy:
-            reservationForContract.deposit?.verifiedBy ??
+            reservationForDeposit.deposit?.verifiedBy ??
             (auth.userId as never),
         };
 
-        await reservationForContract.save();
+        await reservationForDeposit.save();
+      }
+    }
 
-        try {
-          await createContractForBooking(
-            id,
-            { actorId: auth.userId, source: "admin" },
-            true,
-          );
+    const depositIsPaidForContract =
+      reservation.deposit?.status === "paid" ||
+      reservation.deposit?.option === "office" ||
+      adminMarkedDepositPaid;
 
-          const latestReservation = await Reservation.findById(id)
-            .populate("user", "-password")
-            .populate("office")
-            .populate("category")
-            .populate({
-              path: "vehicle",
-              select: "title number",
-            })
-            .populate("addOns.addOn");
+    if (
+      adminAssignedVehicle &&
+      depositIsPaidForContract &&
+      ["confirmed", "deposit_pending", "deposit_paid", "contract_pending"].includes(
+        reservation.status,
+      )
+    ) {
+      try {
+        await createContractForBooking(
+          id,
+          { actorId: auth.userId, source: "admin" },
+          true,
+          { recreateEnvelope: true },
+        );
 
-          if (latestReservation) {
-            latestReservation.status = "contract_pending";
-            latestReservation.statusHistory.push({
-              status: "contract_pending",
-              changedAt: new Date(),
-              source: "system",
-              note: "Deposit marked paid by admin. Rental agreement created and sent for customer signature.",
-            });
-            await latestReservation.save();
-            return successResponse(latestReservation);
+        const latestReservation = await Reservation.findById(id)
+          .populate("user", "-password")
+          .populate("office")
+          .populate("category")
+          .populate({
+            path: "vehicle",
+            select: "title number",
+          })
+          .populate("addOns.addOn");
+
+        if (latestReservation) {
+          latestReservation.status = "contract_pending";
+          latestReservation.statusHistory.push({
+            status: "contract_pending",
+            changedAt: new Date(),
+            source: "system",
+            note: "Vehicle assigned. Rental agreement created and sent for customer signature.",
+          });
+          await latestReservation.save();
+
+          const customer = latestReservation.user as
+            | {
+                phoneData?: { phoneNumber?: string };
+                name?: string;
+              }
+            | undefined;
+          const phoneNumber = customer?.phoneData?.phoneNumber;
+          if (phoneNumber) {
+            const siteUrl = (
+              process.env.NEXT_PUBLIC_SITE_URL ||
+              process.env.APP_URL ||
+              "https://successvanhire.co.uk"
+            ).replace(/\/$/, "");
+            await sendSMS(
+              phoneNumber.replace("+", ""),
+              `Your Success Van Hire rental agreement is ready to sign via DocuSign. Sign in your dashboard: ${siteUrl}/customerDashboard#reserves`,
+            );
           }
-        } catch (contractError) {
-          console.error(
-            "Automatic contract creation failed:",
-            contractError instanceof Error
-              ? contractError.message
-              : "Unknown contract error",
-          );
+
+          return successResponse(latestReservation);
+        }
+      } catch (contractError) {
+        console.error(
+          "Automatic contract creation after vehicle assignment failed:",
+          contractError instanceof Error
+            ? contractError.message
+            : "Unknown contract error",
+        );
+        const reservationForContract = await Reservation.findById(id);
+        if (reservationForContract) {
           reservationForContract.statusHistory.push({
             status: "deposit_paid",
             changedAt: new Date(),
             source: "system",
-            note: "Deposit marked paid, but automatic contract creation needs admin attention.",
+            note: "Vehicle assigned, but automatic contract creation needs admin attention.",
           });
           await reservationForContract.save();
         }

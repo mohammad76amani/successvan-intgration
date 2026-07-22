@@ -57,6 +57,7 @@ export default function DepositPanel({
     deposit?.status === "refund_processing";
   const awaitingVerification =
     deposit?.status === "pending" && Boolean(deposit?.receiptUrl);
+  const payAtOfficeSelected = deposit?.option === "office";
 
   const optionAmount = (option: DepositOption) =>
     option === "full"
@@ -123,9 +124,15 @@ export default function DepositPanel({
   };
 
   // ── Already settled / awaiting verification: summary view ────
-  if (settled || awaitingVerification) {
+  if (settled || awaitingVerification || payAtOfficeSelected) {
     return (
       <div>
+        {payAtOfficeSelected && !settled && !awaitingVerification && (
+          <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
+            <FiClock className="shrink-0" />
+            Pay-at-office selected. You’ll pay at collection before signing and handover.
+          </div>
+        )}
         {awaitingVerification && (
           <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
             <FiClock className="shrink-0" />

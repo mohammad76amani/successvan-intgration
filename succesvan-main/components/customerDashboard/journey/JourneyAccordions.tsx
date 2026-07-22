@@ -18,6 +18,9 @@ import type { SafeContractSummary } from "@/lib/docusign/types";
 import { statusLabel } from "@/lib/reservation-status";
 import { showToast } from "@/lib/toast";
 import DepositPanel from "./DepositPanel";
+import LicenceDetailsReviewModal, {
+  type LicenceDetailsReview,
+} from "../LicenceDetailsReviewModal";
 
 export type JourneySectionId =
   | "summary"
@@ -43,6 +46,26 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
       <span className="text-white font-semibold text-right">{value ?? "-"}</span>
     </div>
   );
+}
+
+function profileFieldsFromLicence(details: LicenceDetailsReview) {
+  const firstName = details.firstName?.trim();
+  const lastName = details.lastName?.trim();
+  const fullName = details.fullName?.trim();
+  const fallbackParts = fullName ? fullName.split(/\s+/).filter(Boolean) : [];
+
+  return {
+    ...(firstName || fallbackParts.length > 1
+      ? { name: firstName || fallbackParts.slice(0, -1).join(" ") }
+      : {}),
+    ...(lastName || fallbackParts.length > 1
+      ? { lastName: lastName || fallbackParts.at(-1) || "" }
+      : {}),
+    ...(details.address?.trim() ? { address: details.address.trim() } : {}),
+    ...(details.postcode?.trim()
+      ? { postalCode: details.postcode.trim() }
+      : {}),
+  };
 }
 
 function Placeholder({ text }: { text: string }) {
@@ -98,7 +121,11 @@ export default function JourneyAccordions({
 }) {
   type LicenceSide = "front" | "back";
   type LicenceState = { front?: string; back?: string };
-  type LicenceDetails = Record<string, string | string[] | null | undefined>;
+  type PendingLicenceReview = {
+    file: File;
+    previewUrl: string;
+    details: LicenceDetailsReview;
+  };
 
   const getStoredLicence = (): LicenceState => {
     const storedUser = localStorage.getItem("user");
@@ -119,6 +146,9 @@ export default function JourneyAccordions({
     front: false,
     back: false,
   });
+  const [pendingLicenceReview, setPendingLicenceReview] =
+    useState<PendingLicenceReview | null>(null);
+  const [licenceReviewSaving, setLicenceReviewSaving] = useState(false);
 
   const uploadImage = async (file: File) => {
     const maxSize = 15 * 1024 * 1024;
@@ -145,13 +175,18 @@ export default function JourneyAccordions({
       method: "POST",
       body: formData,
     });
-    if (!res.ok) return undefined;
-    return (await res.json()) as LicenceDetails;
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      throw new Error(
+        payload?.error || "Could not scan the front licence image",
+      );
+    }
+    return (await res.json()) as LicenceDetailsReview;
   };
 
   const updateUserLicence = async (
     nextLicence: LicenceState,
-    licenceDetails?: LicenceDetails,
+    licenceDetails?: LicenceDetailsReview,
   ) => {
     const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
     if (!storedUser?._id) throw new Error("User not loaded");
@@ -163,6 +198,7 @@ export default function JourneyAccordions({
         ...authHeaders(),
       },
       body: JSON.stringify({
+        ...(licenceDetails ? profileFieldsFromLicence(licenceDetails) : {}),
         licenceAttached: nextLicence,
         ...(licenceDetails ? { licenceDetails } : {}),
       }),
@@ -176,12 +212,24 @@ export default function JourneyAccordions({
   const handleLicenceUpload = async (file: File, side: LicenceSide) => {
     setUploadingLicence((prev) => ({ ...prev, [side]: true }));
     try {
-      const [url, licenceDetails] = await Promise.all([
-        uploadImage(file),
-        extractLicenceDetails(file).catch(() => undefined),
-      ]);
+      if (side === "front") {
+        const licenceDetails = await extractLicenceDetails(file);
+        setPendingLicenceReview({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          details: {
+            ...licenceDetails,
+            isFrontSide: true,
+            sourceSide: "front",
+          },
+        });
+        showToast.success("Licence scanned. Please confirm the details.");
+        return;
+      }
+
+      const url = await uploadImage(file);
       const nextLicence = { ...licence, [side]: url };
-      const updatedLicence = await updateUserLicence(nextLicence, licenceDetails);
+      const updatedLicence = await updateUserLicence(nextLicence);
       setLicence(updatedLicence || nextLicence);
       onLicenceUpdated();
       showToast.success(`Licence ${side} uploaded`);
@@ -189,6 +237,43 @@ export default function JourneyAccordions({
       showToast.error(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setUploadingLicence((prev) => ({ ...prev, [side]: false }));
+    }
+  };
+
+  const closeLicenceReview = () => {
+    if (pendingLicenceReview?.previewUrl) {
+      URL.revokeObjectURL(pendingLicenceReview.previewUrl);
+    }
+    setPendingLicenceReview(null);
+  };
+
+  const confirmLicenceDetails = async (
+    licenceDetails: LicenceDetailsReview,
+  ) => {
+    if (!pendingLicenceReview) return;
+    setLicenceReviewSaving(true);
+    setUploadingLicence((prev) => ({ ...prev, front: true }));
+    try {
+      const url = await uploadImage(pendingLicenceReview.file);
+      const nextLicence = { ...licence, front: url };
+      const updatedLicence = await updateUserLicence(nextLicence, {
+        ...licenceDetails,
+        isFrontSide: true,
+        sourceSide: "front",
+      });
+      setLicence(updatedLicence || nextLicence);
+      onLicenceUpdated();
+      showToast.success("Licence front and details saved");
+      closeLicenceReview();
+    } catch (error) {
+      showToast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not save licence details",
+      );
+    } finally {
+      setLicenceReviewSaving(false);
+      setUploadingLicence((prev) => ({ ...prev, front: false }));
     }
   };
 
@@ -671,6 +756,15 @@ export default function JourneyAccordions({
           <Placeholder text="Booking activity will appear here as your reservation progresses." />
         )}
       </Section>
+
+      <LicenceDetailsReviewModal
+        open={Boolean(pendingLicenceReview)}
+        imagePreview={pendingLicenceReview?.previewUrl}
+        details={pendingLicenceReview?.details ?? null}
+        saving={licenceReviewSaving}
+        onCancel={closeLicenceReview}
+        onConfirm={confirmLicenceDetails}
+      />
     </div>
   );
 }

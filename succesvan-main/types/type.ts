@@ -418,6 +418,8 @@ export interface User {
     back?: string;
   };
   licenceDetails?: {
+    isFrontSide?: boolean;
+    sourceSide?: "front" | "back" | "unknown";
     firstName?: string | null;
     lastName?: string | null;
     fullName?: string | null;

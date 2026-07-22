@@ -9,6 +9,8 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const licenseDataSchema = z.object({
+  isFrontSide: z.boolean(),
+  sourceSide: z.enum(["front", "back", "unknown"]),
   firstName: z.string().nullable(),
   lastName: z.string().nullable(),
   fullName: z.string().nullable(),
@@ -112,14 +114,14 @@ export async function POST(request: NextRequest) {
       model: process.env.OPENAI_LICENSE_MODEL || "gpt-5.6-luna",
       store: false,
       instructions:
-        "Extract driver identity fields from the driver licence image for a UK vehicle hire agreement. Copy names, address, postcode, licence number, issuing authority, issuing country, and licence categories exactly as readable. Return dateOfBirth, issueDate, expirationDate, and expiryDate as YYYY-MM-DD when readable and unambiguous; otherwise return null. licenseNumber and licenceNumber must contain the same licence number when readable. expirationDate and expiryDate must contain the same expiry date when readable. Return null for any unreadable scalar field and an empty array when licence categories are unreadable.",
+        "You extract data ONLY from the FRONT side of a UK photocard driving licence for a vehicle hire agreement. First decide if the image is the front side. The front side normally has the portrait/photo and numbered fields: 1 surname, 2 given names, 3 date of birth, 4a issue date, 4b licence expiry date, 4c issuing authority, 5 driver/licence number, 8 address. If the image appears to be the back side, set isFrontSide=false, sourceSide='back', and return null for all scalar fields and [] for licenceCategories. For a valid front side, set isFrontSide=true and sourceSide='front'. licenseNumber/licenceNumber MUST be field 5 only; do not use card number, serial number, issue number, category codes, barcode numbers, or any number from the back. dateOfBirth MUST be field 3. expirationDate/expiryDate MUST be field 4b, not 4a. issueDate MUST be field 4a. Return all readable dates as YYYY-MM-DD. UK licence dates often appear as DD.MM.YYYY or DD-MM-YYYY: convert them carefully. Copy names, address, postcode, issuing authority, issuing country, and licence categories exactly as readable. Return null for any unreadable scalar field and an empty array when licence categories are unreadable.",
       input: [
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text: "Extract the hirer's licence details needed for a vehicle hire agreement: full name, first name, last name, date of birth, address, postcode, licence number, issue date, expiry date, issuing country, issuing authority, and driving categories.",
+              text: "Read this as the FRONT of a UK photocard driving licence. Extract: field 1 surname, field 2 given names, field 3 date of birth, field 4a issue date, field 4b expiry date, field 4c issuing authority, field 5 licence number, and field 8 address/postcode. If this is not the front side, say isFrontSide=false and do not extract data.",
             },
             {
               type: "input_image",
@@ -136,6 +138,13 @@ export async function POST(request: NextRequest) {
 
     if (!response.output_parsed) {
       return errorResponse("The licence information could not be read from this image.", 422);
+    }
+
+    if (!response.output_parsed.isFrontSide) {
+      return errorResponse(
+        "Please upload the front side of the driving licence for extraction.",
+        422,
+      );
     }
 
     return NextResponse.json(response.output_parsed);
