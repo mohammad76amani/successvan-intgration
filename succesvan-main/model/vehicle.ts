@@ -28,6 +28,7 @@ const vehicleSchema = new mongoose.Schema(
       ref: "Reservation",
     },
     number: { type: String, required: true },
+    color: { type: String, trim: true },
 
     office: {
       type: mongoose.Schema.Types.ObjectId,

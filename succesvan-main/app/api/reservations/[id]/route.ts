@@ -175,7 +175,7 @@ export async function PATCH(
       .populate("category")
       .populate({
         path: "vehicle",
-        select: "title number",
+        select: "title number color",
       })
       .populate("addOns.addOn");
 
@@ -295,7 +295,7 @@ export async function PATCH(
           .populate("category")
           .populate({
             path: "vehicle",
-            select: "title number",
+            select: "title number color",
           })
           .populate("addOns.addOn");
 

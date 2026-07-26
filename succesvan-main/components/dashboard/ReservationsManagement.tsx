@@ -7,6 +7,7 @@ import {
   FiCalendar,
   FiCheck,
   FiClock,
+  FiArrowRight,
   FiEye,
   FiGlobe,
   FiPlus,
@@ -120,6 +121,467 @@ function DepositVerificationBadge({
   );
 }
 
+type VehicleOption = {
+  _id: string;
+  name: string;
+  keyNumber: string;
+  category: string;
+  gear: string;
+  available: boolean;
+  disabled?: boolean;
+};
+
+const ADMIN_FLOW_STEPS = [
+  "pending",
+  "confirmed",
+  "deposit_pending",
+  "deposit_paid",
+  "contract_pending",
+  "contract_signed",
+  "ready_for_collection",
+  "handover_in_progress",
+  "delivered",
+  "vehicle_returned",
+  "return_inspection",
+  "deposit_review",
+  "refund_processing",
+  "refund_completed",
+  "completed",
+] as const;
+
+const statusFlowIndex = (status?: string) =>
+  Math.max(0, ADMIN_FLOW_STEPS.findIndex((step) => step === status));
+
+function ReservationStepManagerModal({
+  reservation,
+  isOpen,
+  onClose,
+  onOpenEdit,
+  onStatusChange,
+  onVerifyDeposit,
+  depositBusy,
+  depositTransactionRef,
+  setDepositTransactionRef,
+  depositFailureReason,
+  setDepositFailureReason,
+  cancelReason,
+  setCancelReason,
+  vehicles,
+  selectedVehicle,
+  setSelectedVehicle,
+  loadingVehicles,
+  onAssignVehicle,
+  onReservationUpdated,
+  isSubmitting,
+}: {
+  reservation: Reservation | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onOpenEdit: (reservation: Reservation) => void;
+  onStatusChange: (
+    reservation: Reservation,
+    status: Reservation["status"],
+    extra?: Record<string, unknown>,
+  ) => Promise<void>;
+  onVerifyDeposit: (
+    reservation: Reservation,
+    action: "approve" | "reject",
+  ) => Promise<void>;
+  depositBusy: boolean;
+  depositTransactionRef: string;
+  setDepositTransactionRef: (value: string) => void;
+  depositFailureReason: string;
+  setDepositFailureReason: (value: string) => void;
+  cancelReason: string;
+  setCancelReason: (value: string) => void;
+  vehicles: VehicleOption[];
+  selectedVehicle: string;
+  setSelectedVehicle: (value: string) => void;
+  loadingVehicles: boolean;
+  onAssignVehicle: (reservation: Reservation) => Promise<void>;
+  onReservationUpdated: (reservation: Reservation) => void;
+  isSubmitting: boolean;
+}) {
+  if (!isOpen || !reservation) return null;
+
+  const currentIndex = statusFlowIndex(reservation.status);
+  const deposit = reservation.deposit;
+  const depositOption = deposit?.option
+    ? DEPOSIT_OPTION_LABELS[deposit.option]
+    : "Not selected";
+  const canAssignVehicle =
+    reservation.status === "deposit_paid" ||
+    deposit?.option === "office" ||
+    reservation.reservationType === "Office";
+
+  const nextButtons: Partial<
+    Record<
+      Reservation["status"],
+      {
+        label: string;
+        next: Reservation["status"];
+        note: string;
+      }
+    >
+  > = {
+    contract_signed: {
+      label: "Mark ready for collection",
+      next: "ready_for_collection",
+      note: "Use this after the signed contract is confirmed.",
+    },
+    ready_for_collection: {
+      label: "Start handover",
+      next: "handover_in_progress",
+      note: "Use this when the customer arrives at the office.",
+    },
+    handover_in_progress: {
+      label: "Mark vehicle collected",
+      next: "delivered",
+      note: "This starts the active rental step.",
+    },
+    delivered: {
+      label: "Mark vehicle returned",
+      next: "vehicle_returned",
+      note: "Use this when the van is back.",
+    },
+    vehicle_returned: {
+      label: "Start return inspection",
+      next: "return_inspection",
+      note: "Inspection and charge details can be expanded later.",
+    },
+    return_inspection: {
+      label: "Move to deposit review",
+      next: "deposit_review",
+      note: "Review fuel, late, cleaning and damage charges.",
+    },
+    deposit_review: {
+      label: "Start refund processing",
+      next: "refund_processing",
+      note: "Use this when deductions are ready.",
+    },
+    refund_processing: {
+      label: "Mark refund completed",
+      next: "refund_completed",
+      note: "Use this after the refund has been sent.",
+    },
+    refund_completed: {
+      label: "Complete reservation",
+      next: "completed",
+      note: "This closes the reservation.",
+    },
+  };
+
+  const laterStep = nextButtons[reservation.status];
+  const showOperationsPanel = [
+    "ready_for_collection",
+    "handover_in_progress",
+    "delivered",
+    "vehicle_returned",
+    "return_inspection",
+    "deposit_review",
+    "refund_processing",
+    "refund_completed",
+  ].includes(reservation.status);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1224]/95 shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#0b1224]/95 p-5 backdrop-blur">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#fe9a00]">
+              Admin step manager
+            </p>
+            <h2 className="mt-1 text-2xl font-black text-white">
+              {reservation.reservationCode || reservation._id}
+            </h2>
+            <p className="mt-1 text-sm text-gray-400">
+              {reservation.user?.name || "Customer"} ·{" "}
+              {reservation.category?.name || "Reservation"}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl p-2 text-gray-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <FiX className="text-xl" />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-gray-400">Current status</p>
+                <span
+                  className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${statusBadgeClasses(reservation.status)}`}
+                >
+                  {statusLabel(reservation.status, true)}
+                </span>
+              </div>
+              <button
+                onClick={() => onOpenEdit(reservation)}
+                className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+              >
+                Open edit modal
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-2 md:grid-cols-5">
+              {ADMIN_FLOW_STEPS.map((step, index) => {
+                const state =
+                  index < currentIndex
+                    ? "done"
+                    : index === currentIndex
+                      ? "current"
+                      : "upcoming";
+                return (
+                  <div
+                    key={step}
+                    className={`rounded-xl border p-3 ${
+                      state === "done"
+                        ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                        : state === "current"
+                          ? "border-[#fe9a00]/40 bg-[#fe9a00]/15 text-[#fe9a00]"
+                          : "border-white/10 bg-white/[0.03] text-gray-500"
+                    }`}
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wide">
+                      Step {index + 1}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold">
+                      {statusLabel(step, true)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {reservation.status === "pending" && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <h3 className="text-lg font-bold text-white">
+                  Review booking
+                </h3>
+                <p className="mt-1 text-sm text-gray-400">
+                  Confirm the reservation when the details are OK. The customer
+                  will then continue to the deposit step.
+                </p>
+                <button
+                  disabled={isSubmitting}
+                  onClick={() => onStatusChange(reservation, "confirmed")}
+                  className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                >
+                  Confirm booking
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
+                <h3 className="text-lg font-bold text-red-100">
+                  Cancel reservation
+                </h3>
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  rows={3}
+                  placeholder="Reason shown in admin record"
+                  className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-red-300 focus:outline-none"
+                />
+                <button
+                  disabled={isSubmitting || !cancelReason.trim()}
+                  onClick={() =>
+                    onStatusChange(reservation, "canceled", {
+                      cancelReason: cancelReason.trim(),
+                    })
+                  }
+                  className="mt-3 w-full rounded-xl bg-red-500/20 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+                >
+                  Cancel with reason
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(reservation.status === "confirmed" ||
+            reservation.status === "deposit_pending") && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    Deposit step
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-400">
+                    Customer option:{" "}
+                    <span className="font-semibold text-white">
+                      {depositOption}
+                    </span>
+                    {deposit?.amount !== undefined
+                      ? ` · £${deposit.amount}`
+                      : ""}
+                  </p>
+                </div>
+                <DepositVerificationBadge reservation={reservation} />
+              </div>
+
+              {reservation.status === "confirmed" && (
+                <button
+                  disabled={isSubmitting}
+                  onClick={() => onStatusChange(reservation, "deposit_pending")}
+                  className="mt-4 rounded-xl bg-[#fe9a00]/20 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/30 disabled:opacity-50"
+                >
+                  Move to deposit request
+                </button>
+              )}
+
+              {deposit?.receiptUrl && (
+                <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#fe9a00]">
+                    Uploaded receipt
+                  </p>
+                  <a
+                    href={deposit.receiptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-flex text-sm font-bold text-white hover:text-[#fe9a00] hover:underline"
+                  >
+                    View uploaded receipt
+                  </a>
+                  {deposit.receiptUploadedAt && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      Uploaded{" "}
+                      {new Date(deposit.receiptUploadedAt).toLocaleString(
+                        "en-GB",
+                      )}
+                    </p>
+                  )}
+                  {deposit.transactionRef && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      Ref: {deposit.transactionRef}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {deposit?.status === "pending" && deposit.receiptUrl ? (
+                <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                  <input
+                    value={depositTransactionRef}
+                    onChange={(event) =>
+                      setDepositTransactionRef(event.target.value)
+                    }
+                    placeholder="Transaction reference (optional)"
+                    className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                  />
+                  <textarea
+                    value={depositFailureReason}
+                    onChange={(event) =>
+                      setDepositFailureReason(event.target.value)
+                    }
+                    rows={2}
+                    placeholder="Refuse reason (required when refusing)"
+                    className="w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                  />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <button
+                      disabled={depositBusy}
+                      onClick={() => onVerifyDeposit(reservation, "reject")}
+                      className="rounded-xl bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+                    >
+                      Refuse deposit
+                    </button>
+                    <button
+                      disabled={depositBusy}
+                      onClick={() => onVerifyDeposit(reservation, "approve")}
+                      className="rounded-xl bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      Accept deposit
+                    </button>
+                  </div>
+                </div>
+              ) : !deposit?.receiptUrl ? (
+                <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+                  Waiting for the customer to choose a deposit option and upload
+                  payment receipt. If they choose office pay, continue from
+                  vehicle assignment when they arrive.
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {canAssignVehicle &&
+            (reservation.status === "deposit_paid" ||
+              reservation.status === "deposit_pending" ||
+              reservation.status === "confirmed") && (
+              <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+                <h3 className="text-lg font-bold text-white">
+                  Assign vehicle & create contract
+                </h3>
+                <p className="mt-1 text-sm text-gray-300">
+                  Assigning the van will create the contract automatically and
+                  move the customer to the signing step.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <CustomSelect
+                    options={vehicles}
+                    value={selectedVehicle}
+                    onChange={setSelectedVehicle}
+                    placeholder={
+                      loadingVehicles ? "Loading vehicles..." : "Select vehicle"
+                    }
+                  />
+                  {!loadingVehicles && vehicles.length === 0 && (
+                    <p className="text-xs text-yellow-300">
+                      No vehicles found for this category.
+                    </p>
+                  )}
+                  <button
+                    disabled={isSubmitting || !selectedVehicle}
+                    onClick={() => onAssignVehicle(reservation)}
+                    className="w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                  >
+                    Assign vehicle & generate contract
+                  </button>
+                </div>
+              </div>
+            )}
+
+          {reservation.status === "contract_pending" && (
+            <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+              <h3 className="text-lg font-bold text-white">
+                Waiting for contract signature
+              </h3>
+              <p className="mt-1 text-sm text-gray-300">
+                The contract has been generated. The customer needs to sign it
+                in DocuSign. When DocuSign confirms completion, the status will
+                update to signed.
+              </p>
+            </div>
+          )}
+
+          {laterStep && !showOperationsPanel && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <h3 className="text-lg font-bold text-white">Next admin step</h3>
+              <p className="mt-1 text-sm text-gray-400">{laterStep.note}</p>
+              <button
+                disabled={isSubmitting}
+                onClick={() => onStatusChange(reservation, laterStep.next)}
+                className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+              >
+                {laterStep.label}
+              </button>
+            </div>
+          )}
+
+          <ReservationOperationsPanel
+            reservation={reservation}
+            onUpdated={onReservationUpdated}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const getReservationDateForEdit = (
   reservation: Reservation,
   type: "start" | "end",
@@ -143,6 +605,9 @@ export default function ReservationsManagement() {
   const mutateRef = useRef<MutateFn | null>(null);
   const [selectedReservation, setSelectedReservation] =
     useState<Reservation | null>(null);
+  const [stepManagerReservation, setStepManagerReservation] =
+    useState<Reservation | null>(null);
+  const [isStepManagerOpen, setIsStepManagerOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -153,16 +618,7 @@ export default function ReservationsManagement() {
   const [depositFailureReason, setDepositFailureReason] = useState("");
   const [depositBusy, setDepositBusy] = useState(false);
   const [newVehicle, setNewVehicle] = useState("");
-  const [vehicles, setVehicles] = useState<
-    {
-      _id: string;
-      name: string;
-      keyNumber: string;
-      category: string;
-      gear: string;
-      available: boolean;
-    }[]
-  >([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [users, setUsers] = useState<{ _id: string; name: string }[]>([]);
   const [categories, setCategories] = useState<
     {
@@ -612,7 +1068,7 @@ export default function ReservationsManagement() {
     fetchData();
   }, []);
 
-  const handleViewDetails = (item: Reservation) => {
+  const prepareReservationForAdminActions = (item: Reservation) => {
     setSelectedReservation(item);
     setNewVehicle(
       typeof item.vehicle === "string" ? item.vehicle : item.vehicle?._id || "",
@@ -667,7 +1123,19 @@ export default function ReservationsManagement() {
     } else {
       setSelectedAddOns([]);
     }
+  };
+
+  const handleViewDetails = (item: Reservation) => {
+    prepareReservationForAdminActions(item);
     setIsDetailOpen(true);
+  };
+
+  const handleOpenStepManager = (item: Reservation) => {
+    prepareReservationForAdminActions(item);
+    setStepManagerReservation(item);
+    setDepositTransactionRef("");
+    setDepositFailureReason("");
+    setIsStepManagerOpen(true);
   };
 
   // Calculate gear extra cost
@@ -878,6 +1346,14 @@ export default function ReservationsManagement() {
 
   const handleDepositVerification = async (action: "approve" | "reject") => {
     if (!selectedReservation?._id) return;
+    await submitDepositVerification(selectedReservation, action);
+  };
+
+  const submitDepositVerification = async (
+    reservation: Reservation,
+    action: "approve" | "reject",
+  ) => {
+    if (!reservation?._id) return;
     if (action === "reject" && !depositFailureReason.trim()) {
       showToast.error("Add a reason for rejecting the receipt");
       return;
@@ -886,7 +1362,7 @@ export default function ReservationsManagement() {
     setDepositBusy(true);
     try {
       const res = await fetch(
-        `/api/reservations/${selectedReservation._id}/deposit`,
+        `/api/reservations/${reservation._id}/deposit`,
         {
           method: "PATCH",
           headers: clientAuthHeaders(true),
@@ -901,6 +1377,7 @@ export default function ReservationsManagement() {
       if (!data.success) throw new Error(data.error || "Verification failed");
 
       setSelectedReservation(data.data);
+      setStepManagerReservation(data.data);
       setDepositTransactionRef("");
       setDepositFailureReason("");
       await mutateRef.current?.();
@@ -913,6 +1390,104 @@ export default function ReservationsManagement() {
       );
     } finally {
       setDepositBusy(false);
+    }
+  };
+
+  const handleStepStatusChange = async (
+    reservation: Reservation,
+    status: Reservation["status"],
+    extra: Record<string, unknown> = {},
+  ) => {
+    if (!reservation?._id) return;
+
+    if (
+      status === "completed" &&
+      (reservation as any).perInvoice &&
+      extra.totalPrice === undefined
+    ) {
+      setSelectedReservation(reservation);
+      setNewStatus(status);
+      setPerInvoicePrice(
+        reservation.totalPrice ? String(reservation.totalPrice) : "",
+      );
+      setIsPerInvoicePriceOpen(true);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const updateData: Record<string, unknown> = { status, ...extra };
+      if (status === "completed" || status === "canceled") {
+        updateData.vehicle = null;
+      }
+
+      const res = await fetch(`/api/reservations/${reservation._id}`, {
+        method: "PATCH",
+        headers: clientAuthHeaders(true),
+        body: JSON.stringify(updateData),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Update failed");
+
+      if ((status === "completed" || status === "canceled") && reservation.vehicle) {
+        const vehicleId =
+          typeof reservation.vehicle === "string"
+            ? reservation.vehicle
+            : reservation.vehicle._id;
+        const vehicleRes = await fetch(`/api/vehicles/${vehicleId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ available: true }),
+        });
+        const vehicleData = await vehicleRes.json();
+        if (!vehicleData.success)
+          throw new Error(vehicleData.error || "Vehicle update failed");
+      }
+
+      setSelectedReservation(data.data);
+      setStepManagerReservation(data.data);
+      await mutateRef.current?.();
+      showToast.success("Reservation step updated");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStepAssignVehicle = async (reservation: Reservation) => {
+    if (!reservation?._id || !newVehicle) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/reservations/${reservation._id}`, {
+        method: "PATCH",
+        headers: clientAuthHeaders(true),
+        body: JSON.stringify({
+          vehicle: newVehicle,
+          status: "delivered",
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Update failed");
+
+      const vehicleRes = await fetch(`/api/vehicles/${newVehicle}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ available: false }),
+      });
+      const vehicleData = await vehicleRes.json();
+      if (!vehicleData.success)
+        throw new Error(vehicleData.error || "Vehicle update failed");
+
+      setSelectedReservation(data.data);
+      setStepManagerReservation(data.data);
+      await mutateRef.current?.();
+      showToast.success("Vehicle assigned and contract generated");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1247,6 +1822,23 @@ export default function ReservationsManagement() {
             render: (_value: Reservation["deposit"], row?: Reservation) => (
               <DepositVerificationBadge reservation={row} />
             ),
+          },
+          {
+            key: "_id",
+            label: "Flow",
+            render: (_value: any, row?: Reservation) =>
+              row ? (
+                <button
+                  onClick={() => handleOpenStepManager(row)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-2.5 py-1.5 text-xs font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                  title="Open step manager"
+                >
+                  Step
+                  <FiArrowRight className="text-sm" />
+                </button>
+              ) : (
+                "-"
+              ),
           },
           {
             key: "_id",
@@ -2471,6 +3063,39 @@ export default function ReservationsManagement() {
           </div>
         </div>
       )}
+
+      <ReservationStepManagerModal
+        reservation={stepManagerReservation}
+        isOpen={isStepManagerOpen}
+        onClose={() => {
+          setIsStepManagerOpen(false);
+          setStepManagerReservation(null);
+        }}
+        onOpenEdit={(reservation) => {
+          setIsStepManagerOpen(false);
+          handleViewDetails(reservation);
+        }}
+        onStatusChange={handleStepStatusChange}
+        onVerifyDeposit={submitDepositVerification}
+        depositBusy={depositBusy}
+        depositTransactionRef={depositTransactionRef}
+        setDepositTransactionRef={setDepositTransactionRef}
+        depositFailureReason={depositFailureReason}
+        setDepositFailureReason={setDepositFailureReason}
+        cancelReason={cancelReason}
+        setCancelReason={setCancelReason}
+        vehicles={filteredVehicles}
+        selectedVehicle={newVehicle}
+        setSelectedVehicle={setNewVehicle}
+        loadingVehicles={loadingVehicles}
+        onAssignVehicle={handleStepAssignVehicle}
+        onReservationUpdated={(updated) => {
+          setSelectedReservation(updated);
+          setStepManagerReservation(updated);
+          void mutateRef.current?.();
+        }}
+        isSubmitting={isSubmitting}
+      />
 
       {/* Per-Invoice final price modal (shown when completing a per-invoice reserve) */}
       {isPerInvoicePriceOpen && (

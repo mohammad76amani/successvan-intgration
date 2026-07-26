@@ -24,6 +24,9 @@ export default function VehiclesContent() {
 
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingOffices, setLoadingOffices] = useState(true);
+  const [availabilityBusyId, setAvailabilityBusyId] = useState<string | null>(
+    null
+  );
   const [showServiceDatePicker, setShowServiceDatePicker] = useState<
     string | null
   >(null);
@@ -33,6 +36,7 @@ export default function VehiclesContent() {
     title: "",
     description: "",
     number: "",
+    color: "",
     keyNumber: "",
     category: "",
     office: "",
@@ -150,6 +154,7 @@ export default function VehiclesContent() {
       title: "",
       description: "",
       number: "",
+      color: "",
       keyNumber: "",
       category: "",
       office: "",
@@ -187,6 +192,7 @@ export default function VehiclesContent() {
       title: item.title,
       description: item.description,
       number: (item as any).number || "",
+      color: (item as any).color || "",
       keyNumber: (item as any).keyNumber || "",
       category: categoryId,
       office: officeId,
@@ -250,6 +256,38 @@ export default function VehiclesContent() {
     }
   };
 
+  const handleAvailabilityToggle = async (item: Vehicle) => {
+    try {
+      if (!item._id) {
+        throw new Error("Vehicle ID is missing");
+      }
+
+      const nextAvailable = !(item.available ?? true);
+      setAvailabilityBusyId(item._id);
+
+      const res = await fetch(`/api/vehicles/${item._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ available: nextAvailable }),
+      });
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Update failed");
+
+      showToast.success(
+        nextAvailable
+          ? "Vehicle marked as available"
+          : "Vehicle marked as unavailable"
+      );
+      await mutateRef.current?.();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      showToast.error(message || "Availability update failed");
+    } finally {
+      setAvailabilityBusyId(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -262,6 +300,7 @@ export default function VehiclesContent() {
         title: formData.title,
         description: formData.description,
         number: formData.number,
+        color: formData.color.trim(),
         keyNumber: formData.keyNumber,
         category: formData.category,
         office: formData.office,
@@ -369,6 +408,18 @@ export default function VehiclesContent() {
                 value={formData.number}
                 onChange={handleInputChange}
                 required
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
+              />
+
+              <label className="text-gray-400 text-sm mb-2 block">
+                Vehicle color
+              </label>
+              <input
+                type="text"
+                name="color"
+                placeholder="e.g. White"
+                value={formData.color}
+                onChange={handleInputChange}
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
               />
 
@@ -624,6 +675,11 @@ export default function VehiclesContent() {
           { key: "title", label: "Brand" },
           { key: "number", label: "Number" },
           {
+            key: "color" as any,
+            label: "Color",
+            render: (value) => value || "-",
+          },
+          {
             key: "keyNumber" as any,
             label: "Key Number",
             render: (value) => value || "-",
@@ -653,17 +709,42 @@ export default function VehiclesContent() {
           {
             key: "available",
             label: "Available",
-            render: (value: boolean) => (
-              <span
-                className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                  value
-                    ? "bg-green-500/20 text-green-400"
-                    : "bg-red-500/20 text-red-400"
-                }`}
-              >
-                {value ? "Yes" : "No"}
-              </span>
-            ),
+            render: (value: boolean, item?: Vehicle) => {
+              const isAvailable = value ?? true;
+              const isBusy = Boolean(item?._id && availabilityBusyId === item._id);
+
+              return (
+                <div className="flex flex-col gap-2">
+                  <span
+                    className={`w-fit px-2 py-1 rounded-full text-xs font-semibold ${
+                      isAvailable
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-red-500/20 text-red-400"
+                    }`}
+                  >
+                    {isAvailable ? "Available" : "Unavailable"}
+                  </span>
+                  {item?._id && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => handleAvailabilityToggle(item)}
+                      className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                        isAvailable
+                          ? "bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                          : "bg-green-500/15 text-green-300 hover:bg-green-500/25"
+                      }`}
+                    >
+                      {isBusy
+                        ? "Updating..."
+                        : isAvailable
+                          ? "Mark unavailable"
+                          : "Make available"}
+                    </button>
+                  )}
+                </div>
+              );
+            },
           },
           {
             key: "status",

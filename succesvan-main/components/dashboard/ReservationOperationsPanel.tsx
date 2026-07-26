@@ -1,9 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { showToast } from "@/lib/toast";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import type { Reservation } from "@/types/type";
+
+type CategoryHandoverField = {
+  label: string;
+  fieldType: "input" | "file";
+  inputType?: "text" | "number" | "date" | "textarea";
+  requiredBefore?: boolean;
+  requiredAfter?: boolean;
+  helpText?: string;
+};
 
 const fieldClass =
   "w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none";
@@ -18,8 +28,10 @@ async function uploadImages(files: FileList | null) {
   if (!files?.length) return [];
   const urls: string[] = [];
   for (const file of Array.from(files)) {
-    if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
-      throw new Error("Photos must be images smaller than 15MB");
+    const allowed =
+      file.type.startsWith("image/") || file.type === "application/pdf";
+    if (!allowed || file.size > 15 * 1024 * 1024) {
+      throw new Error("Files must be images or PDFs smaller than 15MB");
     }
     const formData = new FormData();
     formData.append("file", file);
@@ -41,7 +53,25 @@ export default function ReservationOperationsPanel({
   onUpdated: (reservation: Reservation) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const category = reservation.category as
+    | {
+        deposit?: { handoverDepositPrice?: number };
+        handoverFormFields?: CategoryHandoverField[];
+      }
+    | undefined;
+  const handoverFieldTemplates = category?.handoverFormFields || [];
+  const beforeFields = handoverFieldTemplates.filter(
+    (field) => field.requiredBefore,
+  );
+  const afterFields = handoverFieldTemplates.filter(
+    (field) => field.requiredAfter,
+  );
+  const defaultHandoverDeposit =
+    reservation.handoverDepositAmount ??
+    category?.deposit?.handoverDepositPrice ??
+    0;
   const [handover, setHandover] = useState({
+    handoverDepositAmount: String(defaultHandoverDeposit),
     startMileage: "",
     startFuelLevel: "",
     conditionNotes: "",
@@ -52,6 +82,10 @@ export default function ReservationOperationsPanel({
     equipment: "",
   });
   const [handoverPhotos, setHandoverPhotos] = useState<FileList | null>(null);
+  const [beforeValues, setBeforeValues] = useState<Record<string, string>>({});
+  const [beforeFiles, setBeforeFiles] = useState<Record<string, FileList | null>>(
+    {},
+  );
   const [inspection, setInspection] = useState({
     returnMileage: "",
     returnFuelLevel: "",
@@ -62,6 +96,10 @@ export default function ReservationOperationsPanel({
     cleaningIssue: false,
   });
   const [inspectionPhotos, setInspectionPhotos] = useState<FileList | null>(null);
+  const [afterValues, setAfterValues] = useState<Record<string, string>>({});
+  const [afterFiles, setAfterFiles] = useState<Record<string, FileList | null>>(
+    {},
+  );
   const [refund, setRefund] = useState({
     fuel: String(reservation.refund?.charges?.fuel ?? 0),
     late: String(reservation.refund?.charges?.late ?? 0),
@@ -89,7 +127,10 @@ export default function ReservationOperationsPanel({
     [refund],
   );
   const depositPaid =
-    reservation.refund?.depositPaid ?? reservation.deposit?.amount ?? 0;
+    reservation.refund?.depositPaid ??
+    reservation.handoverDepositAmount ??
+    reservation.deposit?.amount ??
+    0;
   const refundAmount = Math.max(0, depositPaid - deductions);
 
   const post = async (path: string, body: object) => {
@@ -103,15 +144,151 @@ export default function ReservationOperationsPanel({
     onUpdated(payload.data);
   };
 
+  const customFieldKey = (field: CategoryHandoverField, index: number) =>
+    `${index}-${field.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+  const buildCustomFields = async (
+    fields: CategoryHandoverField[],
+    values: Record<string, string>,
+    files: Record<string, FileList | null>,
+  ) => {
+    const entries = [];
+    for (const [index, field] of fields.entries()) {
+      const key = customFieldKey(field, index);
+      const uploadedFiles =
+        field.fieldType === "file" ? await uploadImages(files[key] || null) : [];
+      entries.push({
+        label: field.label,
+        fieldType: field.fieldType,
+        inputType: field.inputType || "text",
+        value: field.fieldType === "input" ? values[key] || "" : "",
+        files: uploadedFiles,
+        helpText: field.helpText || "",
+      });
+    }
+    return entries;
+  };
+
+  const validateCustomFields = (
+    fields: CategoryHandoverField[],
+    values: Record<string, string>,
+    files: Record<string, FileList | null>,
+  ) => {
+    for (const [index, field] of fields.entries()) {
+      const key = customFieldKey(field, index);
+      const hasValue =
+        field.fieldType === "file"
+          ? Boolean(files[key]?.length)
+          : Boolean((values[key] || "").trim());
+      if (!hasValue) {
+        showToast.error(`${field.label} is required`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const renderCustomFields = (
+    fields: CategoryHandoverField[],
+    values: Record<string, string>,
+    setValues: Dispatch<SetStateAction<Record<string, string>>>,
+    files: Record<string, FileList | null>,
+    setFiles: Dispatch<SetStateAction<Record<string, FileList | null>>>,
+  ) => {
+    if (!fields.length) return null;
+
+    return (
+      <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
+        <p className="text-sm font-semibold text-white">
+          Category checklist fields
+        </p>
+        {fields.map((field, index) => {
+          const key = customFieldKey(field, index);
+          return (
+            <label key={key} className="block text-xs text-gray-400">
+              <span className="mb-1 block">
+                {field.label}
+                {field.helpText ? (
+                  <span className="ml-1 text-gray-500">— {field.helpText}</span>
+                ) : null}
+              </span>
+              {field.fieldType === "file" ? (
+                <input
+                  className={fieldClass}
+                  type="file"
+                  accept="image/*,.pdf"
+                  multiple
+                  required
+                  onChange={(event) =>
+                    setFiles({ ...files, [key]: event.target.files })
+                  }
+                />
+              ) : field.inputType === "textarea" ? (
+                <textarea
+                  className={fieldClass}
+                  rows={2}
+                  required
+                  value={values[key] || ""}
+                  onChange={(event) =>
+                    setValues({ ...values, [key]: event.target.value })
+                  }
+                />
+              ) : (
+                <input
+                  className={fieldClass}
+                  type={field.inputType || "text"}
+                  required
+                  value={values[key] || ""}
+                  onChange={(event) =>
+                    setValues({ ...values, [key]: event.target.value })
+                  }
+                />
+              )}
+            </label>
+          );
+        })}
+      </div>
+    );
+  };
+
   const submitHandover = async () => {
+    const requiredFields = [
+      [handover.handoverDepositAmount, "Handover deposit amount"],
+      [handover.startMileage, "Starting mileage"],
+      [handover.startFuelLevel, "Fuel level"],
+      [handover.keyCount, "Key count"],
+      [handover.staffSignature, "Staff signature/name"],
+      [handover.customerSignature, "Customer signature/name"],
+      [handover.conditionNotes, "Condition notes"],
+      [handover.existingDamages, "Existing damages"],
+      [handover.equipment, "Equipment"],
+    ];
+    const missing = requiredFields.find(([, value]) => !String(value).trim());
+    if (missing) {
+      showToast.error(`${missing[1]} is required`);
+      return;
+    }
+    if (!handoverPhotos?.length) {
+      showToast.error("Handover photos are required");
+      return;
+    }
+    if (!validateCustomFields(beforeFields, beforeValues, beforeFiles)) return;
+
     setBusy(true);
     try {
       const photos = await uploadImages(handoverPhotos);
+      const customFields = await buildCustomFields(
+        beforeFields,
+        beforeValues,
+        beforeFiles,
+      );
       await post(`/api/admin/reservations/${reservation._id}/handover`, {
         ...handover,
+        handoverDepositAmount: Number(handover.handoverDepositAmount) || 0,
         existingDamages: lines(handover.existingDamages),
         equipment: lines(handover.equipment),
         photos,
+        customFields,
       });
       showToast.success("Vehicle handover completed");
     } catch (error) {
@@ -122,15 +299,40 @@ export default function ReservationOperationsPanel({
   };
 
   const submitInspection = async () => {
+    const requiredFields = [
+      [inspection.returnMileage, "Return mileage"],
+      [inspection.returnFuelLevel, "Return fuel level"],
+      [inspection.lateMinutes, "Late minutes"],
+      [inspection.newDamages, "New damages"],
+      [inspection.missingEquipment, "Missing equipment"],
+      [inspection.notes, "Inspection notes"],
+    ];
+    const missing = requiredFields.find(([, value]) => !String(value).trim());
+    if (missing) {
+      showToast.error(`${missing[1]} is required`);
+      return;
+    }
+    if (!inspectionPhotos?.length) {
+      showToast.error("Return inspection photos are required");
+      return;
+    }
+    if (!validateCustomFields(afterFields, afterValues, afterFiles)) return;
+
     setBusy(true);
     try {
       const photos = await uploadImages(inspectionPhotos);
+      const customFields = await buildCustomFields(
+        afterFields,
+        afterValues,
+        afterFiles,
+      );
       await post(`/api/admin/reservations/${reservation._id}/inspection`, {
         ...inspection,
         lateReturn: Number(inspection.lateMinutes) > 0,
         newDamages: lines(inspection.newDamages),
         missingEquipment: lines(inspection.missingEquipment),
         photos,
+        customFields,
       });
       showToast.success("Return inspection completed");
     } catch (error) {
@@ -180,17 +382,45 @@ export default function ReservationOperationsPanel({
       {showHandover && (
         <div className="space-y-3">
           <h3 className="font-semibold text-white">Vehicle handover</h3>
+          <label className="block text-xs text-gray-400">
+            Handover deposit amount (£)
+            <input
+              className={`${fieldClass} mt-1`}
+              type="number"
+              required
+              min="0"
+              step="0.01"
+              value={handover.handoverDepositAmount}
+              onChange={(e) =>
+                setHandover({
+                  ...handover,
+                  handoverDepositAmount: e.target.value,
+                })
+              }
+            />
+            <span className="mt-1 block text-[11px] text-gray-500">
+              Defaults from the category, but you can edit it for special
+              occasions.
+            </span>
+          </label>
           <div className="grid grid-cols-2 gap-2">
-            <input className={fieldClass} type="number" min="0" placeholder="Starting mileage" value={handover.startMileage} onChange={(e) => setHandover({ ...handover, startMileage: e.target.value })} />
-            <input className={fieldClass} placeholder="Fuel level" value={handover.startFuelLevel} onChange={(e) => setHandover({ ...handover, startFuelLevel: e.target.value })} />
-            <input className={fieldClass} type="number" min="0" placeholder="Key count" value={handover.keyCount} onChange={(e) => setHandover({ ...handover, keyCount: e.target.value })} />
-            <input className={fieldClass} placeholder="Staff signature/name" value={handover.staffSignature} onChange={(e) => setHandover({ ...handover, staffSignature: e.target.value })} />
+            <label className="text-xs text-gray-400">Starting mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Starting mileage" value={handover.startMileage} onChange={(e) => setHandover({ ...handover, startMileage: e.target.value })} /></label>
+            <label className="text-xs text-gray-400">Starting fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={handover.startFuelLevel} onChange={(e) => setHandover({ ...handover, startFuelLevel: e.target.value })} /></label>
+            <label className="text-xs text-gray-400">Key count<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Key count" value={handover.keyCount} onChange={(e) => setHandover({ ...handover, keyCount: e.target.value })} /></label>
+            <label className="text-xs text-gray-400">Staff signature/name<input className={`${fieldClass} mt-1`} required placeholder="Staff signature/name" value={handover.staffSignature} onChange={(e) => setHandover({ ...handover, staffSignature: e.target.value })} /></label>
           </div>
-          <input className={fieldClass} placeholder="Customer signature/name" value={handover.customerSignature} onChange={(e) => setHandover({ ...handover, customerSignature: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Condition notes" value={handover.conditionNotes} onChange={(e) => setHandover({ ...handover, conditionNotes: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Existing damages — one per line" value={handover.existingDamages} onChange={(e) => setHandover({ ...handover, existingDamages: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Equipment — one per line" value={handover.equipment} onChange={(e) => setHandover({ ...handover, equipment: e.target.value })} />
-          <input className={fieldClass} type="file" accept="image/*" multiple onChange={(e) => setHandoverPhotos(e.target.files)} />
+          <label className="block text-xs text-gray-400">Customer signature/name<input className={`${fieldClass} mt-1`} required placeholder="Customer signature/name" value={handover.customerSignature} onChange={(e) => setHandover({ ...handover, customerSignature: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Condition notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Condition notes" value={handover.conditionNotes} onChange={(e) => setHandover({ ...handover, conditionNotes: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Existing damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.existingDamages} onChange={(e) => setHandover({ ...handover, existingDamages: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.equipment} onChange={(e) => setHandover({ ...handover, equipment: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Handover photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setHandoverPhotos(e.target.files)} /></label>
+          {renderCustomFields(
+            beforeFields,
+            beforeValues,
+            setBeforeValues,
+            beforeFiles,
+            setBeforeFiles,
+          )}
           <button disabled={busy} onClick={submitHandover} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Confirm handover</button>
         </div>
       )}
@@ -199,15 +429,22 @@ export default function ReservationOperationsPanel({
         <div className="space-y-3">
           <h3 className="font-semibold text-white">Return inspection</h3>
           <div className="grid grid-cols-2 gap-2">
-            <input className={fieldClass} type="number" min="0" placeholder="Return mileage" value={inspection.returnMileage} onChange={(e) => setInspection({ ...inspection, returnMileage: e.target.value })} />
-            <input className={fieldClass} placeholder="Fuel level" value={inspection.returnFuelLevel} onChange={(e) => setInspection({ ...inspection, returnFuelLevel: e.target.value })} />
-            <input className={fieldClass} type="number" min="0" placeholder="Late minutes" value={inspection.lateMinutes} onChange={(e) => setInspection({ ...inspection, lateMinutes: e.target.value })} />
+            <label className="text-xs text-gray-400">Return mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Return mileage" value={inspection.returnMileage} onChange={(e) => setInspection({ ...inspection, returnMileage: e.target.value })} /></label>
+            <label className="text-xs text-gray-400">Return fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={inspection.returnFuelLevel} onChange={(e) => setInspection({ ...inspection, returnFuelLevel: e.target.value })} /></label>
+            <label className="text-xs text-gray-400">Late minutes<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Late minutes" value={inspection.lateMinutes} onChange={(e) => setInspection({ ...inspection, lateMinutes: e.target.value })} /></label>
             <label className="flex items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-gray-300"><input type="checkbox" checked={inspection.cleaningIssue} onChange={(e) => setInspection({ ...inspection, cleaningIssue: e.target.checked })} /> Cleaning issue</label>
           </div>
-          <textarea className={fieldClass} rows={2} placeholder="New damages — one per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Missing equipment — one per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} />
-          <input className={fieldClass} type="file" accept="image/*" multiple onChange={(e) => setInspectionPhotos(e.target.files)} />
+          <label className="block text-xs text-gray-400">New damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Missing equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Inspection notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /></label>
+          <label className="block text-xs text-gray-400">Return inspection photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setInspectionPhotos(e.target.files)} /></label>
+          {renderCustomFields(
+            afterFields,
+            afterValues,
+            setAfterValues,
+            afterFiles,
+            setAfterFiles,
+          )}
           <button disabled={busy} onClick={submitInspection} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Complete inspection</button>
         </div>
       )}

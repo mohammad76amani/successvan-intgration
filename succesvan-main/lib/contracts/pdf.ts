@@ -40,6 +40,8 @@ export type ContractPdfReservation = {
   vehicle?: {
     title?: string;
     number?: string | number;
+    color?: string;
+    colour?: string;
     properties?: Array<{ name?: string; key?: string; value?: string }>;
   };
   addOns?: Array<{
@@ -284,7 +286,12 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     ["Register", reservation.vehicle?.number],
     ["Make", vehicleProperty(reservation, ["make"]) || reservation.category?.name],
     ["Model", reservation.vehicle?.title || reservation.category?.name],
-    ["Colour", vehicleProperty(reservation, ["colour", "color"])],
+    [
+      "Colour",
+      reservation.vehicle?.color ||
+        reservation.vehicle?.colour ||
+        vehicleProperty(reservation, ["colour", "color"]),
+    ],
     ["Transmission", reservation.selectedGear],
     ["Fuel", reservation.category?.fuel],
     ["Required licence", reservation.category?.requiredLicense],

@@ -121,6 +121,7 @@ export interface Vehicle {
   createdAt?: Date;
   updatedAt?: Date;
   number: number;
+  color?: string;
   keyNumber?: string;
 }
 
@@ -161,7 +162,16 @@ export interface Category {
     fullPayDiscountPercent?: number;
     securePayPrice?: number;
     officePayPrice?: number;
+    handoverDepositPrice?: number;
   };
+  handoverFormFields?: {
+    label: string;
+    fieldType: "input" | "file";
+    inputType?: "text" | "number" | "date" | "textarea";
+    requiredBefore?: boolean;
+    requiredAfter?: boolean;
+    helpText?: string;
+  }[];
   fuel: "gas" | "diesel" | "electric" | "hybrid";
   gear: {
     availableTypes: string[];
@@ -274,6 +284,7 @@ export interface Reservation {
     discountPercent?: number;
   };
   collectionCode?: string;
+  handoverDepositAmount?: number;
   handover?: {
     startedAt?: Date | string;
     startMileage?: number;
@@ -285,6 +296,14 @@ export interface Reservation {
     staffSignature?: string;
     keyCount?: number;
     equipment?: string[];
+    customFields?: {
+      label?: string;
+      fieldType?: "input" | "file";
+      inputType?: string;
+      value?: string;
+      files?: string[];
+      helpText?: string;
+    }[];
     completedAt?: Date | string;
   };
   inspection?: {
@@ -298,6 +317,14 @@ export interface Reservation {
     missingEquipment?: string[];
     photos?: string[];
     notes?: string;
+    customFields?: {
+      label?: string;
+      fieldType?: "input" | "file";
+      inputType?: string;
+      value?: string;
+      files?: string[];
+      helpText?: string;
+    }[];
     completedAt?: Date | string;
   };
   refund?: {

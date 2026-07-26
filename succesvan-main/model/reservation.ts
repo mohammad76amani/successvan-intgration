@@ -114,6 +114,9 @@ const reservationSchema = new mongoose.Schema(
       discountPercent: { type: Number, min: 0, max: 100 },
     },
     collectionCode: { type: String, trim: true },
+    // Snapshot of the category handover deposit. Admin can adjust this per
+    // reservation for special cases before completing handover.
+    handoverDepositAmount: { type: Number, min: 0 },
     handover: {
       startedAt: { type: Date },
       startMileage: { type: Number },
@@ -125,6 +128,16 @@ const reservationSchema = new mongoose.Schema(
       staffSignature: { type: String },
       keyCount: { type: Number, min: 0 },
       equipment: [{ type: String, trim: true }],
+      customFields: [
+        {
+          label: { type: String, trim: true },
+          fieldType: { type: String, enum: ["input", "file"] },
+          inputType: { type: String },
+          value: { type: String },
+          files: [{ type: String, trim: true }],
+          helpText: { type: String, trim: true },
+        },
+      ],
       completedAt: { type: Date },
     },
     inspection: {
@@ -138,6 +151,16 @@ const reservationSchema = new mongoose.Schema(
       missingEquipment: [{ type: String, trim: true }],
       photos: [{ type: String, trim: true }],
       notes: { type: String, trim: true },
+      customFields: [
+        {
+          label: { type: String, trim: true },
+          fieldType: { type: String, enum: ["input", "file"] },
+          inputType: { type: String },
+          value: { type: String },
+          files: [{ type: String, trim: true }],
+          helpText: { type: String, trim: true },
+        },
+      ],
       completedAt: { type: Date },
     },
     refund: {

@@ -6,6 +6,15 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
 import Vehicle from "@/model/vehicle";
 
+type CustomFieldPayload = {
+  label?: unknown;
+  fieldType?: unknown;
+  inputType?: unknown;
+  value?: unknown;
+  files?: unknown;
+  helpText?: unknown;
+};
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -30,7 +39,8 @@ export async function POST(
     if (!existing) return errorResponse("Reservation not found", 404);
 
     const now = new Date();
-    const depositPaid = existing.deposit?.amount ?? 0;
+    const depositPaid =
+      existing.handoverDepositAmount ?? existing.deposit?.amount ?? 0;
     const reservation = await Reservation.findByIdAndUpdate(
       id,
       {
@@ -51,6 +61,22 @@ export async function POST(
               : [],
             photos: Array.isArray(body.photos) ? body.photos.filter(Boolean) : [],
             notes: String(body.notes || "").trim(),
+            customFields: Array.isArray(body.customFields)
+              ? body.customFields
+                  .filter(
+                    (field: CustomFieldPayload) => field && field.label,
+                  )
+                  .map((field: CustomFieldPayload) => ({
+                    label: String(field.label || "").trim(),
+                    fieldType: field.fieldType === "file" ? "file" : "input",
+                    inputType: String(field.inputType || ""),
+                    value: String(field.value || "").trim(),
+                    files: Array.isArray(field.files)
+                      ? field.files.filter(Boolean)
+                      : [],
+                    helpText: String(field.helpText || "").trim(),
+                  }))
+              : [],
             completedAt: now,
           },
           "refund.depositPaid": depositPaid,
