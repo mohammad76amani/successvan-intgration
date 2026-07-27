@@ -6,11 +6,14 @@ import AddOn from "@/model/addOn";
 import bcrypt from "bcryptjs";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendSMS } from "@/lib/sms";
-import { verifyToken } from "@/lib/auth";
+import { requireAuth, verifyToken } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
 import { formatDateInputInLondon } from "@/lib/englandTime";
+import { normalizeReservationStatus } from "@/lib/reservation-status";
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
     await connect();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
@@ -42,15 +45,23 @@ export async function GET(req: NextRequest) {
     const sortObj: Record<string, 1 | -1> = { [sortBy]: sortDirection };
 
     const query: any = {};
-    if (userId) query.user = userId;
+    if (canAccessDashboard(auth.role)) {
+      if (userId) query.user = userId;
+    } else {
+      query.user = auth.userId;
+    }
     if (reservationCode)
       query.reservationCode = { $regex: reservationCode.trim(), $options: "i" };
     if (name) query.user = name;
     if (user) query.user = user;
     if (category) query.category = category;
     if (office) query.office = office;
-    if (status) query.status = status;
-    if (statusNe && !status) query.status = { $ne: statusNe };
+    if (status) {
+      query.status = normalizeReservationStatus(status) ?? status;
+    }
+    if (statusNe && !status) {
+      query.status = { $ne: normalizeReservationStatus(statusNe) ?? statusNe };
+    }
     if (reservationType) query.reservationType = reservationType;
     if (isManualPrice) query.isManualPrice = isManualPrice === "true";
     if (totalPriceMin || totalPriceMax) {
@@ -198,6 +209,9 @@ export async function GET(req: NextRequest) {
     });
 
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 500);
   }
@@ -318,6 +332,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return errorResponse("Admin access is required", 403);
+    }
     await connect();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
@@ -326,6 +344,9 @@ export async function DELETE(req: NextRequest) {
     if (!reservation) return errorResponse("Reservation not found", 404);
     return successResponse({ message: "Reservation deleted" });
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 500);
   }

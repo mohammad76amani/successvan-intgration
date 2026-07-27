@@ -62,6 +62,7 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     email: input.customerEmail,
     name: input.customerName,
     recipientId: input.signerRecipientId,
+    clientUserId: input.signerClientUserId,
     routingOrder: "1",
     tabs: fromObject(docusign.Tabs, {
       signHereTabs: [signHere],

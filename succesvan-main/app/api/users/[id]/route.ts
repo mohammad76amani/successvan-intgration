@@ -73,6 +73,12 @@ export async function PUT(
     if (body.password) updateData.password = body.password;
     if (body.role) updateData.role = body.role;
     if (body.licenceAttached) updateData.licenceAttached = body.licenceAttached;
+    if (body.licenceDetails) {
+      updateData.licenceDetails = {
+        ...body.licenceDetails,
+        extractedAt: new Date(),
+      };
+    }
     if (body.deleteAvatar) {
       unsetData.avatar = "";
     }

@@ -6,7 +6,26 @@ import { showToast } from "@/lib/toast";
 import { Category, Type } from "@/types/type";
 import DynamicTableView from "./DynamicTableView";
 import CustomSelect from "@/components/ui/CustomSelect";
+import { clientAuthHeaders } from "@/lib/client-auth";
 type MutateFn = () => Promise<void>;
+
+type HandoverFormField = {
+  label: string;
+  fieldType: "input" | "file";
+  inputType: "text" | "number" | "date" | "textarea";
+  requiredBefore: boolean;
+  requiredAfter: boolean;
+  helpText: string;
+};
+
+const emptyHandoverFormField = (): HandoverFormField => ({
+  label: "",
+  fieldType: "input",
+  inputType: "text",
+  requiredBefore: true,
+  requiredAfter: false,
+  helpText: "",
+});
 
 export default function CategoriesContent() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -30,6 +49,13 @@ export default function CategoriesContent() {
     requiredLicense: "",
     pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
     extrahoursRate: "",
+    deposit: {
+      fullPayDiscountPercent: "",
+      securePayPrice: "",
+      officePayPrice: "",
+      handoverDepositPrice: "",
+    },
+    handoverFormFields: [emptyHandoverFormField()],
     fuel: "",
     gear: {
       availableTypes: [] as string[],
@@ -121,6 +147,13 @@ export default function CategoriesContent() {
       requiredLicense: "",
       pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: "",
+      deposit: {
+        fullPayDiscountPercent: "",
+        securePayPrice: "",
+        officePayPrice: "",
+        handoverDepositPrice: "",
+      },
+      handoverFormFields: [emptyHandoverFormField()],
       fuel: "",
       gear: {
         availableTypes: [] as string[],
@@ -170,6 +203,25 @@ export default function CategoriesContent() {
         pricePerDay: String(t.pricePerDay || ""),
       })) || [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: String((item as any).extrahoursRate || ""),
+      deposit: {
+        fullPayDiscountPercent: String(
+          item.deposit?.fullPayDiscountPercent ?? "",
+        ),
+        securePayPrice: String(item.deposit?.securePayPrice ?? ""),
+        officePayPrice: String(item.deposit?.officePayPrice ?? ""),
+        handoverDepositPrice: String(
+          item.deposit?.handoverDepositPrice ?? "",
+        ),
+      },
+      handoverFormFields:
+        item.handoverFormFields?.map((field) => ({
+          label: field.label || "",
+          fieldType: field.fieldType || "input",
+          inputType: field.inputType || "text",
+          requiredBefore: Boolean(field.requiredBefore),
+          requiredAfter: Boolean(field.requiredAfter),
+          helpText: field.helpText || "",
+        })) || [emptyHandoverFormField()],
       fuel: item.fuel || "",
       gear: {
         availableTypes: (item.gear as any)?.availableTypes || [],
@@ -213,6 +265,8 @@ export default function CategoriesContent() {
         requiredLicense: (item as any).requiredLicense,
         pricingTiers: (item as any).pricingTiers || [],
         extrahoursRate: (item as any).extrahoursRate,
+        deposit: item.deposit,
+        handoverFormFields: item.handoverFormFields || [],
         fuel: item.fuel,
         gear: item.gear,
         seats: item.seats,
@@ -222,7 +276,7 @@ export default function CategoriesContent() {
 
       const res = await fetch("/api/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(payload),
       });
 
@@ -256,7 +310,7 @@ export default function CategoriesContent() {
 
       const res = await fetch(`/api/categories/${item._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -324,6 +378,24 @@ export default function CategoriesContent() {
           pricePerDay: parseFloat(t.pricePerDay),
         })),
         extrahoursRate: parseFloat(formData.extrahoursRate),
+        deposit: {
+          fullPayDiscountPercent:
+            parseFloat(formData.deposit.fullPayDiscountPercent) || 0,
+          securePayPrice: parseFloat(formData.deposit.securePayPrice) || 0,
+          officePayPrice: parseFloat(formData.deposit.officePayPrice) || 0,
+          handoverDepositPrice:
+            parseFloat(formData.deposit.handoverDepositPrice) || 0,
+        },
+        handoverFormFields: formData.handoverFormFields
+          .filter((field) => field.label.trim())
+          .map((field) => ({
+            label: field.label.trim(),
+            fieldType: field.fieldType,
+            inputType: field.fieldType === "input" ? field.inputType : "text",
+            requiredBefore: Boolean(field.requiredBefore),
+            requiredAfter: Boolean(field.requiredAfter),
+            helpText: field.helpText.trim(),
+          })),
         fuel: formData.fuel,
         gear: {
           availableTypes: formData.gear.availableTypes,
@@ -344,7 +416,7 @@ export default function CategoriesContent() {
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(payload),
       });
 
@@ -947,7 +1019,7 @@ export default function CategoriesContent() {
                 </label>
                 <input
                   type="text"
-                  name="requiredLicence"
+                  name="requiredLicense"
                   placeholder="Required Licences"
                   value={formData.requiredLicense}
                   onChange={handleInputChange}
@@ -971,6 +1043,239 @@ export default function CategoriesContent() {
                   min="0"
                   className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
                 />
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                <div>
+                  <h3 className="text-white font-semibold">Deposit settings</h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Configure the choices shown to customers for this category.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    ["fullPayDiscountPercent", "Full deposit discount (%)"],
+                    ["securePayPrice", "Safe & Secure price (£)"],
+                    ["officePayPrice", "Office payment price (£)"],
+                    ["handoverDepositPrice", "Handover deposit (£)"],
+                  ].map(([field, label]) => (
+                    <label key={field} className="text-gray-400 text-sm">
+                      <span className="mb-2 block">{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={field === "fullPayDiscountPercent" ? 100 : undefined}
+                        step="0.01"
+                        value={
+                          formData.deposit[
+                            field as keyof typeof formData.deposit
+                          ]
+                        }
+                        onChange={(event) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            deposit: {
+                              ...prev.deposit,
+                              [field]: event.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full px-4 py-3 bg-[#0f172b] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Handover deposit is the held amount used to protect the
+                  vehicle and cover possible traffic or law violation bills.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-white font-semibold">
+                      Handover form fields
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Build the before/after checklist needed for this category.
+                      Fields can be normal inputs or file/photo uploads.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        handoverFormFields: [
+                          ...prev.handoverFormFields,
+                          emptyHandoverFormField(),
+                        ],
+                      }))
+                    }
+                    className="shrink-0 text-[#fe9a00] hover:text-[#e68a00] text-sm font-semibold"
+                  >
+                    + Add Field
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {formData.handoverFormFields.map((field, index) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-white/10 bg-[#0f172b] p-3 space-y-3"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <label className="md:col-span-2 text-gray-400 text-sm">
+                          <span className="mb-2 block">Field label</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. Mileage, fuel level, front photo"
+                            value={field.label}
+                            onChange={(event) => {
+                              const nextFields = [
+                                ...formData.handoverFormFields,
+                              ];
+                              nextFields[index].label = event.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                handoverFormFields: nextFields,
+                              }));
+                            }}
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00] text-sm"
+                          />
+                        </label>
+
+                        <label className="text-gray-400 text-sm">
+                          <span className="mb-2 block">Field type</span>
+                          <select
+                            value={field.fieldType}
+                            onChange={(event) => {
+                              const nextFields = [
+                                ...formData.handoverFormFields,
+                              ];
+                              nextFields[index].fieldType = event.target
+                                .value as HandoverFormField["fieldType"];
+                              setFormData((prev) => ({
+                                ...prev,
+                                handoverFormFields: nextFields,
+                              }));
+                            }}
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#fe9a00] text-sm"
+                          >
+                            <option value="input">Input</option>
+                            <option value="file">File / photo</option>
+                          </select>
+                        </label>
+
+                        <label className="text-gray-400 text-sm">
+                          <span className="mb-2 block">Input style</span>
+                          <select
+                            value={field.inputType}
+                            disabled={field.fieldType === "file"}
+                            onChange={(event) => {
+                              const nextFields = [
+                                ...formData.handoverFormFields,
+                              ];
+                              nextFields[index].inputType = event.target
+                                .value as HandoverFormField["inputType"];
+                              setFormData((prev) => ({
+                                ...prev,
+                                handoverFormFields: nextFields,
+                              }));
+                            }}
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white disabled:opacity-40 focus:outline-none focus:border-[#fe9a00] text-sm"
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="textarea">Long text</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                        <label className="text-gray-400 text-sm">
+                          <span className="mb-2 block">Help text</span>
+                          <input
+                            type="text"
+                            placeholder="Short instruction for staff/customer"
+                            value={field.helpText}
+                            onChange={(event) => {
+                              const nextFields = [
+                                ...formData.handoverFormFields,
+                              ];
+                              nextFields[index].helpText = event.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                handoverFormFields: nextFields,
+                              }));
+                            }}
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00] text-sm"
+                          />
+                        </label>
+
+                        <div className="flex flex-wrap items-center gap-4">
+                          <label className="flex items-center gap-2 text-sm text-white">
+                            <input
+                              type="checkbox"
+                              checked={field.requiredBefore}
+                              onChange={(event) => {
+                                const nextFields = [
+                                  ...formData.handoverFormFields,
+                                ];
+                                nextFields[index].requiredBefore =
+                                  event.target.checked;
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  handoverFormFields: nextFields,
+                                }));
+                              }}
+                              className="h-4 w-4 rounded border-white/20 bg-white/10 text-[#fe9a00]"
+                            />
+                            Before
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-white">
+                            <input
+                              type="checkbox"
+                              checked={field.requiredAfter}
+                              onChange={(event) => {
+                                const nextFields = [
+                                  ...formData.handoverFormFields,
+                                ];
+                                nextFields[index].requiredAfter =
+                                  event.target.checked;
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  handoverFormFields: nextFields,
+                                }));
+                              }}
+                              className="h-4 w-4 rounded border-white/20 bg-white/10 text-[#fe9a00]"
+                            />
+                            After
+                          </label>
+                          {formData.handoverFormFields.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  handoverFormFields:
+                                    prev.handoverFormFields.filter(
+                                      (_, fieldIndex) => fieldIndex !== index,
+                                    ),
+                                }))
+                              }
+                              className="px-2 py-1 text-red-400 hover:text-red-300"
+                            >
+                              <FiX />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -1321,6 +1626,22 @@ export default function CategoriesContent() {
             render: (value: any) => (value ? `£${value}/hr` : "-"),
           },
           {
+            key: "deposit" as keyof Category,
+            label: "Handover Deposit",
+            render: (value: Category["deposit"]) =>
+              value?.handoverDepositPrice
+                ? `£${value.handoverDepositPrice}`
+                : "-",
+          },
+          {
+            key: "handoverFormFields" as keyof Category,
+            label: "Handover Form",
+            render: (value: Category["handoverFormFields"]) =>
+              Array.isArray(value) && value.length > 0
+                ? `${value.length} field${value.length === 1 ? "" : "s"}`
+                : "-",
+          },
+          {
             key: "requiredLicense" as keyof Category,
             label: "licences",
           },
@@ -1362,6 +1683,7 @@ export default function CategoriesContent() {
             "properties",
             "rules",
             "pricingTiers",
+            "handoverFormFields",
             "expert",
             "requiredLicences",
             "purpose",

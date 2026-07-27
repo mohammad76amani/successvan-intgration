@@ -1,3 +1,10 @@
+import type {
+  ReservationStatus,
+  DepositStatus,
+  DepositOption,
+  RefundStatus,
+} from "@/lib/reservation-status";
+
 // Office ----------------------------------------------------------------------------
 export interface WorkingTimeWindow {
   isOpen?: boolean;
@@ -114,6 +121,7 @@ export interface Vehicle {
   createdAt?: Date;
   updatedAt?: Date;
   number: number;
+  color?: string;
   keyNumber?: string;
 }
 
@@ -150,6 +158,20 @@ export interface Category {
     pricePerDay: number;
   }[];
   extrahoursRate: number;
+  deposit?: {
+    fullPayDiscountPercent?: number;
+    securePayPrice?: number;
+    officePayPrice?: number;
+    handoverDepositPrice?: number;
+  };
+  handoverFormFields?: {
+    label: string;
+    fieldType: "input" | "file";
+    inputType?: "text" | "number" | "date" | "textarea";
+    requiredBefore?: boolean;
+    requiredAfter?: boolean;
+    helpText?: string;
+  }[];
   fuel: "gas" | "diesel" | "electric" | "hybrid";
   gear: {
     availableTypes: string[];
@@ -222,7 +244,13 @@ export interface Reservation {
   pickupTime?: string;
   returnTime?: string;
   totalPrice: number;
-  status: "pending" | "confirmed" | "canceled" | "completed" | "delivered";
+  status: ReservationStatus;
+  statusHistory?: Array<{
+    status: ReservationStatus;
+    changedAt: Date | string;
+    source?: "admin" | "customer" | "system";
+    note?: string;
+  }>;
   cancelReason?: string;
   driverAge: number;
   messege?: string;
@@ -240,6 +268,85 @@ export interface Reservation {
   manualPriceNote?: string;
   perInvoice?: boolean;
   reservationType?: "Office" | "Website";
+  deposit?: {
+    amount?: number;
+    option?: DepositOption;
+    status?: DepositStatus;
+    dueAt?: Date | string;
+    paidAt?: Date | string;
+    method?: string;
+    transactionRef?: string;
+    receiptUrl?: string;
+    receiptUploadedAt?: Date | string;
+    verifiedAt?: Date | string;
+    verifiedBy?: string;
+    failureReason?: string;
+    discountPercent?: number;
+  };
+  collectionCode?: string;
+  handoverDepositAmount?: number;
+  handover?: {
+    startedAt?: Date | string;
+    startMileage?: number;
+    startFuelLevel?: string;
+    conditionNotes?: string;
+    existingDamages?: string[];
+    photos?: string[];
+    customerSignature?: string;
+    staffSignature?: string;
+    keyCount?: number;
+    equipment?: string[];
+    customFields?: {
+      label?: string;
+      fieldType?: "input" | "file";
+      inputType?: string;
+      value?: string;
+      files?: string[];
+      helpText?: string;
+    }[];
+    completedAt?: Date | string;
+  };
+  inspection?: {
+    receivedAt?: Date | string;
+    returnMileage?: number;
+    returnFuelLevel?: string;
+    newDamages?: string[];
+    lateReturn?: boolean;
+    lateMinutes?: number;
+    cleaningIssue?: boolean;
+    missingEquipment?: string[];
+    photos?: string[];
+    notes?: string;
+    customFields?: {
+      label?: string;
+      fieldType?: "input" | "file";
+      inputType?: string;
+      value?: string;
+      files?: string[];
+      helpText?: string;
+    }[];
+    completedAt?: Date | string;
+  };
+  refund?: {
+    depositPaid?: number;
+    charges?: {
+      fuel?: number;
+      late?: number;
+      damage?: number;
+      cleaning?: number;
+      missingEquipment?: number;
+      other?: number;
+    };
+    chargeReason?: string;
+    evidence?: string[];
+    deductionsTotal?: number;
+    refundAmount?: number;
+    status?: RefundStatus;
+    reference?: string;
+    expectedBy?: Date | string;
+    approvedAt?: Date | string;
+    processedAt?: Date | string;
+  };
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -336,6 +443,25 @@ export interface User {
   licenceAttached?: {
     front?: string;
     back?: string;
+  };
+  licenceDetails?: {
+    isFrontSide?: boolean;
+    sourceSide?: "front" | "back" | "unknown";
+    firstName?: string | null;
+    lastName?: string | null;
+    fullName?: string | null;
+    dateOfBirth?: string | null;
+    address?: string | null;
+    postcode?: string | null;
+    licenseNumber?: string | null;
+    licenceNumber?: string | null;
+    issueDate?: string | null;
+    expirationDate?: string | null;
+    expiryDate?: string | null;
+    issuingCountry?: string | null;
+    issuingAuthority?: string | null;
+    licenceCategories?: string[];
+    extractedAt?: string | Date;
   };
   avatar?: string;
 }

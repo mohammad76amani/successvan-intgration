@@ -15,6 +15,7 @@ import Vehicle from "@/model/vehicle";
 import AddOn from "@/model/addOn";
 import Reservation from "@/model/reservation";
 import connect from "@/lib/data";
+import { SLOT_BLOCKING_STATUSES } from "@/lib/reservation-status";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -250,7 +251,7 @@ export async function checkAvailability(
   // Get overlapping reservations
   const reservations = await Reservation.find({
     office: officeId,
-    status: { $in: ["pending", "confirmed"] },
+    status: { $in: SLOT_BLOCKING_STATUSES },
     $or: [
       { startDate: { $lte: endDate }, endDate: { $gte: startDate } },
     ],

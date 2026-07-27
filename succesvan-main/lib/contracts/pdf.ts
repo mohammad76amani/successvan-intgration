@@ -12,6 +12,22 @@ export type ContractPdfReservation = {
     address?: string;
     postalCode?: string;
     city?: string;
+    licenceDetails?: {
+      isFrontSide?: boolean;
+      sourceSide?: "front" | "back" | "unknown";
+      fullName?: string | null;
+      dateOfBirth?: string | null;
+      address?: string | null;
+      postcode?: string | null;
+      licenseNumber?: string | null;
+      licenceNumber?: string | null;
+      issueDate?: string | null;
+      expirationDate?: string | null;
+      expiryDate?: string | null;
+      issuingCountry?: string | null;
+      issuingAuthority?: string | null;
+      licenceCategories?: string[];
+    };
   };
   office?: { name?: string; address?: string; phone?: string };
   category?: {
@@ -21,7 +37,13 @@ export type ContractPdfReservation = {
     seats?: number;
     doors?: number;
   };
-  vehicle?: { title?: string; number?: string | number };
+  vehicle?: {
+    title?: string;
+    number?: string | number;
+    color?: string;
+    colour?: string;
+    properties?: Array<{ name?: string; key?: string; value?: string }>;
+  };
   addOns?: Array<{
     addOn?: { name?: string; pricingType?: string };
     quantity?: number;
@@ -34,6 +56,14 @@ export type ContractPdfReservation = {
   pickupTime?: string;
   returnTime?: string;
   totalPrice?: number;
+  reservationCode?: string;
+  deposit?: {
+    amount?: number;
+    option?: string;
+    status?: string;
+    paidAt?: string | Date;
+    transactionRef?: string;
+  };
   status?: string;
   driverAge?: number;
   selectedGear?: string;
@@ -92,7 +122,24 @@ function formatCurrency(value?: number) {
 }
 
 function customerName(reservation: ContractPdfReservation) {
-  return `${reservation.user?.name || ""} ${reservation.user?.lastName || ""}`.trim();
+  return (
+    (reservation.user?.licenceDetails?.isFrontSide
+      ? reservation.user.licenceDetails.fullName
+      : undefined) ||
+    `${reservation.user?.name || ""} ${reservation.user?.lastName || ""}`.trim()
+  );
+}
+
+function vehicleProperty(
+  reservation: ContractPdfReservation,
+  names: string[],
+) {
+  const properties = reservation.vehicle?.properties || [];
+  const match = properties.find((property) => {
+    const label = `${property.name || property.key || ""}`.toLowerCase();
+    return names.some((name) => label.includes(name));
+  });
+  return match?.value;
 }
 
 const leftMargin = 48;
@@ -166,7 +213,12 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
 
   const reservation = input.reservation;
   const name = customerName(reservation) || "Customer";
-  const bookingReference = valueOrDash(reservation._id);
+  const licence = reservation.user?.licenceDetails?.isFrontSide
+    ? reservation.user.licenceDetails
+    : undefined;
+  const bookingReference = valueOrDash(
+    reservation.reservationCode || reservation._id,
+  );
   const address = [
     reservation.user?.address,
     reservation.user?.city,
@@ -180,11 +232,11 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     .fillColor("#ffffff")
     .font("Helvetica-Bold")
     .fontSize(24)
-    .text("Success Van Hire", 48, 38);
+    .text("VEHICLE HIRE AGREEMENT", 48, 34);
   doc
     .fillColor("#fe9a00")
     .fontSize(13)
-    .text("Customer Rental Agreement", 48, 68);
+    .text("Success Van Hire", 48, 67);
   doc
     .fillColor("#ffffff")
     .fontSize(10)
@@ -197,52 +249,87 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   // doc.x at the right-hand column).
   doc.x = leftMargin;
   doc.y = 130;
-  addSection(doc, "Booking Summary");
+  addSection(doc, "Agreement Reference");
   addRows(doc, [
+    ["Ref", input.contractNumber],
+    ["Date", formatDateTime(input.createdAt)],
     ["Booking reference", bookingReference],
+    ["From", "Success Van Hire"],
+  ]);
+
+  ensureSpace(doc);
+  addSection(doc, "Hirer Details");
+  addRows(doc, [
+    ["Hirer name", name],
+    ["Email", reservation.user?.emaildata?.emailAddress],
+    ["Mobile", reservation.user?.phoneData?.phoneNumber],
+    ["Address", licence?.address || address || "-"],
+    ["Postcode", licence?.postcode || reservation.user?.postalCode],
+    ["Driving licence number", licence?.licenceNumber || licence?.licenseNumber],
+    ["Exp date", licence?.expiryDate || licence?.expirationDate],
+    ["DOB", licence?.dateOfBirth],
+    ["Issuing authority", licence?.issuingAuthority],
+    ["Licence categories", licence?.licenceCategories?.join(", ")],
+  ]);
+
+  ensureSpace(doc);
+  addSection(doc, "Additional Driver");
+  addRows(doc, [
+    ["Name", "-"],
+    ["Licence number", "-"],
+    ["DOB", "-"],
+  ]);
+
+  ensureSpace(doc);
+  addSection(doc, "Vehicle");
+  addRows(doc, [
+    ["Register", reservation.vehicle?.number],
+    ["Make", vehicleProperty(reservation, ["make"]) || reservation.category?.name],
+    ["Model", reservation.vehicle?.title || reservation.category?.name],
+    [
+      "Colour",
+      reservation.vehicle?.color ||
+        reservation.vehicle?.colour ||
+        vehicleProperty(reservation, ["colour", "color"]),
+    ],
+    ["Transmission", reservation.selectedGear],
+    ["Fuel", reservation.category?.fuel],
+    ["Required licence", reservation.category?.requiredLicense],
+  ]);
+
+  ensureSpace(doc);
+  addSection(doc, "Rental Term");
+  addRows(doc, [
+    ["Rental start date", formatDate(reservation.startDate, reservation.startDateDisplay)],
+    ["Rental start time", reservation.pickupTime || formatDateTime(reservation.startDate)],
+    ["Rental end date", formatDate(reservation.endDate, reservation.endDateDisplay)],
+    ["Rental end time", reservation.returnTime || formatDateTime(reservation.endDate)],
     ["Reservation status", reservation.status],
-    ["Reservation type", reservation.reservationType],
-    ["Pickup date", formatDate(reservation.startDate, reservation.startDateDisplay)],
-    ["Pickup time", reservation.pickupTime || formatDateTime(reservation.startDate)],
-    ["Return date", formatDate(reservation.endDate, reservation.endDateDisplay)],
-    ["Return time", reservation.returnTime || formatDateTime(reservation.endDate)],
     ["Pickup location", reservation.office?.name],
     ["Pickup address", reservation.office?.address],
   ]);
 
   ensureSpace(doc);
-  addSection(doc, "Customer Details");
+  addSection(doc, "Rental Fee");
   addRows(doc, [
-    ["Customer name", name],
-    ["Email", reservation.user?.emaildata?.emailAddress],
-    ["Phone", reservation.user?.phoneData?.phoneNumber],
-    ["Address", address || "-"],
-    ["Driver age", reservation.driverAge],
-    ["Required licence", reservation.category?.requiredLicense],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Vehicle Details");
-  addRows(doc, [
-    ["Vehicle", reservation.vehicle?.title || reservation.category?.name],
-    ["Registration", reservation.vehicle?.number],
-    ["Category", reservation.category?.name],
-    ["Transmission", reservation.selectedGear],
-    ["Fuel", reservation.category?.fuel],
-    ["Seats", reservation.category?.seats],
-    ["Doors", reservation.category?.doors],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Charges");
-  addRows(doc, [
-    ["Total amount", formatCurrency(reservation.totalPrice)],
+    ["Subscription price", formatCurrency(reservation.totalPrice)],
+    ["Deposit", formatCurrency(reservation.deposit?.amount)],
+    ["Deposit option", reservation.deposit?.option],
+    ["Deposit status", reservation.deposit?.status],
+    ["Deposit transaction ref", reservation.deposit?.transactionRef],
     ["Pickup extension", formatCurrency(reservation.pickupExtensionPrice)],
     ["Return extension", formatCurrency(reservation.returnExtensionPrice)],
     ["Discount code", reservation.discountCode],
-    ["Manual pricing", reservation.isManualPrice ? "Yes" : "No"],
-    ["Manual price per day", reservation.manualPricePerDay ? formatCurrency(reservation.manualPricePerDay) : "-"],
-    ["Pricing note", reservation.manualPriceNote],
+  ]);
+
+  ensureSpace(doc);
+  addSection(doc, "Mileage & Insurance");
+  addRows(doc, [
+    ["Weekly mileage", "-"],
+    ["Daily mileage", "-"],
+    ["Excess mileage charge", "-"],
+    ["Arranged insurance", "Subject to Success Van Hire approval and policy terms"],
+    ["Insurance excess cost", "-"],
   ]);
 
   const addOns = reservation.addOns || [];
@@ -266,7 +353,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   }
 
   ensureSpace(doc, 220);
-  addSection(doc, "Rental Terms and Customer Responsibilities");
+  addSection(doc, "Declaration");
   const terms = [
     "The customer confirms the booking information above is accurate and must present a valid driving licence and any required identity checks before collection.",
     "The vehicle must be returned at the agreed date, time, location, fuel level, and condition unless Success Van Hire agrees otherwise in writing.",

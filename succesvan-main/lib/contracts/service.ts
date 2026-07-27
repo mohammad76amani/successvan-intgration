@@ -180,6 +180,74 @@ async function getContractForCustomer(contractId: string, customerId: string) {
   return contract;
 }
 
+function isUnknownEnvelopeRecipient(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toUpperCase().includes("UNKNOWN_ENVELOPE_RECIPIENT");
+}
+
+async function recreateEnvelopeForEmbeddedSigning(
+  contract: {
+    _id: Types.ObjectId;
+    bookingId: Types.ObjectId;
+    status: ContractStatus;
+    docusign?: {
+      envelopeId?: string;
+      signerRecipientId: string;
+      signerClientUserId: string;
+      envelopeStatus?: string;
+      voidedAt?: Date;
+      voidReason?: string;
+    };
+    auditTrail?: Array<Record<string, unknown>>;
+    save: () => Promise<unknown>;
+  },
+  customerId: string,
+) {
+  if (contract.status === "completed") {
+    throw new ContractIntegrationError(
+      "CONTRACT_ALREADY_COMPLETED",
+      "Completed contracts cannot be recreated for signing.",
+      409,
+    );
+  }
+
+  if (contract.docusign?.envelopeId) {
+    try {
+      await voidRentalAgreementEnvelope(
+        contract.docusign.envelopeId,
+        "Recreated with embedded signing recipient.",
+      );
+      contract.docusign.envelopeStatus = "voided";
+      contract.docusign.voidedAt = new Date();
+      contract.docusign.voidReason =
+        "Recreated with embedded signing recipient.";
+    } catch (voidError) {
+      console.error(
+        "Could not void broken DocuSign envelope before recreation:",
+        voidError instanceof Error ? voidError.message : "Unknown error",
+      );
+    }
+  }
+
+  if (contract.docusign) {
+    contract.docusign.envelopeId = undefined;
+    contract.docusign.envelopeStatus = undefined;
+  }
+  contract.status = "ready";
+  addAudit(
+    contract,
+    "docusign_envelope_recreate_started",
+    "customer",
+    customerId,
+    { reason: "UNKNOWN_ENVELOPE_RECIPIENT" },
+  );
+  await contract.save();
+
+  await sendContract(contract._id.toString(), {
+    source: "system",
+  });
+}
+
 async function generateAndStoreSourcePdf(
   contract: {
     _id: Types.ObjectId;
@@ -222,6 +290,7 @@ export async function createContractForBooking(
   bookingId: string,
   actor: ActorInput,
   sendNow = false,
+  options: { recreateEnvelope?: boolean } = {},
 ) {
   await connect();
   objectId(bookingId, "BOOKING_NOT_FOUND");
@@ -234,7 +303,45 @@ export async function createContractForBooking(
     .populate("bookingId");
 
   if (existing) {
-    if (!existing.sourceDocument?.storageKey) {
+    if (existing.status === "completed") {
+      return serializeContract(
+        await Contract.findById(existing._id).populate("bookingId"),
+      );
+    }
+
+    if (
+      options.recreateEnvelope &&
+      existing.docusign?.envelopeId &&
+      existing.status !== "completed"
+    ) {
+      try {
+        await voidRentalAgreementEnvelope(
+          existing.docusign.envelopeId,
+          "Recreated after vehicle assignment.",
+        );
+      } catch (voidError) {
+        console.error(
+          "Could not void existing DocuSign envelope before recreation:",
+          voidError instanceof Error ? voidError.message : "Unknown error",
+        );
+      }
+      existing.docusign.envelopeId = undefined;
+      existing.docusign.envelopeStatus = undefined;
+      existing.docusign.voidedAt = new Date();
+      existing.docusign.voidReason = "Recreated after vehicle assignment.";
+      existing.sourceDocument = {};
+      existing.status = "ready";
+      addAudit(
+        existing,
+        "docusign_envelope_recreate_started",
+        actor.source,
+        actor.actorId,
+        { reason: "vehicle_assigned" },
+      );
+      await existing.save();
+    }
+
+    if (!existing.sourceDocument?.storageKey || options.recreateEnvelope) {
       const reservation = await loadReservation(bookingId);
       await generateAndStoreSourcePdf(existing, reservation.toObject(), actor);
     }
@@ -474,18 +581,44 @@ export async function createContractSigningUrl(
     );
   }
 
-  const url = await createEmbeddedSigningUrl({
-    envelopeId: contract.docusign.envelopeId,
-    contractId: contract._id.toString(),
-    signerName: contract.customerName,
-    signerEmail: contract.customerEmail,
-    signerRecipientId: contract.docusign.signerRecipientId,
-    signerClientUserId: contract.docusign.signerClientUserId,
-  });
+  let url: string;
+  let signingContract = contract;
+  try {
+    url = await createEmbeddedSigningUrl({
+      envelopeId: contract.docusign.envelopeId,
+      contractId: contract._id.toString(),
+      signerName: contract.customerName,
+      signerEmail: contract.customerEmail,
+      signerRecipientId: contract.docusign.signerRecipientId,
+      signerClientUserId: contract.docusign.signerClientUserId,
+    });
+  } catch (error) {
+    if (!isUnknownEnvelopeRecipient(error)) throw error;
 
-  contract.status = "signing";
-  addAudit(contract, "signing_url_requested", "customer", customerId);
-  await contract.save();
+    await recreateEnvelopeForEmbeddedSigning(contract, customerId);
+    const repairedContract = await getContractForCustomer(contractId, customerId);
+    if (!repairedContract.docusign?.envelopeId) {
+      throw new ContractIntegrationError(
+        "DOCUSIGN_ENVELOPE_NOT_FOUND",
+        "This agreement has not been sent for signature yet.",
+        409,
+      );
+    }
+
+    url = await createEmbeddedSigningUrl({
+      envelopeId: repairedContract.docusign.envelopeId,
+      contractId: repairedContract._id.toString(),
+      signerName: repairedContract.customerName,
+      signerEmail: repairedContract.customerEmail,
+      signerRecipientId: repairedContract.docusign.signerRecipientId,
+      signerClientUserId: repairedContract.docusign.signerClientUserId,
+    });
+    signingContract = repairedContract;
+  }
+
+  signingContract.status = "signing";
+  addAudit(signingContract, "signing_url_requested", "customer", customerId);
+  await signingContract.save();
 
   return { url };
 }
@@ -560,8 +693,34 @@ async function storeCompletedDocuments(contract: {
   await contract.save();
 }
 
+async function syncReservationFromContractStatus(
+  contract: {
+    bookingId?: Types.ObjectId | string;
+  },
+  contractStatus: ContractStatus,
+  occurredAt: Date,
+  actor: ActorInput,
+) {
+  if (!contract.bookingId || contractStatus !== "completed") return;
+
+  const reservation = await Reservation.findById(contract.bookingId);
+  if (!reservation) return;
+
+  if (["contract_pending", "deposit_paid"].includes(reservation.status)) {
+    reservation.status = "contract_signed";
+    reservation.statusHistory.push({
+      status: "contract_signed",
+      changedAt: occurredAt,
+      source: actor.source === "customer" ? "customer" : "system",
+      note: "Rental agreement signed through DocuSign.",
+    });
+    await reservation.save();
+  }
+}
+
 async function applyEnvelopeStatus(
   contract: {
+    bookingId?: Types.ObjectId | string;
     status: ContractStatus;
     docusign: {
       envelopeId?: string;
@@ -616,6 +775,12 @@ async function applyEnvelopeStatus(
 
   if (incomingStatus === "completed") {
     await storeCompletedDocuments(contract);
+    await syncReservationFromContractStatus(
+      contract,
+      incomingStatus,
+      occurredAt,
+      actor,
+    );
   }
 }
 

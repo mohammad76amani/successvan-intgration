@@ -3,6 +3,7 @@ import connect from "@/lib/data";
 import Reservation from "@/model/reservation";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import office from "@/model/office";
+import { RESERVATION_PROBLEM_STATUSES } from "@/lib/reservation-status";
 
 type ReservationSlotSource = {
   _id: { toString: () => string } | string;
@@ -39,7 +40,11 @@ export async function GET(req: NextRequest) {
 
     if (!officeId) return errorResponse("Office ID is required", 400);
 
-    const query: Record<string, unknown> = { office: officeId };
+    const query: Record<string, unknown> = {
+      office: officeId,
+      // Canceled/expired bookings must not block time slots.
+      status: { $nin: RESERVATION_PROBLEM_STATUSES },
+    };
     if (excludeReservation) {
       query._id = { $ne: excludeReservation };
     }
