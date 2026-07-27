@@ -49,7 +49,7 @@ export async function POST(
           : "under_review";
     const reservationStatus =
       body.action === "complete"
-        ? "refund_completed"
+        ? "completed"
         : body.action === "approve"
           ? "refund_processing"
           : "deposit_review";
@@ -70,6 +70,7 @@ export async function POST(
             refundAmount,
             status,
             chargeReason: String(body.chargeReason || "").trim(),
+            otherChargeReason: String(body.otherChargeReason || "").trim(),
             evidence: Array.isArray(body.evidence)
               ? body.evidence.filter(Boolean)
               : [],

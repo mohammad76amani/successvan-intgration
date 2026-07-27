@@ -174,6 +174,7 @@ const reservationSchema = new mongoose.Schema(
         other: { type: Number, default: 0 },
       },
       chargeReason: { type: String, trim: true },
+      otherChargeReason: { type: String, trim: true },
       evidence: [{ type: String, trim: true }],
       deductionsTotal: { type: Number, default: 0 },
       refundAmount: { type: Number },

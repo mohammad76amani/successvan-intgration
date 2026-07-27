@@ -24,6 +24,14 @@ const lines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const listText = (value?: string[]) =>
+  value && value.length > 0 ? value.join(", ") : "-";
+
+const isImageUrl = (url: string) =>
+  /\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i.test(url) ||
+  url.startsWith("blob:") ||
+  url.startsWith("data:image/");
+
 async function uploadImages(files: FileList | null) {
   if (!files?.length) return [];
   const urls: string[] = [];
@@ -53,6 +61,10 @@ export default function ReservationOperationsPanel({
   onUpdated: (reservation: Reservation) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
   const category = reservation.category as
     | {
         deposit?: { handoverDepositPrice?: number };
@@ -63,8 +75,8 @@ export default function ReservationOperationsPanel({
   const beforeFields = handoverFieldTemplates.filter(
     (field) => field.requiredBefore,
   );
-  const afterFields = handoverFieldTemplates.filter(
-    (field) => field.requiredAfter,
+  const returnFields = handoverFieldTemplates.filter(
+    (field) => field.requiredBefore || field.requiredAfter,
   );
   const defaultHandoverDeposit =
     reservation.handoverDepositAmount ??
@@ -100,6 +112,9 @@ export default function ReservationOperationsPanel({
   const [afterFiles, setAfterFiles] = useState<Record<string, FileList | null>>(
     {},
   );
+  const [returnMiniStep, setReturnMiniStep] = useState<"form" | "compare">(
+    "form",
+  );
   const [refund, setRefund] = useState({
     fuel: String(reservation.refund?.charges?.fuel ?? 0),
     late: String(reservation.refund?.charges?.late ?? 0),
@@ -110,6 +125,7 @@ export default function ReservationOperationsPanel({
     ),
     other: String(reservation.refund?.charges?.other ?? 0),
     chargeReason: reservation.refund?.chargeReason ?? "",
+    otherChargeReason: reservation.refund?.otherChargeReason ?? "",
     reference: reservation.refund?.reference ?? "",
     expectedBy: "",
   });
@@ -251,6 +267,217 @@ export default function ReservationOperationsPanel({
     );
   };
 
+  const renderCompareValue = (value?: string | number | boolean | null) => {
+    if (value === true) return "Yes";
+    if (value === false) return "No";
+    if (value === 0) return "0";
+    return value ? String(value) : "-";
+  };
+
+  const renderComparisonRow = (
+    label: string,
+    before: string | number | boolean | undefined | null,
+    after: string | number | boolean | undefined | null,
+  ) => (
+    <div className="grid grid-cols-[1fr_1fr] gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          Before · {label}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-white">
+          {renderCompareValue(before)}
+        </p>
+      </div>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#fe9a00]">
+          After · {label}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-white">
+          {renderCompareValue(after)}
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderFilePreviewList = (
+    label: string,
+    savedUrls?: string[],
+    selectedFiles?: FileList | null,
+  ) => {
+    const selected = selectedFiles ? Array.from(selectedFiles) : [];
+    const hasFiles = Boolean(savedUrls?.length || selected.length);
+
+    if (!hasFiles) {
+      return <p className="mt-1 text-sm font-semibold text-white">-</p>;
+    }
+
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {(savedUrls || []).map((url, index) => {
+          const image = isImageUrl(url);
+          return image ? (
+            <button
+              key={`${label}-saved-${url}-${index}`}
+              type="button"
+              onClick={() =>
+                setPreviewImage({
+                  url,
+                  title: `${label} before ${index + 1}`,
+                })
+              }
+              className="group overflow-hidden rounded-lg border border-white/10 bg-black/20 text-left"
+            >
+              <img
+                src={url}
+                alt={`${label} saved ${index + 1}`}
+                className="h-24 w-full object-cover transition group-hover:scale-105"
+              />
+            </button>
+          ) : (
+            <a
+              key={`${label}-saved-${url}-${index}`}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="group overflow-hidden rounded-lg border border-white/10 bg-black/20"
+            >
+              <span className="flex h-24 items-center justify-center px-2 text-center text-xs font-semibold text-[#fe9a00]">
+                View file {index + 1}
+              </span>
+            </a>
+          );
+        })}
+        {selected.map((file, index) => {
+          const previewUrl = file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : "";
+          return (
+            <button
+              key={`${label}-selected-${file.name}-${index}`}
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                if (previewUrl) {
+                  setPreviewImage({
+                    url: previewUrl,
+                    title: `${label} after ${index + 1}`,
+                  });
+                }
+              }}
+              className="overflow-hidden rounded-lg border border-[#fe9a00]/25 bg-black/20 text-left"
+            >
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt={`${label} selected ${index + 1}`}
+                  className="h-24 w-full object-cover transition hover:scale-105"
+                />
+              ) : (
+                <span className="flex h-24 items-center justify-center px-2 text-center text-xs font-semibold text-[#fe9a00]">
+                  {file.name}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderFileComparisonRow = (
+    label: string,
+    beforeUrls?: string[],
+    afterFiles?: FileList | null,
+    afterUrls?: string[],
+  ) => (
+    <div className="grid grid-cols-[1fr_1fr] gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          Before · {label}
+        </p>
+        {renderFilePreviewList(label, beforeUrls)}
+      </div>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#fe9a00]">
+          After · {label}
+        </p>
+        {renderFilePreviewList(label, afterUrls, afterFiles)}
+      </div>
+    </div>
+  );
+
+  const beforeCustomByLabel = new Map(
+    (reservation.handover?.customFields || []).map((field) => [
+      field.label || "",
+      field,
+    ]),
+  );
+
+  const renderReturnComparison = () => {
+    const handoverData = reservation.handover;
+    if (!handoverData?.completedAt) return null;
+
+    return (
+      <div className="rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3 space-y-3">
+        <div>
+          <h4 className="font-semibold text-white">
+            Before / after comparison
+          </h4>
+          <p className="text-xs text-gray-400">
+            Compare the handover values against the return inspection values as
+            you fill the return form.
+          </p>
+        </div>
+        <div className="space-y-2">
+          {renderComparisonRow(
+            "Mileage",
+            handoverData.startMileage,
+            inspection.returnMileage,
+          )}
+          {renderComparisonRow(
+            "Fuel level",
+            handoverData.startFuelLevel,
+            inspection.returnFuelLevel,
+          )}
+          {renderComparisonRow(
+            "Damages",
+            listText(handoverData.existingDamages),
+            inspection.newDamages || "-",
+          )}
+          {renderComparisonRow(
+            "Equipment",
+            listText(handoverData.equipment),
+            inspection.missingEquipment || "-",
+          )}
+          {renderFileComparisonRow(
+            "Photos",
+            handoverData.photos,
+            inspectionPhotos,
+          )}
+          {returnFields.map((field, index) => {
+            const key = customFieldKey(field, index);
+            const beforeField = beforeCustomByLabel.get(field.label);
+            return (
+              <div key={key}>
+                {field.fieldType === "file"
+                  ? renderFileComparisonRow(
+                      field.label,
+                      beforeField?.files,
+                      afterFiles[key],
+                    )
+                  : renderComparisonRow(
+                      field.label,
+                      beforeField?.value,
+                      afterValues[key],
+                    )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const submitHandover = async () => {
     const requiredFields = [
       [handover.handoverDepositAmount, "Handover deposit amount"],
@@ -298,7 +525,7 @@ export default function ReservationOperationsPanel({
     }
   };
 
-  const submitInspection = async () => {
+  const validateInspectionForm = () => {
     const requiredFields = [
       [inspection.returnMileage, "Return mileage"],
       [inspection.returnFuelLevel, "Return fuel level"],
@@ -310,19 +537,29 @@ export default function ReservationOperationsPanel({
     const missing = requiredFields.find(([, value]) => !String(value).trim());
     if (missing) {
       showToast.error(`${missing[1]} is required`);
-      return;
+      return false;
     }
     if (!inspectionPhotos?.length) {
       showToast.error("Return inspection photos are required");
-      return;
+      return false;
     }
-    if (!validateCustomFields(afterFields, afterValues, afterFiles)) return;
+    return validateCustomFields(returnFields, afterValues, afterFiles);
+  };
+
+  const goToReturnComparison = () => {
+    if (validateInspectionForm()) {
+      setReturnMiniStep("compare");
+    }
+  };
+
+  const submitInspection = async () => {
+    if (!validateInspectionForm()) return;
 
     setBusy(true);
     try {
       const photos = await uploadImages(inspectionPhotos);
       const customFields = await buildCustomFields(
-        afterFields,
+        returnFields,
         afterValues,
         afterFiles,
       );
@@ -343,12 +580,17 @@ export default function ReservationOperationsPanel({
   };
 
   const submitRefund = async (action: "review" | "approve" | "complete") => {
+    if ((Number(refund.other) || 0) > 0 && !refund.otherChargeReason.trim()) {
+      showToast.error("Other charge reason is required");
+      return;
+    }
     setBusy(true);
     try {
       await post(`/api/admin/reservations/${reservation._id}/refund`, {
         action,
         charges: refund,
         chargeReason: refund.chargeReason,
+        otherChargeReason: refund.otherChargeReason,
         reference: refund.reference,
         expectedBy: refund.expectedBy || undefined,
       });
@@ -366,13 +608,15 @@ export default function ReservationOperationsPanel({
     }
   };
 
-  const showHandover = ["ready_for_collection", "handover_in_progress"].includes(
-    reservation.status,
-  );
+  const showHandover = [
+    "contract_signed",
+    "ready_for_collection",
+    "handover_in_progress",
+  ].includes(reservation.status);
   const showInspection = ["delivered", "vehicle_returned", "return_inspection"].includes(
     reservation.status,
   );
-  const showRefund = ["deposit_review", "refund_processing", "refund_completed"].includes(
+  const showRefund = ["deposit_review", "refund_processing"].includes(
     reservation.status,
   );
   if (!showHandover && !showInspection && !showRefund) return null;
@@ -427,25 +671,50 @@ export default function ReservationOperationsPanel({
 
       {showInspection && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-white">Return inspection</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-gray-400">Return mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Return mileage" value={inspection.returnMileage} onChange={(e) => setInspection({ ...inspection, returnMileage: e.target.value })} /></label>
-            <label className="text-xs text-gray-400">Return fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={inspection.returnFuelLevel} onChange={(e) => setInspection({ ...inspection, returnFuelLevel: e.target.value })} /></label>
-            <label className="text-xs text-gray-400">Late minutes<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Late minutes" value={inspection.lateMinutes} onChange={(e) => setInspection({ ...inspection, lateMinutes: e.target.value })} /></label>
-            <label className="flex items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-gray-300"><input type="checkbox" checked={inspection.cleaningIssue} onChange={(e) => setInspection({ ...inspection, cleaningIssue: e.target.checked })} /> Cleaning issue</label>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-white">Return inspection</h3>
+              <p className="text-xs text-gray-400">
+                {returnMiniStep === "form"
+                  ? "1. Re-fill the return form first."
+                  : "2. Compare before/after, then complete inspection."}
+              </p>
+            </div>
+            <span className="rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
+              {returnMiniStep === "form" ? "Fill form" : "Compare"}
+            </span>
           </div>
-          <label className="block text-xs text-gray-400">New damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Missing equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Inspection notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Return inspection photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setInspectionPhotos(e.target.files)} /></label>
-          {renderCustomFields(
-            afterFields,
-            afterValues,
-            setAfterValues,
-            afterFiles,
-            setAfterFiles,
+
+          {returnMiniStep === "form" ? (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-gray-400">Return mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Return mileage" value={inspection.returnMileage} onChange={(e) => setInspection({ ...inspection, returnMileage: e.target.value })} /></label>
+                <label className="text-xs text-gray-400">Return fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={inspection.returnFuelLevel} onChange={(e) => setInspection({ ...inspection, returnFuelLevel: e.target.value })} /></label>
+                <label className="text-xs text-gray-400">Late minutes<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Late minutes" value={inspection.lateMinutes} onChange={(e) => setInspection({ ...inspection, lateMinutes: e.target.value })} /></label>
+                <label className="flex items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-gray-300"><input type="checkbox" checked={inspection.cleaningIssue} onChange={(e) => setInspection({ ...inspection, cleaningIssue: e.target.checked })} /> Cleaning issue</label>
+              </div>
+              <label className="block text-xs text-gray-400">New damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} /></label>
+              <label className="block text-xs text-gray-400">Missing equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} /></label>
+              <label className="block text-xs text-gray-400">Inspection notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /></label>
+              <label className="block text-xs text-gray-400">Return inspection photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setInspectionPhotos(e.target.files)} /></label>
+              {renderCustomFields(
+                returnFields,
+                afterValues,
+                setAfterValues,
+                afterFiles,
+                setAfterFiles,
+              )}
+              <button disabled={busy} onClick={goToReturnComparison} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Continue to comparison</button>
+            </>
+          ) : (
+            <>
+              {renderReturnComparison()}
+              <div className="grid grid-cols-2 gap-2">
+                <button disabled={busy} onClick={() => setReturnMiniStep("form")} className="rounded-lg bg-white/10 px-4 py-2 font-semibold text-white disabled:opacity-50">Back to form</button>
+                <button disabled={busy} onClick={submitInspection} className="rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Complete inspection</button>
+              </div>
+            </>
           )}
-          <button disabled={busy} onClick={submitInspection} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Complete inspection</button>
         </div>
       )}
 
@@ -458,6 +727,7 @@ export default function ReservationOperationsPanel({
             ))}
           </div>
           <textarea className={fieldClass} rows={2} placeholder="Charge reason" value={refund.chargeReason} onChange={(e) => setRefund({ ...refund, chargeReason: e.target.value })} />
+          <textarea className={fieldClass} rows={2} placeholder="Other charge reason" value={refund.otherChargeReason} onChange={(e) => setRefund({ ...refund, otherChargeReason: e.target.value })} />
           <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 p-3 text-sm"><p className="text-gray-400">Deposit<br /><strong className="text-white">£{depositPaid.toFixed(2)}</strong></p><p className="text-gray-400">Deductions<br /><strong className="text-red-300">£{deductions.toFixed(2)}</strong></p><p className="text-gray-400">Refund<br /><strong className="text-emerald-300">£{refundAmount.toFixed(2)}</strong></p></div>
           <div className="grid grid-cols-2 gap-2">
             <input className={fieldClass} placeholder="Refund reference" value={refund.reference} onChange={(e) => setRefund({ ...refund, reference: e.target.value })} />
@@ -467,6 +737,28 @@ export default function ReservationOperationsPanel({
             <button disabled={busy} onClick={() => submitRefund("review")} className="rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50">Save review</button>
             <button disabled={busy} onClick={() => submitRefund("approve")} className="rounded-lg bg-[#fe9a00]/20 px-2 py-2 text-xs font-semibold text-[#fe9a00] disabled:opacity-50">Approve refund</button>
             <button disabled={busy} onClick={() => submitRefund("complete")} className="rounded-lg bg-emerald-500/20 px-2 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-50">Mark completed</button>
+          </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b1224] p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="font-semibold text-white">{previewImage.title}</p>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={previewImage.url}
+              alt={previewImage.title}
+              className="max-h-[75vh] w-full rounded-xl object-contain"
+            />
           </div>
         </div>
       )}

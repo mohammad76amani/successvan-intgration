@@ -212,8 +212,16 @@ export const ADMIN_STATUS_LABELS: Record<ReservationStatus, string> = {
   delivered: "Collected",
 };
 
-// Ready-made options for admin selects/filters.
-export const ADMIN_STATUS_OPTIONS = RESERVATION_STATUSES.map((status) => ({
+const ADMIN_HIDDEN_STATUS_OPTIONS: ReservationStatus[] = [
+  "ready_for_collection",
+  "refund_completed",
+];
+
+// Ready-made options for admin selects/filters. Kept statuses remain valid in
+// the model for older reservations, but these two are no longer active steps.
+export const ADMIN_STATUS_OPTIONS = RESERVATION_STATUSES.filter(
+  (status) => !ADMIN_HIDDEN_STATUS_OPTIONS.includes(status),
+).map((status) => ({
   _id: status,
   name: ADMIN_STATUS_LABELS[status],
 }));

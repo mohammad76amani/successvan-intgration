@@ -338,6 +338,7 @@ export interface Reservation {
       other?: number;
     };
     chargeReason?: string;
+    otherChargeReason?: string;
     evidence?: string[];
     deductionsTotal?: number;
     refundAmount?: number;

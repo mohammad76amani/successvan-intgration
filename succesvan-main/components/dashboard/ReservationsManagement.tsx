@@ -138,14 +138,12 @@ const ADMIN_FLOW_STEPS = [
   "deposit_paid",
   "contract_pending",
   "contract_signed",
-  "ready_for_collection",
   "handover_in_progress",
   "delivered",
   "vehicle_returned",
   "return_inspection",
   "deposit_review",
   "refund_processing",
-  "refund_completed",
   "completed",
 ] as const;
 
@@ -225,14 +223,9 @@ function ReservationStepManagerModal({
     >
   > = {
     contract_signed: {
-      label: "Mark ready for collection",
-      next: "ready_for_collection",
-      note: "Use this after the signed contract is confirmed.",
-    },
-    ready_for_collection: {
       label: "Start handover",
       next: "handover_in_progress",
-      note: "Use this when the customer arrives at the office.",
+      note: "Use this when the customer arrives and the contract is signed.",
     },
     handover_in_progress: {
       label: "Mark vehicle collected",
@@ -260,19 +253,15 @@ function ReservationStepManagerModal({
       note: "Use this when deductions are ready.",
     },
     refund_processing: {
-      label: "Mark refund completed",
-      next: "refund_completed",
-      note: "Use this after the refund has been sent.",
-    },
-    refund_completed: {
       label: "Complete reservation",
       next: "completed",
-      note: "This closes the reservation.",
+      note: "Use this after the refund has been sent.",
     },
   };
 
   const laterStep = nextButtons[reservation.status];
   const showOperationsPanel = [
+    "contract_signed",
     "ready_for_collection",
     "handover_in_progress",
     "delivered",
@@ -280,7 +269,6 @@ function ReservationStepManagerModal({
     "return_inspection",
     "deposit_review",
     "refund_processing",
-    "refund_completed",
   ].includes(reservation.status);
 
   return (
