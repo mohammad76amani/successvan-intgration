@@ -118,6 +118,35 @@ function DateMeta({
   );
 }
 
+const money = (value: unknown) => {
+  const amount = Number(value);
+  return `£${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+};
+
+const textOrDash = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+};
+
+function ReservationDataItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+      <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <div className="mt-1 break-words text-sm font-bold text-white">
+        {value || "-"}
+      </div>
+    </div>
+  );
+}
+
 function DepositHighlight({
   journey,
 }: {
@@ -400,6 +429,29 @@ export default function ReservationJourneyPage({
     );
   }
 
+  const customerName = [reservation.user?.name, reservation.user?.lastName]
+    .filter(Boolean)
+    .join(" ");
+  const addOnsLabel =
+    reservation.addOns && reservation.addOns.length > 0
+      ? reservation.addOns
+          .map((item: any) => {
+            const name =
+              typeof item.addOn === "string"
+                ? "Add-on"
+                : item.addOn?.name || "Add-on";
+            return `${name}${item.quantity ? ` × ${item.quantity}` : ""}`;
+          })
+          .join(", ")
+      : "-";
+  const depositLabel = reservation.deposit
+    ? `${reservation.deposit.option ? `${reservation.deposit.option.replace(/_/g, " ")} · ` : ""}${reservation.deposit.status ? reservation.deposit.status.replace(/_/g, " ") : "not selected"}${reservation.deposit.amount !== undefined ? ` · ${money(reservation.deposit.amount)}` : ""}`
+    : "-";
+  const vehicleLabel =
+    (reservation.vehicle as any)?.title ||
+    (reservation.vehicle as any)?.name ||
+    journey.vehicleName;
+
   const journeyContent = (
     <div
       className={
@@ -463,6 +515,71 @@ export default function ReservationJourneyPage({
                     {journey.collection.location}
                   </p>
                 )}
+                <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <ReservationDataItem
+                    label="Customer"
+                    value={textOrDash(customerName)}
+                  />
+                  <ReservationDataItem
+                    label="Phone"
+                    value={textOrDash(reservation.user?.phoneData?.phoneNumber)}
+                  />
+                  <ReservationDataItem
+                    label="Email"
+                    value={textOrDash(
+                      reservation.user?.emaildata?.emailAddress,
+                    )}
+                  />
+                  <ReservationDataItem
+                    label="Office"
+                    value={textOrDash(reservation.office?.name)}
+                  />
+                  <ReservationDataItem
+                    label="Category"
+                    value={textOrDash((reservation.category as any)?.name)}
+                  />
+                  <ReservationDataItem
+                    label="Vehicle"
+                    value={textOrDash(vehicleLabel)}
+                  />
+                  <ReservationDataItem
+                    label="Gear"
+                    value={textOrDash(reservation.selectedGear)}
+                  />
+                  <ReservationDataItem
+                    label="Driver age"
+                    value={
+                      reservation.driverAge ? `${reservation.driverAge} years` : "-"
+                    }
+                  />
+                  <ReservationDataItem
+                    label="Booking type"
+                    value={textOrDash(reservation.reservationType)}
+                  />
+                  <ReservationDataItem
+                    label="Total price"
+                    value={money(reservation.totalPrice)}
+                  />
+                  <ReservationDataItem
+                    label="Deposit"
+                    value={depositLabel}
+                  />
+                  <ReservationDataItem
+                    label="Collection code"
+                    value={textOrDash(
+                      reservation.collectionCode ||
+                        journey.collection?.collectionCode,
+                    )}
+                  />
+                  <ReservationDataItem
+                    label="Add-ons"
+                    value={addOnsLabel}
+                  />
+                  <ReservationDataItem
+                    label="Customer notes"
+                    value={textOrDash(reservation.messege)}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => openAndScroll("summary")}

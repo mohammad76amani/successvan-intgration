@@ -114,12 +114,31 @@ function reservationCustomer(reservation: {
     _id?: Types.ObjectId | string;
     name?: string;
     lastName?: string;
+    licenceDetails?: {
+      isFrontSide?: boolean | null;
+      fullName?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+    };
     emaildata?: { emailAddress?: string };
     phoneData?: { phoneNumber?: string };
   };
 }) {
   const user = reservation.user;
-  const customerName = `${user?.name || ""} ${user?.lastName || ""}`.trim();
+  const licenceName =
+    user?.licenceDetails?.isFrontSide
+      ? (
+          user.licenceDetails.fullName ||
+          [
+            user.licenceDetails.firstName,
+            user.licenceDetails.lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        ).trim()
+      : "";
+  const accountName = `${user?.name || ""} ${user?.lastName || ""}`.trim();
+  const customerName = licenceName || accountName;
   const customerEmail = user?.emaildata?.emailAddress?.trim();
 
   if (!user?._id || !customerName || !customerEmail) {

@@ -26,6 +26,11 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   );
 }
 
+const isImageReceipt = (url: string) =>
+  /\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i.test(url) ||
+  url.startsWith("blob:") ||
+  url.startsWith("data:image/");
+
 export default function DepositPanel({
   reservation,
   onUpdated,
@@ -47,6 +52,13 @@ export default function DepositPanel({
     deposit?.option ?? null,
   );
   const [file, setFile] = useState<File | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState<string | undefined>(
+    deposit?.receiptUrl,
+  );
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(
+    null,
+  );
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const settled =
@@ -73,30 +85,48 @@ export default function DepositPanel({
     showToast.success("Card number copied!");
   };
 
+  const handleReceiptSelect = async (selectedFile: File | null) => {
+    setFile(selectedFile);
+    setReceiptUrl(undefined);
+    if (!selectedFile) return;
+
+    setUploadingReceipt(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      if (uploadData.error) throw new Error(uploadData.error);
+      setReceiptUrl(uploadData.url as string);
+      showToast.success("Receipt uploaded");
+    } catch (error) {
+      setFile(null);
+      showToast.error(
+        error instanceof Error ? error.message : "Receipt upload failed",
+      );
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selected) {
       showToast.error("Please choose a deposit option");
       return;
     }
-    if (selected !== "office" && !file) {
+    if (selected !== "office" && !receiptUrl) {
       showToast.error("Please upload your payment receipt");
+      return;
+    }
+    if (uploadingReceipt) {
+      showToast.error("Please wait for the receipt upload to finish");
       return;
     }
     setSubmitting(true);
     try {
-      let receiptUrl: string | undefined;
-      if (file) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const uploadData = await uploadRes.json();
-        if (uploadData.error) throw new Error(uploadData.error);
-        receiptUrl = uploadData.url as string;
-      }
-
       const res = await fetch(`/api/reservations/${reservation._id}/deposit`, {
         method: "POST",
         headers: {
@@ -123,62 +153,115 @@ export default function DepositPanel({
     }
   };
 
+  const renderReceiptPreview = (url: string, label = "Payment receipt") => {
+    if (!isImageReceipt(url)) {
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
+        >
+          <FiDownload /> View receipt file
+        </a>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => setPreviewReceiptUrl(url)}
+        className="mt-3 flex w-fit items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-2 text-left transition hover:border-[#fe9a00]/40 hover:bg-white/5"
+      >
+        <img
+          src={url}
+          alt={label}
+          className="h-16 w-20 rounded-lg object-cover"
+        />
+        <span>
+          <span className="block text-xs font-black uppercase tracking-wide text-[#fe9a00]">
+            Uploaded receipt
+          </span>
+          <span className="mt-1 block text-sm font-semibold text-white">
+            Click to view
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  const receiptPreviewModal = previewReceiptUrl ? (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+      <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b1224] p-4 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="font-semibold text-white">Payment receipt</p>
+          <button
+            type="button"
+            onClick={() => setPreviewReceiptUrl(null)}
+            className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+          >
+            Close
+          </button>
+        </div>
+        <img
+          src={previewReceiptUrl}
+          alt="Payment receipt"
+          className="max-h-[75vh] w-full rounded-xl object-contain"
+        />
+      </div>
+    </div>
+  ) : null;
+
   // ── Already settled / awaiting verification: summary view ────
   if (settled || awaitingVerification || payAtOfficeSelected) {
     return (
-      <div>
-        {payAtOfficeSelected && !settled && !awaitingVerification && (
-          <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
-            <FiClock className="shrink-0" />
-            Pay-at-office selected. You’ll pay at collection before signing and handover.
-          </div>
-        )}
-        {awaitingVerification && (
-          <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
-            <FiClock className="shrink-0" />
-            We received your receipt and are verifying the payment.
-          </div>
-        )}
-        {settled && (
-          <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-3 text-sm text-green-400">
-            <FiCheckCircle className="shrink-0" />
-            Deposit {deposit?.status === "paid" ? "received" : deposit?.status?.replace(/_/g, " ")}.
-          </div>
-        )}
-        <Row label="Option" value={deposit?.option ? DEPOSIT_OPTION_LABELS[deposit.option] : "-"} />
-        <Row label="Amount" value={`£${deposit?.amount ?? 0}`} />
-        {(deposit?.discountPercent ?? 0) > 0 && (
-          <Row
-            label="Rental discount"
-            value={
-              <span className="text-green-400">
-                {deposit!.discountPercent}% off
-              </span>
-            }
-          />
-        )}
-        {deposit?.paidAt && (
-          <Row
-            label="Paid on"
-            value={new Date(deposit.paidAt).toLocaleString("en-GB", {
-              timeZone: "Europe/London",
-            })}
-          />
-        )}
-        {deposit?.transactionRef && (
-          <Row label="Transaction reference" value={deposit.transactionRef} />
-        )}
-        {deposit?.receiptUrl && (
-          <a
-            href={deposit.receiptUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors"
-          >
-            <FiDownload /> View receipt
-          </a>
-        )}
-      </div>
+      <>
+        <div>
+          {payAtOfficeSelected && !settled && !awaitingVerification && (
+            <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
+              <FiClock className="shrink-0" />
+              Pay-at-office selected. You’ll pay at collection before signing and handover.
+            </div>
+          )}
+          {awaitingVerification && (
+            <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
+              <FiClock className="shrink-0" />
+              We received your receipt and are verifying the payment.
+            </div>
+          )}
+          {settled && (
+            <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-3 text-sm text-green-400">
+              <FiCheckCircle className="shrink-0" />
+              Deposit {deposit?.status === "paid" ? "received" : deposit?.status?.replace(/_/g, " ")}.
+            </div>
+          )}
+          <Row label="Option" value={deposit?.option ? DEPOSIT_OPTION_LABELS[deposit.option] : "-"} />
+          <Row label="Amount" value={`£${deposit?.amount ?? 0}`} />
+          {(deposit?.discountPercent ?? 0) > 0 && (
+            <Row
+              label="Rental discount"
+              value={
+                <span className="text-green-400">
+                  {deposit!.discountPercent}% off
+                </span>
+              }
+            />
+          )}
+          {deposit?.paidAt && (
+            <Row
+              label="Paid on"
+              value={new Date(deposit.paidAt).toLocaleString("en-GB", {
+                timeZone: "Europe/London",
+              })}
+            />
+          )}
+          {deposit?.transactionRef && (
+            <Row label="Transaction reference" value={deposit.transactionRef} />
+          )}
+          {deposit?.receiptUrl && renderReceiptPreview(deposit.receiptUrl)}
+        </div>
+        {receiptPreviewModal}
+      </>
     );
   }
 
@@ -285,12 +368,26 @@ export default function DepositPanel({
             <input
               type="file"
               accept="image/*,.pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              disabled={uploadingReceipt || submitting}
+              onChange={(e) => handleReceiptSelect(e.target.files?.[0] ?? null)}
               className="w-full text-sm text-gray-400 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#fe9a00]/20 file:text-[#fe9a00] file:font-semibold file:cursor-pointer cursor-pointer"
             />
-            {file && (
-              <p className="text-gray-400 text-xs mt-1">{file.name}</p>
+            {uploadingReceipt && (
+              <p className="mt-1 text-xs font-semibold text-[#fe9a00]">
+                Uploading receipt...
+              </p>
             )}
+            {file && (
+              <p className="text-gray-400 text-xs mt-1">
+                {file.name}
+                {receiptUrl ? (
+                  <span className="ml-2 font-semibold text-emerald-300">
+                    Uploaded
+                  </span>
+                ) : null}
+              </p>
+            )}
+            {receiptUrl && renderReceiptPreview(receiptUrl)}
           </label>
         </>
       )}
@@ -299,7 +396,7 @@ export default function DepositPanel({
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || uploadingReceipt}
           className="w-full px-4 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 cursor-pointer"
         >
           {submitting
@@ -309,6 +406,7 @@ export default function DepositPanel({
               : "Submit receipt"}
         </button>
       )}
+      {receiptPreviewModal}
     </div>
   );
 }

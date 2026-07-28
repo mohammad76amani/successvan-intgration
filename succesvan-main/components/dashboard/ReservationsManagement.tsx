@@ -154,7 +154,6 @@ function ReservationStepManagerModal({
   reservation,
   isOpen,
   onClose,
-  onOpenEdit,
   onStatusChange,
   onVerifyDeposit,
   depositBusy,
@@ -175,7 +174,6 @@ function ReservationStepManagerModal({
   reservation: Reservation | null;
   isOpen: boolean;
   onClose: () => void;
-  onOpenEdit: (reservation: Reservation) => void;
   onStatusChange: (
     reservation: Reservation,
     status: Reservation["status"],
@@ -200,6 +198,9 @@ function ReservationStepManagerModal({
   onReservationUpdated: (reservation: Reservation) => void;
   isSubmitting: boolean;
 }) {
+  const [isReservationDetailsOpen, setIsReservationDetailsOpen] =
+    useState(false);
+
   if (!isOpen || !reservation) return null;
 
   const currentIndex = statusFlowIndex(reservation.status);
@@ -272,7 +273,8 @@ function ReservationStepManagerModal({
   ].includes(reservation.status);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1224]/95 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#0b1224]/95 p-5 backdrop-blur">
           <div>
@@ -307,10 +309,10 @@ function ReservationStepManagerModal({
                 </span>
               </div>
               <button
-                onClick={() => onOpenEdit(reservation)}
+                onClick={() => setIsReservationDetailsOpen(true)}
                 className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
               >
-                Open edit modal
+                View reservation details
               </button>
             </div>
 
@@ -342,6 +344,25 @@ function ReservationStepManagerModal({
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-white">
+                  Reservation data
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Review customer, vehicle, dates, licence and payment details
+                  without leaving this action menu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReservationDetailsOpen(true)}
+                className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+              >
+                View reservation data
+              </button>
             </div>
           </div>
 
@@ -566,7 +587,15 @@ function ReservationStepManagerModal({
           />
         </div>
       </div>
-    </div>
+      </div>
+
+      <ReservationDetailsModal
+        reservation={reservation}
+        isOpen={isReservationDetailsOpen}
+        onClose={() => setIsReservationDetailsOpen(false)}
+        layerClassName="z-[80]"
+      />
+    </>
   );
 }
 
@@ -3058,10 +3087,6 @@ export default function ReservationsManagement() {
         onClose={() => {
           setIsStepManagerOpen(false);
           setStepManagerReservation(null);
-        }}
-        onOpenEdit={(reservation) => {
-          setIsStepManagerOpen(false);
-          handleViewDetails(reservation);
         }}
         onStatusChange={handleStepStatusChange}
         onVerifyDeposit={submitDepositVerification}

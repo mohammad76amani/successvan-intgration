@@ -61,6 +61,7 @@ export default function ReservationOperationsPanel({
   onUpdated: (reservation: Reservation) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{
     url: string;
     title: string;
@@ -93,9 +94,9 @@ export default function ReservationOperationsPanel({
     keyCount: "1",
     equipment: "",
   });
-  const [handoverPhotos, setHandoverPhotos] = useState<FileList | null>(null);
+  const [handoverPhotos, setHandoverPhotos] = useState<string[]>([]);
   const [beforeValues, setBeforeValues] = useState<Record<string, string>>({});
-  const [beforeFiles, setBeforeFiles] = useState<Record<string, FileList | null>>(
+  const [beforeFiles, setBeforeFiles] = useState<Record<string, string[]>>(
     {},
   );
   const [inspection, setInspection] = useState({
@@ -107,9 +108,9 @@ export default function ReservationOperationsPanel({
     notes: "",
     cleaningIssue: false,
   });
-  const [inspectionPhotos, setInspectionPhotos] = useState<FileList | null>(null);
+  const [inspectionPhotos, setInspectionPhotos] = useState<string[]>([]);
   const [afterValues, setAfterValues] = useState<Record<string, string>>({});
-  const [afterFiles, setAfterFiles] = useState<Record<string, FileList | null>>(
+  const [afterFiles, setAfterFiles] = useState<Record<string, string[]>>(
     {},
   );
   const [returnMiniStep, setReturnMiniStep] = useState<"form" | "compare">(
@@ -163,22 +164,38 @@ export default function ReservationOperationsPanel({
   const customFieldKey = (field: CategoryHandoverField, index: number) =>
     `${index}-${field.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
+  const uploadSelectedImages = async (
+    files: FileList | null,
+    key: string,
+    onUploaded: (urls: string[]) => void,
+  ) => {
+    if (!files?.length) return;
+    setUploadingKey(key);
+    try {
+      const urls = await uploadImages(files);
+      onUploaded(urls);
+      showToast.success("Files uploaded");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploadingKey((current) => (current === key ? null : current));
+    }
+  };
+
   const buildCustomFields = async (
     fields: CategoryHandoverField[],
     values: Record<string, string>,
-    files: Record<string, FileList | null>,
+    files: Record<string, string[]>,
   ) => {
     const entries = [];
     for (const [index, field] of fields.entries()) {
       const key = customFieldKey(field, index);
-      const uploadedFiles =
-        field.fieldType === "file" ? await uploadImages(files[key] || null) : [];
       entries.push({
         label: field.label,
         fieldType: field.fieldType,
         inputType: field.inputType || "text",
         value: field.fieldType === "input" ? values[key] || "" : "",
-        files: uploadedFiles,
+        files: field.fieldType === "file" ? files[key] || [] : [],
         helpText: field.helpText || "",
       });
     }
@@ -188,7 +205,7 @@ export default function ReservationOperationsPanel({
   const validateCustomFields = (
     fields: CategoryHandoverField[],
     values: Record<string, string>,
-    files: Record<string, FileList | null>,
+    files: Record<string, string[]>,
   ) => {
     for (const [index, field] of fields.entries()) {
       const key = customFieldKey(field, index);
@@ -208,8 +225,8 @@ export default function ReservationOperationsPanel({
     fields: CategoryHandoverField[],
     values: Record<string, string>,
     setValues: Dispatch<SetStateAction<Record<string, string>>>,
-    files: Record<string, FileList | null>,
-    setFiles: Dispatch<SetStateAction<Record<string, FileList | null>>>,
+    files: Record<string, string[]>,
+    setFiles: Dispatch<SetStateAction<Record<string, string[]>>>,
   ) => {
     if (!fields.length) return null;
 
@@ -220,6 +237,7 @@ export default function ReservationOperationsPanel({
         </p>
         {fields.map((field, index) => {
           const key = customFieldKey(field, index);
+          const isUploading = uploadingKey === `custom-${key}`;
           return (
             <label key={key} className="block text-xs text-gray-400">
               <span className="mb-1 block">
@@ -229,16 +247,34 @@ export default function ReservationOperationsPanel({
                 ) : null}
               </span>
               {field.fieldType === "file" ? (
-                <input
-                  className={fieldClass}
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  required
-                  onChange={(event) =>
-                    setFiles({ ...files, [key]: event.target.files })
-                  }
-                />
+                <>
+                  <input
+                    className={fieldClass}
+                    type="file"
+                    accept="image/*,.pdf"
+                    multiple
+                    required
+                    disabled={isUploading}
+                    onChange={(event) =>
+                      uploadSelectedImages(
+                        event.target.files,
+                        `custom-${key}`,
+                        (urls) => setFiles({ ...files, [key]: urls }),
+                      )
+                    }
+                  />
+                  {isUploading && (
+                    <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
+                      Uploading files...
+                    </span>
+                  )}
+                  {files[key]?.length ? (
+                    <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
+                      {files[key].length} file
+                      {files[key].length === 1 ? "" : "s"} uploaded
+                    </span>
+                  ) : null}
+                </>
               ) : field.inputType === "textarea" ? (
                 <textarea
                   className={fieldClass}
@@ -302,10 +338,8 @@ export default function ReservationOperationsPanel({
   const renderFilePreviewList = (
     label: string,
     savedUrls?: string[],
-    selectedFiles?: FileList | null,
   ) => {
-    const selected = selectedFiles ? Array.from(selectedFiles) : [];
-    const hasFiles = Boolean(savedUrls?.length || selected.length);
+    const hasFiles = Boolean(savedUrls?.length);
 
     if (!hasFiles) {
       return <p className="mt-1 text-sm font-semibold text-white">-</p>;
@@ -347,39 +381,6 @@ export default function ReservationOperationsPanel({
             </a>
           );
         })}
-        {selected.map((file, index) => {
-          const previewUrl = file.type.startsWith("image/")
-            ? URL.createObjectURL(file)
-            : "";
-          return (
-            <button
-              key={`${label}-selected-${file.name}-${index}`}
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                if (previewUrl) {
-                  setPreviewImage({
-                    url: previewUrl,
-                    title: `${label} after ${index + 1}`,
-                  });
-                }
-              }}
-              className="overflow-hidden rounded-lg border border-[#fe9a00]/25 bg-black/20 text-left"
-            >
-              {previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt={`${label} selected ${index + 1}`}
-                  className="h-24 w-full object-cover transition hover:scale-105"
-                />
-              ) : (
-                <span className="flex h-24 items-center justify-center px-2 text-center text-xs font-semibold text-[#fe9a00]">
-                  {file.name}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
     );
   };
@@ -387,7 +388,6 @@ export default function ReservationOperationsPanel({
   const renderFileComparisonRow = (
     label: string,
     beforeUrls?: string[],
-    afterFiles?: FileList | null,
     afterUrls?: string[],
   ) => (
     <div className="grid grid-cols-[1fr_1fr] gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
@@ -401,7 +401,7 @@ export default function ReservationOperationsPanel({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-[#fe9a00]">
           After · {label}
         </p>
-        {renderFilePreviewList(label, afterUrls, afterFiles)}
+        {renderFilePreviewList(label, afterUrls)}
       </div>
     </div>
   );
@@ -495,15 +495,18 @@ export default function ReservationOperationsPanel({
       showToast.error(`${missing[1]} is required`);
       return;
     }
-    if (!handoverPhotos?.length) {
+    if (!handoverPhotos.length) {
       showToast.error("Handover photos are required");
+      return;
+    }
+    if (uploadingKey) {
+      showToast.error("Please wait for uploads to finish");
       return;
     }
     if (!validateCustomFields(beforeFields, beforeValues, beforeFiles)) return;
 
     setBusy(true);
     try {
-      const photos = await uploadImages(handoverPhotos);
       const customFields = await buildCustomFields(
         beforeFields,
         beforeValues,
@@ -514,7 +517,7 @@ export default function ReservationOperationsPanel({
         handoverDepositAmount: Number(handover.handoverDepositAmount) || 0,
         existingDamages: lines(handover.existingDamages),
         equipment: lines(handover.equipment),
-        photos,
+        photos: handoverPhotos,
         customFields,
       });
       showToast.success("Vehicle handover completed");
@@ -539,8 +542,12 @@ export default function ReservationOperationsPanel({
       showToast.error(`${missing[1]} is required`);
       return false;
     }
-    if (!inspectionPhotos?.length) {
+    if (!inspectionPhotos.length) {
       showToast.error("Return inspection photos are required");
+      return false;
+    }
+    if (uploadingKey) {
+      showToast.error("Please wait for uploads to finish");
       return false;
     }
     return validateCustomFields(returnFields, afterValues, afterFiles);
@@ -557,7 +564,6 @@ export default function ReservationOperationsPanel({
 
     setBusy(true);
     try {
-      const photos = await uploadImages(inspectionPhotos);
       const customFields = await buildCustomFields(
         returnFields,
         afterValues,
@@ -568,7 +574,7 @@ export default function ReservationOperationsPanel({
         lateReturn: Number(inspection.lateMinutes) > 0,
         newDamages: lines(inspection.newDamages),
         missingEquipment: lines(inspection.missingEquipment),
-        photos,
+        photos: inspectionPhotos,
         customFields,
       });
       showToast.success("Return inspection completed");
@@ -657,7 +663,35 @@ export default function ReservationOperationsPanel({
           <label className="block text-xs text-gray-400">Condition notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Condition notes" value={handover.conditionNotes} onChange={(e) => setHandover({ ...handover, conditionNotes: e.target.value })} /></label>
           <label className="block text-xs text-gray-400">Existing damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.existingDamages} onChange={(e) => setHandover({ ...handover, existingDamages: e.target.value })} /></label>
           <label className="block text-xs text-gray-400">Equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.equipment} onChange={(e) => setHandover({ ...handover, equipment: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Handover photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setHandoverPhotos(e.target.files)} /></label>
+          <label className="block text-xs text-gray-400">
+            Handover photos
+            <input
+              className={`${fieldClass} mt-1`}
+              type="file"
+              accept="image/*"
+              multiple
+              required
+              disabled={uploadingKey === "handover-photos"}
+              onChange={(event) =>
+                uploadSelectedImages(
+                  event.target.files,
+                  "handover-photos",
+                  setHandoverPhotos,
+                )
+              }
+            />
+            {uploadingKey === "handover-photos" && (
+              <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
+                Uploading handover photos...
+              </span>
+            )}
+            {handoverPhotos.length ? (
+              <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
+                {handoverPhotos.length} photo
+                {handoverPhotos.length === 1 ? "" : "s"} uploaded
+              </span>
+            ) : null}
+          </label>
           {renderCustomFields(
             beforeFields,
             beforeValues,
@@ -665,7 +699,7 @@ export default function ReservationOperationsPanel({
             beforeFiles,
             setBeforeFiles,
           )}
-          <button disabled={busy} onClick={submitHandover} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Confirm handover</button>
+          <button disabled={busy || Boolean(uploadingKey)} onClick={submitHandover} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Confirm handover</button>
         </div>
       )}
 
@@ -696,7 +730,35 @@ export default function ReservationOperationsPanel({
               <label className="block text-xs text-gray-400">New damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} /></label>
               <label className="block text-xs text-gray-400">Missing equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} /></label>
               <label className="block text-xs text-gray-400">Inspection notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /></label>
-              <label className="block text-xs text-gray-400">Return inspection photos<input className={`${fieldClass} mt-1`} type="file" accept="image/*" multiple required onChange={(e) => setInspectionPhotos(e.target.files)} /></label>
+              <label className="block text-xs text-gray-400">
+                Return inspection photos
+                <input
+                  className={`${fieldClass} mt-1`}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  required
+                  disabled={uploadingKey === "inspection-photos"}
+                  onChange={(event) =>
+                    uploadSelectedImages(
+                      event.target.files,
+                      "inspection-photos",
+                      setInspectionPhotos,
+                    )
+                  }
+                />
+                {uploadingKey === "inspection-photos" && (
+                  <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
+                    Uploading return photos...
+                  </span>
+                )}
+                {inspectionPhotos.length ? (
+                  <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
+                    {inspectionPhotos.length} photo
+                    {inspectionPhotos.length === 1 ? "" : "s"} uploaded
+                  </span>
+                ) : null}
+              </label>
               {renderCustomFields(
                 returnFields,
                 afterValues,
@@ -704,7 +766,7 @@ export default function ReservationOperationsPanel({
                 afterFiles,
                 setAfterFiles,
               )}
-              <button disabled={busy} onClick={goToReturnComparison} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Continue to comparison</button>
+              <button disabled={busy || Boolean(uploadingKey)} onClick={goToReturnComparison} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Continue to comparison</button>
             </>
           ) : (
             <>

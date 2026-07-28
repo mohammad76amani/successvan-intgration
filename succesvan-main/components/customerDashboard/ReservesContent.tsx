@@ -133,11 +133,6 @@ export default function ReservesContent() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <span
-                    className={`mb-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
-                  >
-                    {journey.publicStatusLabel}
-                  </span>
                   <h3 className="truncate text-lg font-black text-white">
                     {journey.vehicleName}
                   </h3>
@@ -194,8 +189,27 @@ export default function ReservesContent() {
               </div>
 
               <div className="border-t border-white/10 bg-black/10 p-4 lg:border-l lg:border-t-0 lg:p-5">
-                <p className="mb-2 text-xs font-black uppercase tracking-wide text-gray-400">
-                  Next Action
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-gray-400">
+                      Current status
+                    </p>
+                    <span
+                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
+                    >
+                      {journey.publicStatusLabel}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openTracker()}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/10"
+                  >
+                    Track booking
+                  </button>
+                </div>
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#fe9a00]">
+                  Action needed
                 </p>
                 <h4 className="font-black text-white">
                   {journey.nextAction.title}

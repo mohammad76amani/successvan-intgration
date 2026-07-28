@@ -27,12 +27,14 @@ interface ReservationDetailsModalProps {
   reservation: Reservation | null;
   isOpen: boolean;
   onClose: () => void;
+  layerClassName?: string;
 }
 
 export default function ReservationDetailsModal({
   reservation,
   isOpen,
   onClose,
+  layerClassName = "z-50",
 }: ReservationDetailsModalProps) {
   const [addOns, setAddOns] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -213,10 +215,10 @@ export default function ReservationDetailsModal({
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm ${layerClassName}`}
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3">
+      <div className={`fixed inset-0 ${layerClassName} flex items-center justify-center p-2 sm:p-3`}>
         <div className="bg-[#1a2847] rounded-xl w-full max-w-5xl max-h-[96vh] overflow-y-auto border border-white/10 shadow-2xl scrollbar-thin">
           {/* Header - Compact */}
           <div className="sticky top-0 flex items-center justify-between px-4 py-2.5 sm:px-5 sm:py-3 border-b border-white/10 bg-[#1a2847]/95 backdrop-blur-sm z-10">

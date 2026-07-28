@@ -15,6 +15,8 @@ export type ContractPdfReservation = {
     licenceDetails?: {
       isFrontSide?: boolean;
       sourceSide?: "front" | "back" | "unknown";
+      firstName?: string | null;
+      lastName?: string | null;
       fullName?: string | null;
       dateOfBirth?: string | null;
       address?: string | null;
@@ -122,10 +124,21 @@ function formatCurrency(value?: number) {
 }
 
 function customerName(reservation: ContractPdfReservation) {
+  const licenceName =
+    reservation.user?.licenceDetails?.isFrontSide
+      ? (
+          reservation.user.licenceDetails.fullName ||
+          [
+            reservation.user.licenceDetails.firstName,
+            reservation.user.licenceDetails.lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        ).trim()
+      : "";
+
   return (
-    (reservation.user?.licenceDetails?.isFrontSide
-      ? reservation.user.licenceDetails.fullName
-      : undefined) ||
+    licenceName ||
     `${reservation.user?.name || ""} ${reservation.user?.lastName || ""}`.trim()
   );
 }

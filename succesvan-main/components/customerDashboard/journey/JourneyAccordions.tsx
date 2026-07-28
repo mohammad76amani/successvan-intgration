@@ -49,18 +49,7 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
 }
 
 function profileFieldsFromLicence(details: LicenceDetailsReview) {
-  const firstName = details.firstName?.trim();
-  const lastName = details.lastName?.trim();
-  const fullName = details.fullName?.trim();
-  const fallbackParts = fullName ? fullName.split(/\s+/).filter(Boolean) : [];
-
   return {
-    ...(firstName || fallbackParts.length > 1
-      ? { name: firstName || fallbackParts.slice(0, -1).join(" ") }
-      : {}),
-    ...(lastName || fallbackParts.length > 1
-      ? { lastName: lastName || fallbackParts.at(-1) || "" }
-      : {}),
     ...(details.address?.trim() ? { address: details.address.trim() } : {}),
     ...(details.postcode?.trim()
       ? { postalCode: details.postcode.trim() }
