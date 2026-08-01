@@ -12,6 +12,7 @@ import {
   FiGlobe,
   FiPlus,
   FiPrinter,
+  FiDownload,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import DynamicTableView from "./DynamicTableView";
@@ -39,6 +40,7 @@ import {
 } from "@/lib/specialDaySchedule";
 import { printReservationReceipt } from "@/lib/printReservation";
 import { clientAuthHeaders } from "@/lib/client-auth";
+import type { SafeContractSummary } from "@/lib/docusign/types";
 import {
   ADMIN_STATUS_OPTIONS,
   DEPOSIT_OPTION_LABELS,
@@ -70,6 +72,9 @@ const formatLondonTime = (value: string | Date) =>
         hour12: false,
       })
     : "-";
+
+const isImageFileUrl = (url: string) =>
+  /\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i.test(url);
 
 function DepositVerificationBadge({
   reservation,
@@ -200,6 +205,47 @@ function ReservationStepManagerModal({
 }) {
   const [isReservationDetailsOpen, setIsReservationDetailsOpen] =
     useState(false);
+  const [actionContract, setActionContract] =
+    useState<SafeContractSummary | null>(null);
+  const [contractLoading, setContractLoading] = useState(false);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!isOpen || !reservation?._id) {
+      setActionContract(null);
+      return;
+    }
+
+    const bookingId = reservation._id;
+    const controller = new AbortController();
+    const fetchContract = async () => {
+      setContractLoading(true);
+      try {
+        const params = new URLSearchParams({
+          bookingId,
+          limit: "1",
+        });
+        const res = await fetch(`/api/admin/contracts?${params.toString()}`, {
+          headers: clientAuthHeaders(),
+          signal: controller.signal,
+        });
+        const payload = await res.json();
+        if (!payload.success) throw new Error(payload.error || "Request failed");
+        setActionContract(Array.isArray(payload.data) ? payload.data[0] || null : null);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setActionContract(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setContractLoading(false);
+      }
+    };
+
+    void fetchContract();
+    return () => controller.abort();
+  }, [isOpen, reservation?._id, reservation?.status]);
 
   if (!isOpen || !reservation) return null;
 
@@ -210,8 +256,8 @@ function ReservationStepManagerModal({
     : "Not selected";
   const canAssignVehicle =
     reservation.status === "deposit_paid" ||
-    deposit?.option === "office" ||
-    reservation.reservationType === "Office";
+    deposit?.status === "paid" ||
+    deposit?.option === "office";
 
   const nextButtons: Partial<
     Record<
@@ -271,6 +317,16 @@ function ReservationStepManagerModal({
     "deposit_review",
     "refund_processing",
   ].includes(reservation.status);
+  const downloadActionContract = (
+    kind: "source" | "signed" | "certificate" = "source",
+  ) => {
+    if (!actionContract) return;
+    const token = localStorage.getItem("token") || "";
+    window.open(
+      `/api/admin/contracts/${actionContract._id}/document?type=${kind}&token=${encodeURIComponent(token)}`,
+      "_blank",
+    );
+  };
 
   return (
     <>
@@ -346,24 +402,30 @@ function ReservationStepManagerModal({
               })}
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-white">
-                  Reservation data
-                </p>
-                <p className="mt-1 text-xs text-gray-400">
-                  Review customer, vehicle, dates, licence and payment details
-                  without leaving this action menu.
-                </p>
+            {(contractLoading || actionContract) && (
+              <div className="mt-3 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    Contract document
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {contractLoading
+                      ? "Checking contract document..."
+                      : `Contract ${actionContract?.contractNumber || ""} is available for this reservation.`}
+                  </p>
+                </div>
+                {actionContract?.files.source && (
+                  <button
+                    type="button"
+                    onClick={() => downloadActionContract("source")}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                  >
+                    <FiDownload />
+                    Download contract
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setIsReservationDetailsOpen(true)}
-                className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
-              >
-                View reservation data
-              </button>
-            </div>
+            )}
           </div>
 
           {reservation.status === "pending" && (
@@ -378,10 +440,12 @@ function ReservationStepManagerModal({
                 </p>
                 <button
                   disabled={isSubmitting}
-                  onClick={() => onStatusChange(reservation, "confirmed")}
+                  onClick={() =>
+                    onStatusChange(reservation, "deposit_pending")
+                  }
                   className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
                 >
-                  Confirm booking
+                  {isSubmitting ? "Confirming..." : "Confirm booking"}
                 </button>
               </div>
 
@@ -432,42 +496,52 @@ function ReservationStepManagerModal({
                 <DepositVerificationBadge reservation={reservation} />
               </div>
 
-              {reservation.status === "confirmed" && (
-                <button
-                  disabled={isSubmitting}
-                  onClick={() => onStatusChange(reservation, "deposit_pending")}
-                  className="mt-4 rounded-xl bg-[#fe9a00]/20 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/30 disabled:opacity-50"
-                >
-                  Move to deposit request
-                </button>
-              )}
-
               {deposit?.receiptUrl && (
                 <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#fe9a00]">
-                    Uploaded receipt
-                  </p>
-                  <a
-                    href={deposit.receiptUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-flex text-sm font-bold text-white hover:text-[#fe9a00] hover:underline"
-                  >
-                    View uploaded receipt
-                  </a>
-                  {deposit.receiptUploadedAt && (
-                    <p className="mt-1 text-xs text-gray-400">
-                      Uploaded{" "}
-                      {new Date(deposit.receiptUploadedAt).toLocaleString(
-                        "en-GB",
+                  <div className="flex items-center gap-3">
+                    {isImageFileUrl(deposit.receiptUrl) ? (
+                      <button
+                        type="button"
+                        onClick={() => setReceiptPreviewUrl(deposit.receiptUrl!)}
+                        className="group relative h-20 w-24 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-black/30"
+                        aria-label="Preview uploaded receipt"
+                      >
+                        <img
+                          src={deposit.receiptUrl}
+                          alt="Uploaded deposit receipt"
+                          className="h-full w-full object-cover transition group-hover:scale-105"
+                        />
+                        <span className="absolute inset-x-0 bottom-0 bg-black/70 py-1 text-center text-[10px] font-bold text-white">
+                          View receipt
+                        </span>
+                      </button>
+                    ) : (
+                      <a
+                        href={deposit.receiptUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex h-20 w-24 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/30 px-2 text-center text-xs font-bold text-[#fe9a00]"
+                      >
+                        View receipt file
+                      </a>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#fe9a00]">
+                        Receipt awaiting review
+                      </p>
+                      {deposit.receiptUploadedAt && (
+                        <p className="mt-1 text-xs text-gray-400">
+                          Uploaded{" "}
+                          {new Date(deposit.receiptUploadedAt).toLocaleString("en-GB")}
+                        </p>
                       )}
-                    </p>
-                  )}
-                  {deposit.transactionRef && (
-                    <p className="mt-1 text-xs text-gray-400">
-                      Ref: {deposit.transactionRef}
-                    </p>
-                  )}
+                      {deposit.transactionRef && (
+                        <p className="mt-1 truncate text-xs text-gray-400">
+                          Ref: {deposit.transactionRef}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -537,6 +611,7 @@ function ReservationStepManagerModal({
                     placeholder={
                       loadingVehicles ? "Loading vehicles..." : "Select vehicle"
                     }
+                    disabled={isSubmitting}
                   />
                   {!loadingVehicles && vehicles.length === 0 && (
                     <p className="text-xs text-yellow-300">
@@ -548,7 +623,9 @@ function ReservationStepManagerModal({
                     onClick={() => onAssignVehicle(reservation)}
                     className="w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
                   >
-                    Assign vehicle & generate contract
+                    {isSubmitting
+                      ? "Assigning vehicle & creating contract..."
+                      : "Assign vehicle & generate contract"}
                   </button>
                 </div>
               </div>
@@ -564,6 +641,16 @@ function ReservationStepManagerModal({
                 in DocuSign. When DocuSign confirms completion, the status will
                 update to signed.
               </p>
+              {actionContract?.files.source && (
+                <button
+                  type="button"
+                  onClick={() => downloadActionContract("source")}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                >
+                  <FiDownload />
+                  Download contract
+                </button>
+              )}
             </div>
           )}
 
@@ -595,6 +682,27 @@ function ReservationStepManagerModal({
         onClose={() => setIsReservationDetailsOpen(false)}
         layerClassName="z-[80]"
       />
+      {receiptPreviewUrl && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b1224] p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="font-bold text-white">Deposit receipt</p>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewUrl(null)}
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={receiptPreviewUrl}
+              alt="Deposit receipt preview"
+              className="max-h-[76vh] w-full rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1302,11 +1410,6 @@ export default function ReservationsManagement() {
         updateData.cancelReason = cancelReason.trim();
       }
 
-      // If status is completed or canceled, unassign the vehicle
-      if (newStatus === "completed" || newStatus === "canceled") {
-        updateData.vehicle = null;
-      }
-
       const res = await fetch(`/api/reservations/${selectedReservation._id}`, {
         method: "PATCH",
         headers: clientAuthHeaders(true),
@@ -1315,25 +1418,6 @@ export default function ReservationsManagement() {
 
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Update failed");
-
-      // If unassigning vehicle, set it to available
-      if (
-        (newStatus === "completed" || newStatus === "canceled") &&
-        selectedReservation.vehicle
-      ) {
-        const vehicleId =
-          typeof selectedReservation.vehicle === "string"
-            ? selectedReservation.vehicle
-            : selectedReservation.vehicle._id;
-        const vehicleRes = await fetch(`/api/vehicles/${vehicleId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ available: true }),
-        });
-        const vehicleData = await vehicleRes.json();
-        if (!vehicleData.success)
-          throw new Error(vehicleData.error || "Vehicle update failed");
-      }
 
       showToast.success("Status updated successfully!");
       setIsStatusOpen(false);
@@ -1434,10 +1518,6 @@ export default function ReservationsManagement() {
     setIsSubmitting(true);
     try {
       const updateData: Record<string, unknown> = { status, ...extra };
-      if (status === "completed" || status === "canceled") {
-        updateData.vehicle = null;
-      }
-
       const res = await fetch(`/api/reservations/${reservation._id}`, {
         method: "PATCH",
         headers: clientAuthHeaders(true),
@@ -1445,21 +1525,6 @@ export default function ReservationsManagement() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Update failed");
-
-      if ((status === "completed" || status === "canceled") && reservation.vehicle) {
-        const vehicleId =
-          typeof reservation.vehicle === "string"
-            ? reservation.vehicle
-            : reservation.vehicle._id;
-        const vehicleRes = await fetch(`/api/vehicles/${vehicleId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ available: true }),
-        });
-        const vehicleData = await vehicleRes.json();
-        if (!vehicleData.success)
-          throw new Error(vehicleData.error || "Vehicle update failed");
-      }
 
       setSelectedReservation(data.data);
       setStepManagerReservation(data.data);
@@ -1473,7 +1538,7 @@ export default function ReservationsManagement() {
   };
 
   const handleStepAssignVehicle = async (reservation: Reservation) => {
-    if (!reservation?._id || !newVehicle) return;
+    if (isSubmitting || !reservation?._id || !newVehicle) return;
 
     setIsSubmitting(true);
     try {
@@ -1482,7 +1547,7 @@ export default function ReservationsManagement() {
         headers: clientAuthHeaders(true),
         body: JSON.stringify({
           vehicle: newVehicle,
-          status: "delivered",
+          status: "contract_pending",
         }),
       });
       const data = await res.json();
@@ -1490,7 +1555,7 @@ export default function ReservationsManagement() {
 
       const vehicleRes = await fetch(`/api/vehicles/${newVehicle}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ available: false }),
       });
       const vehicleData = await vehicleRes.json();
@@ -1500,7 +1565,7 @@ export default function ReservationsManagement() {
       setSelectedReservation(data.data);
       setStepManagerReservation(data.data);
       await mutateRef.current?.();
-      showToast.success("Vehicle assigned and contract generated");
+      showToast.success("Vehicle assigned and contract sent for signing");
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : "Update failed");
     } finally {
@@ -2884,7 +2949,7 @@ export default function ReservationsManagement() {
                             `/api/vehicles/${newVehicle}`,
                             {
                               method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
+                              headers: clientAuthHeaders(true),
                               body: JSON.stringify({ available: false }),
                             },
                           );

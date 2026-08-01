@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import connect from "@/lib/data";
 import Vehicle from "@/model/vehicle";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { requireAuth } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
  
 
 export async function GET(req: NextRequest) {
@@ -26,13 +28,13 @@ export async function GET(req: NextRequest) {
     const sortOrderParam = searchParams.get("sortOrder");
     
     // حفظ لاجیک قبلی: اگر سورتی ارسال نشد، بر اساس title سورت شود
-    const sortObj: any = sortBy 
-      ? { [sortBy]: sortOrderParam === "desc" ? -1 : 1 } 
+    const sortObj: Record<string, 1 | -1> = sortBy
+      ? { [sortBy]: sortOrderParam === "desc" ? -1 : 1 }
       : { title: 1 };
 
     const skip = (page - 1) * limit;
 
-    let query: any = {};
+    const query: Record<string, unknown> = {};
 
     // Text search
     if (title) query.title = { $regex: title, $options: "i" };
@@ -51,15 +53,16 @@ export async function GET(req: NextRequest) {
 
     // ✅ فیلتر تاریخ (بدون مشکل Timezone)
     if (createdAtStart || createdAtEnd) {
-      query.createdAt = {};
+      const createdAtFilter: { $gte?: Date; $lte?: Date } = {};
       if (createdAtStart) {
         const [y, m, d] = createdAtStart.split('-').map(Number);
-        query.createdAt.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
+        createdAtFilter.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
       }
       if (createdAtEnd) {
         const [y, m, d] = createdAtEnd.split('-').map(Number);
-        query.createdAt.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
+        createdAtFilter.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
       }
+      query.createdAt = createdAtFilter;
     }
 
     const vehicles = await Vehicle.find(query)
@@ -89,12 +92,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return errorResponse("Admin access is required", 403);
+    }
     await connect();
     const body = await req.json();
     const vehicle = await Vehicle.create(body);
     await vehicle.populate("category");
     return successResponse(vehicle, 201);
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 400);
   }

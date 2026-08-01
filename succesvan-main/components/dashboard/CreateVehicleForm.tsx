@@ -11,7 +11,20 @@ import { Category, Office, Vehicle } from "@/types/type";
 import DynamicTableView from "./DynamicTableView";
 import CustomSelect from "@/components/ui/CustomSelect";
 import { datePickerStyles } from "../global/DatePickerStyles";
+import { clientAuthHeaders } from "@/lib/client-auth";
 type MutateFn = () => Promise<void>;
+
+type DashboardVehicleRecord = Omit<Vehicle, "category" | "gear" | "number"> & {
+  category: string | { _id?: string; name?: string };
+  office?: string | { _id?: string; name?: string };
+  reservation?: string | { _id?: string };
+  number: string | number;
+  gear: {
+    availableTypes: Array<
+      "automatic" | "manual" | { gearType: "automatic" | "manual" }
+    >;
+  };
+};
 
 export default function VehiclesContent() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -176,24 +189,26 @@ export default function VehiclesContent() {
     setEditingId(null);
   };
 
-  const handleEdit = (item: Vehicle) => {
+  const handleEdit = (item: DashboardVehicleRecord) => {
     const categoryId =
       typeof item.category === "string"
         ? item.category
-        : (item.category as any)?._id || "";
+        : item.category?._id || "";
     const officeId =
-      typeof (item as any).office === "string"
-        ? (item as any).office
-        : (item as any).office?._id || "";
+      typeof item.office === "string"
+        ? item.office
+        : item.office?._id || "";
     const reservationId =
-      (item as any).reservation?._id || (item as any).reservation || "";
+      typeof item.reservation === "string"
+        ? item.reservation
+        : item.reservation?._id || "";
 
     setFormData({
       title: item.title,
       description: item.description,
-      number: (item as any).number || "",
-      color: (item as any).color || "",
-      keyNumber: (item as any).keyNumber || "",
+      number: String(item.number || ""),
+      color: item.color || "",
+      keyNumber: item.keyNumber || "",
       category: categoryId,
       office: officeId,
       reservation: reservationId,
@@ -202,7 +217,7 @@ export default function VehiclesContent() {
       available: item.available ?? true, // ← Handle available field
       gear: {
         availableTypes: (item.gear?.availableTypes || [])
-          .map((t: any) => (typeof t === "string" ? t : t.gearType))
+          .map((type) => (typeof type === "string" ? type : type.gearType))
           .filter(Boolean),
       },
       serviceHistory: {
@@ -213,13 +228,13 @@ export default function VehiclesContent() {
         service: item.serviceHistory?.service ? new Date(item.serviceHistory.service) : new Date(),
         adBlue: item.serviceHistory?.adBlue ? new Date(item.serviceHistory.adBlue) : new Date(),
       },
-      status: (item as any).status || "active",
+      status: item.status || "active",
     });
     setEditingId(item._id || null);
     setIsFormOpen(true);
   };
 
-  const handleStatusToggle = async (item: any) => {
+  const handleStatusToggle = async (item: DashboardVehicleRecord) => {
     try {
       if (!item._id) {
         throw new Error("Vehicle ID is missing");
@@ -230,7 +245,7 @@ export default function VehiclesContent() {
 
       const res = await fetch(`/api/vehicles/${item._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -256,7 +271,7 @@ export default function VehiclesContent() {
     }
   };
 
-  const handleAvailabilityToggle = async (item: Vehicle) => {
+  const handleAvailabilityToggle = async (item: DashboardVehicleRecord) => {
     try {
       if (!item._id) {
         throw new Error("Vehicle ID is missing");
@@ -267,7 +282,7 @@ export default function VehiclesContent() {
 
       const res = await fetch(`/api/vehicles/${item._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({ available: nextAvailable }),
       });
 
@@ -326,7 +341,7 @@ export default function VehiclesContent() {
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify(payload),
       });
 
@@ -653,7 +668,7 @@ export default function VehiclesContent() {
         </div>
       )}
 
-      <DynamicTableView<Vehicle>
+      <DynamicTableView<DashboardVehicleRecord>
         apiEndpoint="/api/vehicles"
         hideDelete={true}
         filters={[
@@ -675,31 +690,46 @@ export default function VehiclesContent() {
           { key: "title", label: "Brand" },
           { key: "number", label: "Number" },
           {
-            key: "color" as any,
+            key: "color",
             label: "Color",
             render: (value) => value || "-",
           },
           {
-            key: "keyNumber" as any,
+            key: "keyNumber",
             label: "Key Number",
             render: (value) => value || "-",
           },
           {
-            key: "office" as any,
+            key: "office",
             label: "Office",
-            render: (value) => value?.name || "-",
+            render: (value) => {
+              const office = value as DashboardVehicleRecord["office"];
+              return typeof office === "string" ? office : office?.name || "-";
+            },
           },
           {
-            key: "category" as any,
+            key: "category",
             label: "category",
-            render: (value) => value?.name || "-",
+            render: (value) => {
+              const category = value as DashboardVehicleRecord["category"];
+              return typeof category === "string"
+                ? category
+                : category?.name || "-";
+            },
           },
           {
-            key: "gear" as any,
+            key: "gear",
             label: "Gearbox",
-            render: (value) =>
-              value?.availableTypes?.map((t: any) => t.gearType).join(", ") ||
-              "-",
+            render: (value) => {
+              const gear = value as DashboardVehicleRecord["gear"];
+              return (
+                gear?.availableTypes
+                  ?.map((type) =>
+                    typeof type === "string" ? type : type.gearType,
+                  )
+                  .join(", ") || "-"
+              );
+            },
           },
           {
             key: "needsService",
@@ -709,7 +739,7 @@ export default function VehiclesContent() {
           {
             key: "available",
             label: "Available",
-            render: (value: boolean, item?: Vehicle) => {
+            render: (value: boolean, item?: DashboardVehicleRecord) => {
               const isAvailable = value ?? true;
               const isBusy = Boolean(item?._id && availabilityBusyId === item._id);
 

@@ -22,13 +22,13 @@ export interface WorkingTimeExtension {
 
 export interface WorkingTime {
   day:
-  | "monday"
-  | "tuesday"
-  | "wednesday"
-  | "thursday"
-  | "friday"
-  | "saturday"
-  | "sunday";
+    | "monday"
+    | "tuesday"
+    | "wednesday"
+    | "thursday"
+    | "friday"
+    | "saturday"
+    | "sunday";
   isOpen: boolean;
   startTime?: string;
   endTime?: string;
@@ -219,7 +219,21 @@ export interface AddOn {
   name: string;
   description?: string;
   pricingType: "flat" | "tiered";
-  flatPrice?: number;
+  flatPrice?:
+    | number
+    | {
+        amount?: number;
+        isPerDay?: boolean;
+      };
+  tieredPrice?: {
+    isPerDay?: boolean;
+    tiers?: Array<{
+      minDays: number;
+      maxDays: number;
+      price: number;
+    }>;
+  };
+  // Legacy shape retained for older populated reservations.
   tiers?: Array<{
     minDays: number;
     maxDays: number;
@@ -237,6 +251,14 @@ export interface Reservation {
   office?: any;
   category?: any;
   vehicle?: any;
+  vehicleSnapshot?: {
+    vehicleId?: string;
+    title?: string;
+    number?: string;
+    keyNumber?: string;
+    color?: string;
+    assignedAt?: Date | string;
+  };
   startDate: Date;
   endDate: Date;
   startDateDisplay?: string;
@@ -297,6 +319,7 @@ export interface Reservation {
     keyCount?: number;
     equipment?: string[];
     customFields?: {
+      templateFieldId?: string;
       label?: string;
       fieldType?: "input" | "file";
       inputType?: string;
@@ -318,6 +341,7 @@ export interface Reservation {
     photos?: string[];
     notes?: string;
     customFields?: {
+      templateFieldId?: string;
       label?: string;
       fieldType?: "input" | "file";
       inputType?: string;
@@ -359,9 +383,13 @@ export interface DynamicTableViewProps<T> {
   columns: {
     key: keyof T;
     label: string;
-    render?: (value: any, item?: T, index?: number, pagination?: Pagination) => React.ReactNode;
+    render?: (
+      value: any,
+      item?: T,
+      index?: number,
+      pagination?: Pagination,
+    ) => React.ReactNode;
     sortable?: boolean; // ✅ اضافه شد - default: true
-
   }[];
   onEdit?: (item: T) => void;
   /** Optional additional class(es) to apply to the edit button (e.g. "mt-2") */

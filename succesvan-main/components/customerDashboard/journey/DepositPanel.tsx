@@ -21,7 +21,9 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-sm py-1">
       <span className="text-gray-400">{label}</span>
-      <span className="text-white font-semibold text-right">{value ?? "-"}</span>
+      <span className="text-white font-semibold text-right">
+        {value ?? "-"}
+      </span>
     </div>
   );
 }
@@ -70,6 +72,11 @@ export default function DepositPanel({
   const awaitingVerification =
     deposit?.status === "pending" && Boolean(deposit?.receiptUrl);
   const payAtOfficeSelected = deposit?.option === "office";
+  const hasCardNumber = Boolean(DEPOSIT_PAYMENT_DETAILS.cardNumber);
+  const hasBankAccount = Boolean(
+    DEPOSIT_PAYMENT_DETAILS.sortCode && DEPOSIT_PAYMENT_DETAILS.accountNumber,
+  );
+  const transferDetailsAvailable = hasCardNumber || hasBankAccount;
 
   const optionAmount = (option: DepositOption) =>
     option === "full"
@@ -78,14 +85,20 @@ export default function DepositPanel({
         ? (config?.securePayPrice ?? 0)
         : (config?.officePayPrice ?? 0);
 
-  const copyCardNumber = () => {
-    navigator.clipboard.writeText(
-      DEPOSIT_PAYMENT_DETAILS.cardNumber.replace(/\s/g, ""),
-    );
-    showToast.success("Card number copied!");
+  const copyPaymentValue = (value: string, label: string) => {
+    navigator.clipboard.writeText(value.replace(/\s/g, ""));
+    showToast.success(`${label} copied`);
   };
 
   const handleReceiptSelect = async (selectedFile: File | null) => {
+    if (!transferDetailsAvailable) {
+      setFile(null);
+      setReceiptUrl(undefined);
+      showToast.error(
+        "Payment details are not configured. Please contact support or pay at the office.",
+      );
+      return;
+    }
     setFile(selectedFile);
     setReceiptUrl(undefined);
     if (!selectedFile) return;
@@ -115,6 +128,12 @@ export default function DepositPanel({
   const handleSubmit = async () => {
     if (!selected) {
       showToast.error("Please choose a deposit option");
+      return;
+    }
+    if (selected !== "office" && !transferDetailsAvailable) {
+      showToast.error(
+        "Payment details are not configured. Please contact support or pay at the office.",
+      );
       return;
     }
     if (selected !== "office" && !receiptUrl) {
@@ -220,7 +239,8 @@ export default function DepositPanel({
           {payAtOfficeSelected && !settled && !awaitingVerification && (
             <div className="flex items-center gap-2 bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3 mb-3 text-sm text-[#fe9a00]">
               <FiClock className="shrink-0" />
-              Pay-at-office selected. You’ll pay at collection before signing and handover.
+              Pay-at-office selected. You’ll pay at collection before signing
+              and handover.
             </div>
           )}
           {awaitingVerification && (
@@ -232,10 +252,19 @@ export default function DepositPanel({
           {settled && (
             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-3 text-sm text-green-400">
               <FiCheckCircle className="shrink-0" />
-              Deposit {deposit?.status === "paid" ? "received" : deposit?.status?.replace(/_/g, " ")}.
+              Deposit{" "}
+              {deposit?.status === "paid"
+                ? "received"
+                : deposit?.status?.replace(/_/g, " ")}
+              .
             </div>
           )}
-          <Row label="Option" value={deposit?.option ? DEPOSIT_OPTION_LABELS[deposit.option] : "-"} />
+          <Row
+            label="Option"
+            value={
+              deposit?.option ? DEPOSIT_OPTION_LABELS[deposit.option] : "-"
+            }
+          />
           <Row label="Amount" value={`£${deposit?.amount ?? 0}`} />
           {(deposit?.discountPercent ?? 0) > 0 && (
             <Row
@@ -316,9 +345,7 @@ export default function DepositPanel({
               <span className="text-white font-semibold text-sm">
                 {option.title}
               </span>
-              <span className="text-[#fe9a00] font-black">
-                £{option.price}
-              </span>
+              <span className="text-[#fe9a00] font-black">£{option.price}</span>
             </div>
             <p className="text-gray-400 text-xs mt-1">{option.note}</p>
             {option.badge && (
@@ -333,33 +360,110 @@ export default function DepositPanel({
       {/* Bank details + receipt upload for transfer options */}
       {selected && selected !== "office" && (
         <>
-          <div className="bg-black/20 border border-white/10 rounded-xl p-4">
-            <p className="text-gray-400 text-xs mb-2">
-              Transfer{" "}
-              <span className="text-[#fe9a00] font-black">
-                £{optionAmount(selected)}
-              </span>{" "}
-              to this card, then upload your payment receipt:
-            </p>
-            <div className="flex items-center justify-between gap-2 bg-black/20 border border-white/10 rounded-lg p-3">
-              <div>
-                <p className="text-white font-black tracking-wider">
-                  {DEPOSIT_PAYMENT_DETAILS.cardNumber}
+          {transferDetailsAvailable ? (
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="mb-2 text-xs text-gray-400">
+                Make a direct transfer of{" "}
+                <span className="font-black text-[#fe9a00]">
+                  £{optionAmount(selected)}
+                </span>{" "}
+                using the details below, then upload your receipt.
+              </p>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                  Account holder
                 </p>
-                <p className="text-gray-400 text-xs mt-0.5">
+                <p className="mt-0.5 text-sm font-semibold text-white">
                   {DEPOSIT_PAYMENT_DETAILS.accountName}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={copyCardNumber}
-                className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors cursor-pointer"
-                title="Copy card number"
-              >
-                <FiCopy />
-              </button>
+              {hasCardNumber && (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                      Card number
+                    </p>
+                    <p className="font-black tracking-wider text-white">
+                      {DEPOSIT_PAYMENT_DETAILS.cardNumber}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyPaymentValue(
+                        DEPOSIT_PAYMENT_DETAILS.cardNumber,
+                        "Card number",
+                      )
+                    }
+                    className="cursor-pointer rounded-lg bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+                    title="Copy card number"
+                  >
+                    <FiCopy />
+                  </button>
+                </div>
+              )}
+              {hasBankAccount && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                        Sort code
+                      </p>
+                      <p className="mt-0.5 font-semibold text-white">
+                        {DEPOSIT_PAYMENT_DETAILS.sortCode}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyPaymentValue(
+                          DEPOSIT_PAYMENT_DETAILS.sortCode,
+                          "Sort code",
+                        )
+                      }
+                      className="rounded-lg bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+                      title="Copy sort code"
+                    >
+                      <FiCopy />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                        Account number
+                      </p>
+                      <p className="mt-0.5 font-semibold text-white">
+                        {DEPOSIT_PAYMENT_DETAILS.accountNumber}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyPaymentValue(
+                          DEPOSIT_PAYMENT_DETAILS.accountNumber,
+                          "Account number",
+                        )
+                      }
+                      className="rounded-lg bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+                      title="Copy account number"
+                    >
+                      <FiCopy />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="rounded-xl border border-[#fe9a00]/35 bg-[#fe9a00]/10 p-4">
+              <p className="text-sm font-bold text-[#fe9a00]">
+                Direct-transfer payment is unavailable
+              </p>
+              <p className="mt-1 text-xs leading-5 text-gray-300">
+                Payment details are not configured. Please contact support or
+                choose Pay at Office.
+              </p>
+            </div>
+          )}
 
           <label className="block">
             <span className="text-white text-sm font-semibold mb-2 flex items-center gap-2">
@@ -368,9 +472,11 @@ export default function DepositPanel({
             <input
               type="file"
               accept="image/*,.pdf"
-              disabled={uploadingReceipt || submitting}
+              disabled={
+                !transferDetailsAvailable || uploadingReceipt || submitting
+              }
               onChange={(e) => handleReceiptSelect(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-gray-400 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#fe9a00]/20 file:text-[#fe9a00] file:font-semibold file:cursor-pointer cursor-pointer"
+              className="w-full cursor-pointer text-sm text-gray-400 disabled:cursor-not-allowed disabled:opacity-50 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#fe9a00]/20 file:px-4 file:py-2 file:font-semibold file:text-[#fe9a00]"
             />
             {uploadingReceipt && (
               <p className="mt-1 text-xs font-semibold text-[#fe9a00]">
@@ -396,14 +502,20 @@ export default function DepositPanel({
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={submitting || uploadingReceipt}
+          disabled={
+            submitting ||
+            uploadingReceipt ||
+            (selected !== "office" && !transferDetailsAvailable)
+          }
           className="w-full px-4 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 cursor-pointer"
         >
           {submitting
             ? "Submitting..."
-            : selected === "office"
-              ? "Confirm — I'll pay at the office"
-              : "Submit receipt"}
+            : selected !== "office" && !transferDetailsAvailable
+              ? "Direct transfer unavailable"
+              : selected === "office"
+                ? "Confirm — I'll pay at the office"
+                : "Submit receipt"}
         </button>
       )}
       {receiptPreviewModal}

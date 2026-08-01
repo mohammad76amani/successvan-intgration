@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FiLock, FiZap } from "react-icons/fi";
+import { FiZap } from "react-icons/fi";
 import type { ReservationNextAction } from "@/types/reservation-journey";
 
 export default function NextActionCard({
@@ -29,18 +29,20 @@ export default function NextActionCard({
   );
 
   return (
-    <div
-      className={`rounded-2xl p-5 border shadow-sm ${
+    <aside
+      className={`self-start rounded-xl border p-4 ${
         highlight
-          ? "bg-[#fe9a00]/10 border-[#fe9a00]/40"
-          : "bg-white/5 border-white/10"
+          ? "border-[#fe9a00]/35 bg-[#fe9a00]/10"
+          : "border-white/10 bg-black/15"
       }`}
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-              highlight ? "bg-[#fe9a00] text-white" : "bg-white/10 text-gray-300"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+              highlight
+                ? "bg-[#fe9a00] text-white"
+                : "bg-white/10 text-gray-300"
             }`}
           >
             <FiZap />
@@ -49,8 +51,10 @@ export default function NextActionCard({
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-400">
               Next Action
             </p>
-            <h3 className="text-white font-black mt-1">{action.title}</h3>
-            <p className="text-gray-300 text-sm mt-1 leading-relaxed">
+            <h3 className="mt-1 text-sm font-black text-white sm:text-base">
+              {action.title}
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-gray-300 sm:text-sm">
               {action.description}
             </p>
           </div>
@@ -73,11 +77,7 @@ export default function NextActionCard({
         {action.buttonLabel && action.disabled && (
           <div className="shrink-0">{button}</div>
         )}
-        <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-400">
-          <FiLock className="text-gray-500" />
-          Secure payment
-        </p>
       </div>
-    </div>
+    </aside>
   );
 }

@@ -4,6 +4,12 @@ import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
+import {
+  cancelRefundDueOwnerNotifications,
+  scheduleRefundDueOwnerNotifications,
+} from "@/lib/notification-scheduler";
+import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
+import Vehicle from "@/model/vehicle";
 
 const money = (value: unknown) => Math.max(0, Number(value) || 0);
 
@@ -58,6 +64,15 @@ export async function POST(
       return errorResponse("Refund reference is required", 400);
     }
 
+    let expectedBy = existing.refund?.expectedBy;
+    if (body.action === "approve") {
+      const expectedDay = parseStorageDate(String(body.expectedBy || ""));
+      if (!expectedDay) {
+        return errorResponse("Expected refund date is required", 400);
+      }
+      expectedBy = new Date(createLondonDateTime(expectedDay, "23:59"));
+    }
+
     const reservation = await Reservation.findByIdAndUpdate(
       id,
       {
@@ -75,7 +90,7 @@ export async function POST(
               ? body.evidence.filter(Boolean)
               : [],
             reference: String(body.reference || "").trim(),
-            expectedBy: body.expectedBy ? new Date(body.expectedBy) : undefined,
+            expectedBy,
             approvedAt: body.action === "approve" ? now : existing.refund?.approvedAt,
             processedAt: body.action === "complete" ? now : undefined,
           },
@@ -96,6 +111,23 @@ export async function POST(
       },
       { new: true, runValidators: true },
     );
+
+    if (!reservation) return errorResponse("Reservation not found", 404);
+
+    if (body.action === "approve") {
+      await scheduleRefundDueOwnerNotifications(id);
+    } else if (body.action === "complete") {
+      const linkedVehicleId =
+        existing.vehicle || existing.vehicleSnapshot?.vehicleId;
+      if (linkedVehicleId) {
+        await Vehicle.findByIdAndUpdate(linkedVehicleId, {
+          $set: { available: true },
+          $unset: { reservation: 1 },
+        });
+      }
+      await cancelRefundDueOwnerNotifications(id);
+    }
+
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

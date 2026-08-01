@@ -44,6 +44,19 @@ const reservationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vehicle",
     },
+    // Immutable-at-assignment history used when the live vehicle is later
+    // renamed or removed. Existing reservations remain valid without it.
+    vehicleSnapshot: {
+      vehicleId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Vehicle",
+      },
+      title: { type: String, trim: true },
+      number: { type: String, trim: true },
+      keyNumber: { type: String, trim: true },
+      color: { type: String, trim: true },
+      assignedAt: { type: Date },
+    },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     startDateDisplay: { type: String }, // Date as YYYY-MM-DD (what user sees)
@@ -130,6 +143,7 @@ const reservationSchema = new mongoose.Schema(
       equipment: [{ type: String, trim: true }],
       customFields: [
         {
+          templateFieldId: { type: String, trim: true },
           label: { type: String, trim: true },
           fieldType: { type: String, enum: ["input", "file"] },
           inputType: { type: String },
@@ -153,6 +167,7 @@ const reservationSchema = new mongoose.Schema(
       notes: { type: String, trim: true },
       customFields: [
         {
+          templateFieldId: { type: String, trim: true },
           label: { type: String, trim: true },
           fieldType: { type: String, enum: ["input", "file"] },
           inputType: { type: String },
@@ -185,7 +200,7 @@ const reservationSchema = new mongoose.Schema(
       processedAt: { type: Date },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Generate a unique order code on creation. Retries on the (extremely unlikely)

@@ -89,5 +89,6 @@ export interface ReservationJourneyViewModel {
     refundAmount: number;
     status: RefundStatus;
     reference?: string;
+    expectedBy?: string;
   };
 }

@@ -10,6 +10,16 @@ import { requireAuth, verifyToken } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { formatDateInputInLondon } from "@/lib/englandTime";
 import { normalizeReservationStatus } from "@/lib/reservation-status";
+import type { PipelineStage } from "mongoose";
+
+type NumberRangeFilter = { $gte?: number; $lte?: number };
+type DateRangeFilter = { $gte?: Date; $lte?: Date };
+type ReservationFilter = Record<string, unknown> & {
+  totalPrice?: NumberRangeFilter;
+  startDate?: DateRangeFilter;
+  endDate?: DateRangeFilter;
+  createdAt?: DateRangeFilter;
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,6 +33,7 @@ export async function GET(req: NextRequest) {
     const phone = searchParams.get("phone");
     const category = searchParams.get("category");
     const office = searchParams.get("office");
+    const vehicle = searchParams.get("vehicle");
     const totalPriceMin = searchParams.get("totalPriceMin");
     const totalPriceMax = searchParams.get("totalPriceMax");
     const startDateRange = searchParams.get("startDateStart");
@@ -38,13 +49,15 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
     const status = searchParams.get("status");
     const statusNe = searchParams.get("status_ne");
+    const history = searchParams.get("history") === "true";
+    const refundDue = searchParams.get("refundDue") === "true";
     // ✅ Sort params
     const sortBy = searchParams.get("sortBy") || "createdAt";
     const sortOrderParam = searchParams.get("sortOrder");
     const sortDirection: 1 | -1 = sortOrderParam === "asc" ? 1 : -1;
     const sortObj: Record<string, 1 | -1> = { [sortBy]: sortDirection };
 
-    const query: any = {};
+    const query: ReservationFilter = {};
     if (canAccessDashboard(auth.role)) {
       if (userId) query.user = userId;
     } else {
@@ -56,52 +69,85 @@ export async function GET(req: NextRequest) {
     if (user) query.user = user;
     if (category) query.category = category;
     if (office) query.office = office;
-    if (status) {
+    if (history) {
+      const requestedHistoryStatus = status
+        ? normalizeReservationStatus(status)
+        : null;
+      query.status = requestedHistoryStatus
+        ? ["completed", "canceled", "expired"].includes(
+            requestedHistoryStatus,
+          )
+          ? requestedHistoryStatus
+          : { $in: [] }
+        : { $in: ["completed", "canceled", "expired"] };
+    } else if (status) {
       query.status = normalizeReservationStatus(status) ?? status;
-    }
-    if (statusNe && !status) {
+    } else if (statusNe) {
       query.status = { $ne: normalizeReservationStatus(statusNe) ?? statusNe };
+    }
+    if (vehicle) {
+      query.$or = [
+        { vehicle },
+        { "vehicleSnapshot.vehicleId": vehicle },
+      ];
+    }
+    if (refundDue) {
+      query.status = "refund_processing";
+      query["refund.status"] = { $in: ["approved", "processing"] };
+      query["refund.expectedBy"] = { $lte: new Date() };
     }
     if (reservationType) query.reservationType = reservationType;
     if (isManualPrice) query.isManualPrice = isManualPrice === "true";
     if (totalPriceMin || totalPriceMax) {
-      query.totalPrice = {};
-      if (totalPriceMin) query.totalPrice.$gte = parseFloat(totalPriceMin);
-      if (totalPriceMax) query.totalPrice.$lte = parseFloat(totalPriceMax);
+      const totalPriceRange: NumberRangeFilter = {};
+      if (totalPriceMin) totalPriceRange.$gte = parseFloat(totalPriceMin);
+      if (totalPriceMax) totalPriceRange.$lte = parseFloat(totalPriceMax);
+      query.totalPrice = totalPriceRange;
     }
 
     if (startDateRange) {
       const [year, month, day] = startDateRange.split('-').map(Number);
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      query.startDate = { $gte: start };
+      const startDateFilter: DateRangeFilter = { $gte: start };
       if (startDateRangeEnd) {
         const [endYear, endMonth, endDay] = startDateRangeEnd.split('-').map(Number);
         const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-        query.startDate.$lte = end;
+        startDateFilter.$lte = end;
       }
+      query.startDate = startDateFilter;
     }
 
     if (endDateRange) {
       const [year, month, day] = endDateRange.split('-').map(Number);
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      query.endDate = { $gte: start };
+      const endDateFilter: DateRangeFilter = { $gte: start };
       if (endDateRangeEnd) {
         const [endYear, endMonth, endDay] = endDateRangeEnd.split('-').map(Number);
         const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-        query.endDate.$lte = end;
+        endDateFilter.$lte = end;
       }
+      query.endDate = endDateFilter;
     }
 
     if (createdAtStart || createdAtEnd) {
-      query.createdAt = {};
+      const createdAtFilter: DateRangeFilter = {};
       if (createdAtStart) {
         const [year, month, day] = createdAtStart.split('-').map(Number);
-        query.createdAt.$gte = new Date(year, month - 1, day, 0, 0, 0, 0);
+        createdAtFilter.$gte = new Date(year, month - 1, day, 0, 0, 0, 0);
       }
       if (createdAtEnd) {
         const [endYear, endMonth, endDay] = createdAtEnd.split('-').map(Number);
-        query.createdAt.$lte = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+        createdAtFilter.$lte = new Date(
+          endYear,
+          endMonth - 1,
+          endDay,
+          23,
+          59,
+          59,
+          999,
+        );
       }
+      query.createdAt = createdAtFilter;
     }
 
     let reservations;
@@ -109,7 +155,7 @@ export async function GET(req: NextRequest) {
 
     if (phone) {
       const normalizedPhone = phone.replace(/\D/g, "");
-      const aggregationPipeline: any[] = [
+      const aggregationPipeline: PipelineStage[] = [
         {
           $lookup: {
             from: "users",
@@ -148,6 +194,15 @@ export async function GET(req: NextRequest) {
         { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
         {
           $lookup: {
+            from: "vehicles",
+            localField: "vehicle",
+            foreignField: "_id",
+            as: "vehicle",
+          },
+        },
+        { $unwind: { path: "$vehicle", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
             from: "addons",
             localField: "addOns.addOn",
             foreignField: "_id",
@@ -162,7 +217,7 @@ export async function GET(req: NextRequest) {
 
       reservations = await Reservation.aggregate(aggregationPipeline);
 
-      const countPipeline = [
+      const countPipeline: PipelineStage[] = [
         {
           $lookup: {
             from: "users",
@@ -192,6 +247,7 @@ export async function GET(req: NextRequest) {
         .populate("user", "-password")
         .populate("office")
         .populate("category")
+        .populate("vehicle")
         .populate({ path: "addOns.addOn", model: AddOn })
         // ✅ از sortObj استفاده می‌کنیم
         .sort(sortObj)
@@ -279,10 +335,30 @@ export async function POST(req: NextRequest) {
     }
     console.log(reservationData, "reserve");
 
+    const submittedDeposit =
+      reservationData?.deposit && typeof reservationData.deposit === "object"
+        ? reservationData.deposit
+        : undefined;
+
     const reservation = await Reservation.create({
       ...reservationData,
       user: user._id,
       totalPrice: reservationData.totalPrice || 0,
+      // Creation never confirms, pays, assigns, or contracts a booking. Those
+      // changes belong to the explicit journey actions and their audit trail.
+      status: "pending",
+      vehicle: undefined,
+      vehicleSnapshot: undefined,
+      contract: undefined,
+      ...(submittedDeposit
+        ? {
+            deposit: {
+              amount: submittedDeposit.amount,
+              dueAt: submittedDeposit.dueAt,
+              status: "not_paid",
+            },
+          }
+        : {}),
     });
 
     await reservation.populate([
@@ -308,7 +384,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const admins = await User.find({ role: "admin" });
+    const admins = await User.find({ role: "owner" });
     for (const admin of admins) {
       try {
         await sendSMS(

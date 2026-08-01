@@ -42,6 +42,7 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     anchorUnits: "pixels",
     anchorYOffset: "8",
     anchorXOffset: "0",
+    scaleValue: "0.45",
   });
 
   const fullName = fromObject(docusign.FullName, {
@@ -49,6 +50,8 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     anchorUnits: "pixels",
     anchorYOffset: "0",
     anchorXOffset: "0",
+    fontSize: "Size8",
+    width: "150",
   });
 
   const dateSigned = fromObject(docusign.DateSigned, {
@@ -56,6 +59,8 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     anchorUnits: "pixels",
     anchorYOffset: "0",
     anchorXOffset: "0",
+    fontSize: "Size8",
+    width: "90",
   });
 
   const signer = fromObject(docusign.Signer, {

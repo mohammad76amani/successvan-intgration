@@ -7,6 +7,7 @@ import Reservation from "@/model/reservation";
 import Vehicle from "@/model/vehicle";
 
 type CustomFieldPayload = {
+  templateFieldId?: unknown;
   label?: unknown;
   fieldType?: unknown;
   inputType?: unknown;
@@ -58,8 +59,6 @@ export async function POST(
             existingDamages: Array.isArray(body.existingDamages)
               ? body.existingDamages.filter(Boolean)
               : [],
-            photos: Array.isArray(body.photos) ? body.photos.filter(Boolean) : [],
-            customerSignature: String(body.customerSignature || "").trim(),
             staffSignature: String(body.staffSignature || "").trim(),
             keyCount: Math.max(0, Number(body.keyCount) || 0),
             equipment: Array.isArray(body.equipment)
@@ -67,10 +66,9 @@ export async function POST(
               : [],
             customFields: Array.isArray(body.customFields)
               ? body.customFields
-                  .filter(
-                    (field: CustomFieldPayload) => field && field.label,
-                  )
+                  .filter((field: CustomFieldPayload) => field && field.label)
                   .map((field: CustomFieldPayload) => ({
+                    templateFieldId: String(field.templateFieldId || "").trim(),
                     label: String(field.label || "").trim(),
                     fieldType: field.fieldType === "file" ? "file" : "input",
                     inputType: String(field.inputType || ""),

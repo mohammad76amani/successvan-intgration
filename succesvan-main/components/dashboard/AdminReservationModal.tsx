@@ -1121,8 +1121,9 @@ export default function AdminReservationModal({
           perInvoice: usePerInvoice,
           driverAge: formData.driverAge,
           messege: customerMessage.trim() || "",
-          // Admin-created reservations are auto-confirmed (no self-confirmation needed)
-          status: isAdminMode ? "confirmed" : "pending",
+          // Every new reservation starts in review. Creating it from the admin
+          // dashboard must not skip confirmation or the customer's deposit step.
+          status: "pending",
           addOns: selectedAddOns,
           discountCode: appliedDiscount?.code || null,
           selectedGear: formData.gearType,

@@ -36,6 +36,7 @@ import {
   FiActivity,
   FiZap,
   FiUser,
+  FiArchive,
 } from "react-icons/fi";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import { HiOutlineSparkles } from "react-icons/hi2";
@@ -64,6 +65,8 @@ import BlogManagement from "./BlogManagement";
 import BucketManager from "./BucketManager";
 import TicketsManagement from "./TicketsManagement";
 import ContractsManagement from "./ContractsManagement";
+import ReservationHistory from "./ReservationHistory";
+import { useDueRefunds } from "@/hooks/useDueRefunds";
 import { FiFileText, FiFile } from "react-icons/fi";
 import { useAuth } from "@/context/AuthContext";
 import AdminProfile from "./AdminProfile";
@@ -127,6 +130,12 @@ const menuItems: MenuItem[] = [
     label: "Reserves",
     icon: <FiClipboard />,
     color: "from-indigo-500 to-indigo-600",
+  },
+  {
+    id: "reservation-history",
+    label: "Reservation History",
+    icon: <FiArchive />,
+    color: "from-slate-500 to-slate-700",
   },
   {
     id: "contracts",
@@ -437,6 +446,9 @@ export default function Dashboard() {
           {displayedActiveTab === "addons" && <AddOnsContent />}
           {displayedActiveTab === "discounts" && <DiscountManagement />}
           {displayedActiveTab === "reserves" && <ReservationsManagement />}
+          {displayedActiveTab === "reservation-history" && (
+            <ReservationHistory />
+          )}
           {displayedActiveTab === "contracts" && <ContractsManagement />}
           {displayedActiveTab === "Testimonial" && <TestimonialsManagement />}
           {displayedActiveTab === "contacts" && <ContactsManagement />}
@@ -550,11 +562,20 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
     isLoading: reservationsLoading,
   } = useRecentReservations();
 
-  const { todayActivity, isLoading: fleetLoading } = useFleetStatus() as any;
-
-  const activity = todayActivity ?? { pickups: [], returns: [] };
+  const { todayActivity, isLoading: fleetLoading } = useFleetStatus();
+  const activity = todayActivity as unknown as {
+    pickups: Reservation[];
+    returns: Reservation[];
+  };
 
   const { openTicketsCount } = useOpenTicketsCount();
+  const {
+    dueRefunds,
+    dueRefundsCount,
+    dueRefundsTotal,
+    isLoading: dueRefundsLoading,
+    error: dueRefundsError,
+  } = useDueRefunds();
   const { availableVehicles, isLoading: vehiclesLoading } =
     useAvailableVehicles() as {
       availableVehicles: DashboardVehicle[];
@@ -639,6 +660,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
 
     count += unassignedPickups.length;
     count += actionableReturns.length;
+    count += dueRefundsCount;
 
     if (pendingCount > 0) count += 1;
     if (openTicketsCount > 0) count += 1;
@@ -647,6 +669,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
   }, [
     unassignedPickups.length,
     actionableReturns.length,
+    dueRefundsCount,
     pendingCount,
     openTicketsCount,
   ]);
@@ -689,10 +712,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
   };
 
   // ── Handlers (unchanged) ──────────────────────────────────────
-  const handleCompleteReservation = async (
-    reservationId: string,
-    currentVehicleId?: string,
-  ) => {
+  const handleCompleteReservation = async (reservationId: string) => {
     if (!reservationId) {
       showToast.error("Invalid reservation");
       return;
@@ -701,23 +721,12 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       const patchRes = await fetch(`/api/reservations/${reservationId}`, {
         method: "PATCH",
         headers: clientAuthHeaders(true),
-        body: JSON.stringify({ status: "completed", vehicle: null }),
+        body: JSON.stringify({ status: "completed" }),
       });
       if (!patchRes.ok) {
         const error = await patchRes.json();
         showToast.error(error.message || "Failed to complete reservation");
         return;
-      }
-      if (currentVehicleId) {
-        const pv = await fetch(`/api/vehicles/${currentVehicleId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ available: true }),
-        });
-        if (!pv.ok) {
-          showToast.error("Completed, but failed to free vehicle.");
-          return;
-        }
       }
       showToast.success("Reservation completed!");
       window.location.reload();
@@ -751,7 +760,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       }
       const rRes = await fetch(`/api/reservations/${selectedReservationId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: clientAuthHeaders(true),
         body: JSON.stringify({
           vehicle: selectedVehicleId,
           status: "delivered",
@@ -760,7 +769,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       if (!rRes.ok) {
         await fetch(`/api/vehicles/${selectedVehicleId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: clientAuthHeaders(true),
           body: JSON.stringify({ available: true }),
         });
         showToast.error("Failed to assign vehicle");
@@ -943,7 +952,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       </div>
 
       {/* ═══ 2. SUMMARY BAR ════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         {[
           {
             label: "Today Pickups",
@@ -979,6 +988,16 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             loading: false,
             onClick: () => handleTabChange("tickets"),
           },
+          {
+            label: "Refunds due",
+            value: dueRefundsCount,
+            detail: `£${dueRefundsTotal.toFixed(2)}`,
+            icon: <FiAlertCircle className="w-4 h-4" />,
+            color: "text-red-400",
+            bg: "bg-red-500/10",
+            loading: dueRefundsLoading,
+            onClick: () => handleTabChange("reserves"),
+          },
         ].map((item, i) => (
           <button
             key={i}
@@ -1002,6 +1021,11 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
               <span className="text-[11px] text-white/35 font-medium mt-0.5 truncate block">
                 {item.label}
               </span>
+              {item.detail && (
+                <span className="mt-0.5 block text-[10px] font-semibold text-red-300/80">
+                  {item.detail}
+                </span>
+              )}
             </div>
           </button>
         ))}
@@ -1165,6 +1189,29 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                 <FiChevronRight className="w-4 h-4 text-white/20 group-hover:text-emerald-400 transition-colors shrink-0" />
               </button>
             )}
+            {dueRefundsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => handleTabChange("reserves")}
+                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-red-500/15 bg-red-500/[0.06] p-3 transition-all hover:border-red-500/30"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/15">
+                    <FiAlertCircle className="h-4 w-4 text-red-400" />
+                  </div>
+                  <div className="text-left">
+                    <span className="block text-sm font-semibold text-white">
+                      {dueRefundsCount} deposit refund
+                      {dueRefundsCount !== 1 ? "s" : ""} due
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-white/30">
+                      £{dueRefundsTotal.toFixed(2)} must be processed
+                    </span>
+                  </div>
+                </div>
+                <FiChevronRight className="h-4 w-4 shrink-0 text-white/20 transition-colors group-hover:text-red-400" />
+              </button>
+            )}
             {pendingCount > 0 && (
               <button
                 onClick={() => handleTabChange("reserves")}
@@ -1212,6 +1259,140 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
           </div>
         </div>
       )}
+
+      {/* Due deposit refunds use the same deadline as the customer countdown. */}
+      <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827]">
+        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-400">
+              <FiAlertCircle className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-bold text-white">
+                Deposits to refund
+              </h3>
+              <p className="mt-0.5 text-[11px] text-white/30">
+                Approved refunds whose payment deadline has arrived
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            {!dueRefundsLoading && (
+              <div className="text-right">
+                <span className="block text-sm font-bold text-white">
+                  £{dueRefundsTotal.toFixed(2)}
+                </span>
+                <span className="block text-[10px] text-white/30">
+                  {dueRefundsCount} due
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => handleTabChange("reserves")}
+              className="rounded-lg border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-3 py-1.5 text-xs font-bold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/15"
+            >
+              View reserves
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {dueRefundsLoading ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[1, 2].map((item) => (
+                <Skeleton key={item} className="block h-20 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : dueRefundsError ? (
+            <div className="rounded-xl border border-red-500/10 bg-red-500/[0.04] px-4 py-3 text-sm text-red-300">
+              Due refunds could not be loaded. The dashboard will retry automatically.
+            </div>
+          ) : dueRefunds.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.04] px-4 py-3">
+              <FiCheckCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  No deposit refunds are due
+                </p>
+                <p className="mt-0.5 text-[11px] text-white/30">
+                  Approved refunds will appear here when their deadline arrives.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {dueRefunds.slice(0, 6).map((reservation) => {
+                const customer = [
+                  reservation.user?.name,
+                  reservation.user?.lastName,
+                ]
+                  .filter(Boolean)
+                  .join(" ") || "Customer";
+                const vehicle =
+                  reservation.vehicle || reservation.vehicleSnapshot;
+                const expectedBy = reservation.refund?.expectedBy
+                  ? new Date(reservation.refund.expectedBy)
+                  : null;
+                const londonDay = new Intl.DateTimeFormat("en-CA", {
+                  timeZone: "Europe/London",
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                });
+                const dueToday =
+                  expectedBy &&
+                  londonDay.format(expectedBy) === londonDay.format(new Date());
+
+                return (
+                  <button
+                    key={reservation._id}
+                    type="button"
+                    onClick={() => handleTabChange("reserves")}
+                    className="group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 text-left transition-all hover:border-[#fe9a00]/20 hover:bg-white/[0.04]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-bold text-white">
+                          {reservation.reservationCode || reservation._id}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                            dueToday
+                              ? "bg-orange-500/15 text-orange-300"
+                              : "bg-red-500/15 text-red-300"
+                          }`}
+                        >
+                          {dueToday ? "Due today" : "Overdue"}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-white/55">
+                        {customer} · {vehicle?.title || "Vehicle not recorded"}
+                        {vehicle?.number ? ` · ${vehicle.number}` : ""}
+                      </p>
+                      <p className="mt-1 text-[10px] text-white/25">
+                        Expected {expectedBy
+                          ? expectedBy.toLocaleString("en-GB", {
+                              timeZone: "Europe/London",
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-black text-[#fe9a00]">
+                      £{Number(reservation.refund?.refundAmount || 0).toFixed(2)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ═══ 4. KPI CARDS ══════════════════════════════════════ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1583,10 +1764,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                         {res.status === "delivered" ? (
                           <button
                             onClick={() =>
-                              handleCompleteReservation(
-                                res._id,
-                                res.vehicle?._id,
-                              )
+                              handleCompleteReservation(res._id)
                             }
                             className="px-3.5 py-2 text-xs bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-emerald-600/20 shrink-0"
                           >
@@ -1654,7 +1832,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
               </div>
             ) : (
               <div className="space-y-2.5">
-                {reservations.map((res: any) => {
+                {reservations.map((res) => {
                   const hasReceiptToVerify =
                     res.deposit?.status === "pending" &&
                     Boolean(res.deposit?.receiptUrl);
@@ -1777,7 +1955,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                 </label>
                 {(() => {
                   const cur = activity.pickups.find(
-                    (r: any) => r._id === selectedReservationId,
+                    (reservation) => reservation._id === selectedReservationId,
                   );
                   if (!cur) return null;
                   const catVehicles = availableVehicles.filter(

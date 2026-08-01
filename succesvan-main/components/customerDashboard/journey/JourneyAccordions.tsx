@@ -43,10 +43,19 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 text-sm py-1">
       <span className="text-gray-400">{label}</span>
-      <span className="text-white font-semibold text-right">{value ?? "-"}</span>
+      <span className="text-white font-semibold text-right">
+        {value ?? "-"}
+      </span>
     </div>
   );
 }
+
+const compactDate = (value?: Date | string) =>
+  value
+    ? new Date(value).toLocaleString("en-GB", { timeZone: "Europe/London" })
+    : "-";
+
+const money = (value?: number) => `£${Number(value || 0).toFixed(2)}`;
 
 function profileFieldsFromLicence(details: LicenceDetailsReview) {
   return {
@@ -103,7 +112,7 @@ export default function JourneyAccordions({
   onToggle: (id: JourneySectionId) => void;
   onEditBooking: () => void;
   onSignContract: () => void;
-  onDownloadContract: (kind: "signed" | "certificate") => void;
+  onDownloadContract: (kind: "source" | "signed" | "certificate") => void;
   onDepositUpdated: () => void;
   onLicenceUpdated: () => void;
   signBusy: boolean;
@@ -141,7 +150,8 @@ export default function JourneyAccordions({
 
   const uploadImage = async (file: File) => {
     const maxSize = 15 * 1024 * 1024;
-    if (file.size > maxSize) throw new Error("File size must be less than 15MB");
+    if (file.size > maxSize)
+      throw new Error("File size must be less than 15MB");
     if (!file.type.startsWith("image/")) {
       throw new Error("Please upload an image file");
     }
@@ -270,7 +280,12 @@ export default function JourneyAccordions({
   const inspection = reservation.inspection;
   const refund = reservation.refund;
   const reservationUser = reservation.user as
-    | { name?: string; lastName?: string; emaildata?: { emailAddress?: string }; phoneData?: { phoneNumber?: string } }
+    | {
+        name?: string;
+        lastName?: string;
+        emaildata?: { emailAddress?: string };
+        phoneData?: { phoneNumber?: string };
+      }
     | undefined;
 
   const canEdit = journey.mainStatus === "pending";
@@ -281,6 +296,162 @@ export default function JourneyAccordions({
     ) ||
     [...journey.steps].reverse().find((step) => step.state === "completed") ||
     journey.steps[0];
+  const depositStepActive =
+    reservation.deposit?.option !== "office" &&
+    journey.steps.some(
+      (step) =>
+        step.key === "deposit" &&
+        ["current", "blocked", "failed"].includes(step.state),
+    );
+  const submittedAt =
+    reservation.statusHistory?.find((entry) => entry.status === "pending")
+      ?.changedAt ||
+    (reservation as Reservation & { createdAt?: string }).createdAt;
+  const currentFacts = (() => {
+    const status = journey.mainStatus;
+    const vehicleName =
+      reservation.vehicle?.title ||
+      reservation.vehicle?.name ||
+      "Awaiting assignment";
+
+    if (status === "pending") {
+      return [
+        { label: "Reference", value: journey.bookingReference },
+        { label: "Submitted", value: compactDate(submittedAt) },
+        { label: "Review", value: "Availability check in progress" },
+      ];
+    }
+    if (["confirmed", "deposit_pending"].includes(status)) {
+      if (reservation.deposit?.option === "office") {
+        return [
+          { label: "Payment", value: "Pay at office" },
+          { label: "Vehicle", value: vehicleName },
+          { label: "Next", value: "Vehicle assignment" },
+        ];
+      }
+      return [
+        { label: "Deposit", value: money(journey.deposit?.amount) },
+        {
+          label: "Option",
+          value:
+            reservation.deposit?.option?.replace(/_/g, " ") ||
+            "Choose an option",
+        },
+        {
+          label: "Status",
+          value: journey.deposit?.status.replace(/_/g, " ") || "Not paid",
+        },
+        {
+          label: "Due",
+          value: journey.deposit?.dueAt || "Pay to secure booking",
+        },
+      ];
+    }
+    if (status === "deposit_paid") {
+      return [
+        { label: "Deposit", value: money(reservation.deposit?.amount) },
+        {
+          label: "Payment status",
+          value: reservation.deposit?.status?.replace(/_/g, " ") || "Paid",
+        },
+        { label: "Paid", value: compactDate(reservation.deposit?.paidAt) },
+        { label: "Vehicle", value: vehicleName },
+      ];
+    }
+    if (["contract_pending", "contract_signed"].includes(status)) {
+      return [
+        { label: "Contract", value: contract?.contractNumber || "Generating" },
+        {
+          label: "Status",
+          value: journey.contract?.status.replace(/_/g, " ") || "Not created",
+        },
+        { label: "Generated", value: compactDate(contract?.createdAt) },
+        ...(journey.contract?.signedAt
+          ? [{ label: "Signed", value: journey.contract.signedAt }]
+          : []),
+      ];
+    }
+    if (["ready_for_collection", "handover_in_progress"].includes(status)) {
+      return [
+        { label: "Pickup", value: journey.pickupDateTime },
+        { label: "Location", value: journey.collection?.location || "-" },
+        {
+          label: "Collection code",
+          value: journey.collection?.collectionCode || "Not issued",
+        },
+        {
+          label: "Handover",
+          value: handover?.completedAt ? "Completed" : "Pending",
+        },
+      ];
+    }
+    if (status === "delivered") {
+      return [
+        { label: "Rental", value: "Active" },
+        { label: "Return", value: journey.returnDateTime },
+        {
+          label: "Return location",
+          value: journey.collection?.location || "-",
+        },
+      ];
+    }
+    if (["vehicle_returned", "return_inspection"].includes(status)) {
+      return [
+        { label: "Vehicle", value: "Returned" },
+        { label: "Received", value: compactDate(inspection?.receivedAt) },
+        {
+          label: "Inspection",
+          value: inspection?.completedAt ? "Completed" : "In progress",
+        },
+        ...(inspection?.returnMileage !== undefined
+          ? [
+              {
+                label: "Return mileage",
+                value: String(inspection.returnMileage),
+              },
+            ]
+          : []),
+      ];
+    }
+    if (
+      ["deposit_review", "refund_processing", "refund_completed"].includes(
+        status,
+      )
+    ) {
+      return [
+        { label: "Deductions", value: money(refund?.deductionsTotal) },
+        { label: "Refund", value: money(refund?.refundAmount) },
+        {
+          label: "Status",
+          value: refund?.status?.replace(/_/g, " ") || "Under review",
+        },
+        {
+          label: refund?.expectedBy ? "Expected" : "Reference",
+          value: refund?.expectedBy
+            ? compactDate(refund.expectedBy)
+            : refund?.reference || "Pending",
+        },
+      ];
+    }
+    if (status === "completed") {
+      return [
+        { label: "Booking", value: "Complete" },
+        { label: "Reference", value: journey.bookingReference },
+        {
+          label: "Refund",
+          value:
+            refund?.status === "completed" ? "Completed" : "Not applicable",
+        },
+      ];
+    }
+    return [
+      { label: "Status", value: journey.publicStatusLabel },
+      { label: "Reference", value: journey.bookingReference },
+      ...(reservation.cancelReason
+        ? [{ label: "Reason", value: reservation.cancelReason }]
+        : []),
+    ];
+  })();
 
   const LicenceUploadCard = ({
     side,
@@ -360,26 +531,44 @@ export default function JourneyAccordions({
         <p className="text-[11px] font-black uppercase tracking-[0.16em] text-gray-500">
           Current step
         </p>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             <h3 className="text-lg font-black text-white">
-              {journey.nextAction.title}
+              {activeStep?.label || journey.publicStatusLabel}
             </h3>
-            <p className="mt-1 text-sm text-gray-400">
-              {journey.nextAction.description}
-            </p>
+            <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+              {currentFacts.map((fact) => (
+                <div key={fact.label} className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    {fact.label}
+                  </p>
+                  <p className="mt-0.5 break-words text-xs font-semibold capitalize text-slate-200">
+                    {fact.value}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-          <span className="inline-flex w-fit rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
-            {activeStep?.label || journey.publicStatusLabel}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {contract?.files.source && (
+              <button
+                type="button"
+                onClick={() => onDownloadContract("source")}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+              >
+                <FiDownload />
+                Download contract
+              </button>
+            )}
+            <span className="inline-flex w-fit rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
+              {journey.publicStatusLabel}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* ── Booking summary ─────────────────────────────────── */}
-      <Section
-        id="summary"
-        open={openSection === "summary"}
-      >
+      <Section id="summary" open={openSection === "summary"}>
         <Row label="Booking reference" value={journey.bookingReference} />
         <Row label="Vehicle" value={journey.vehicleName} />
         <Row label="Pickup" value={journey.pickupDateTime} />
@@ -388,16 +577,25 @@ export default function JourneyAccordions({
         <Row label="Office" value={journey.collection?.location} />
         <Row
           label="Gear"
-          value={reservation.selectedGear === "automatic" ? "Automatic" : "Manual"}
+          value={
+            reservation.selectedGear === "automatic" ? "Automatic" : "Manual"
+          }
         />
-        <Row label="Driver" value={[reservationUser?.name, reservationUser?.lastName].filter(Boolean).join(" ") || "-"} />
+        <Row
+          label="Driver"
+          value={
+            [reservationUser?.name, reservationUser?.lastName]
+              .filter(Boolean)
+              .join(" ") || "-"
+          }
+        />
         <Row label="Phone" value={reservationUser?.phoneData?.phoneNumber} />
         <Row label="Email" value={reservationUser?.emaildata?.emailAddress} />
         {(reservation.addOns?.length ?? 0) > 0 && (
           <Row
             label="Add-ons"
-            value={reservation.addOns!
-              .map((a) => {
+            value={reservation
+              .addOns!.map((a) => {
                 const name =
                   typeof a.addOn === "object" ? a.addOn?.name : undefined;
                 return `${name || "Add-on"} ×${a.quantity}`;
@@ -405,7 +603,9 @@ export default function JourneyAccordions({
               .join(", ")}
           />
         )}
-        {reservation.messege && <Row label="Notes" value={reservation.messege} />}
+        {reservation.messege && (
+          <Row label="Notes" value={reservation.messege} />
+        )}
         <Row
           label="Total price"
           value={
@@ -426,10 +626,7 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Documents ───────────────────────────────────────── */}
-      <Section
-        id="documents"
-        open={openSection === "documents"}
-      >
+      <Section id="documents" open={openSection === "documents"}>
         <div className="space-y-2">
           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -473,18 +670,17 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Payment & deposit ──────────────────────────────── */}
-      <Section
-        id="deposit"
-        open={openSection === "deposit"}
-      >
-        <DepositPanel reservation={reservation} onUpdated={onDepositUpdated} />
-      </Section>
+      {depositStepActive && (
+        <Section id="deposit" open={openSection === "deposit"}>
+          <DepositPanel
+            reservation={reservation}
+            onUpdated={onDepositUpdated}
+          />
+        </Section>
+      )}
 
       {/* ── Contract ────────────────────────────────────────── */}
-      <Section
-        id="contract"
-        open={openSection === "contract"}
-      >
+      <Section id="contract" open={openSection === "contract"}>
         {contract ? (
           <>
             <Row label="Contract number" value={contract.contractNumber} />
@@ -506,6 +702,15 @@ export default function JourneyAccordions({
               <Row label="Signed" value={journey.contract.signedAt} />
             )}
             <div className="flex flex-wrap gap-2 mt-3">
+              {contract.files?.source && (
+                <button
+                  type="button"
+                  onClick={() => onDownloadContract("source")}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  <FiDownload /> Download contract
+                </button>
+              )}
               {journey.contract?.status === "awaiting_customer_signature" && (
                 <button
                   type="button"
@@ -533,10 +738,7 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Collection & return ────────────────────────────── */}
-      <Section
-        id="collection"
-        open={openSection === "collection"}
-      >
+      <Section id="collection" open={openSection === "collection"}>
         <Row label="Pickup location" value={journey.collection?.location} />
         <Row label="Pickup time" value={journey.pickupDateTime} />
         <Row label="Return time" value={journey.returnDateTime} />
@@ -567,10 +769,7 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Handover form ──────────────────────────────────── */}
-      <Section
-        id="handover"
-        open={openSection === "handover"}
-      >
+      <Section id="handover" open={openSection === "handover"}>
         {handover?.completedAt ? (
           <>
             <Row label="Starting mileage" value={handover.startMileage} />
@@ -603,20 +802,26 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Return inspection ──────────────────────────────── */}
-      <Section
-        id="inspection"
-        open={openSection === "inspection"}
-      >
+      <Section id="inspection" open={openSection === "inspection"}>
         {inspection?.completedAt ? (
           <>
             <Row label="Return mileage" value={inspection.returnMileage} />
             <Row label="Return fuel level" value={inspection.returnFuelLevel} />
             {(inspection.newDamages?.length ?? 0) > 0 && (
-              <Row label="New damages" value={inspection.newDamages!.join(", ")} />
+              <Row
+                label="New damages"
+                value={inspection.newDamages!.join(", ")}
+              />
             )}
-            <Row label="Late return" value={inspection.lateReturn ? "Yes" : "No"} />
+            <Row
+              label="Late return"
+              value={inspection.lateReturn ? "Yes" : "No"}
+            />
             {(inspection.lateMinutes ?? 0) > 0 && (
-              <Row label="Late by" value={`${inspection.lateMinutes} minutes`} />
+              <Row
+                label="Late by"
+                value={`${inspection.lateMinutes} minutes`}
+              />
             )}
             <Row
               label="Cleaning issue"
@@ -642,13 +847,13 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Refund summary ─────────────────────────────────── */}
-      <Section
-        id="refund"
-        open={openSection === "refund"}
-      >
+      <Section id="refund" open={openSection === "refund"}>
         {refund && journey.refund ? (
           <>
-            <Row label="Deposit paid" value={`£${journey.refund.depositPaid}`} />
+            <Row
+              label="Deposit paid"
+              value={`£${journey.refund.depositPaid}`}
+            />
             {(refund.charges?.fuel ?? 0) > 0 && (
               <Row label="Fuel charge" value={`-£${refund.charges!.fuel}`} />
             )}
@@ -656,7 +861,10 @@ export default function JourneyAccordions({
               <Row label="Late charge" value={`-£${refund.charges!.late}`} />
             )}
             {(refund.charges?.damage ?? 0) > 0 && (
-              <Row label="Damage charge" value={`-£${refund.charges!.damage}`} />
+              <Row
+                label="Damage charge"
+                value={`-£${refund.charges!.damage}`}
+              />
             )}
             {(refund.charges?.cleaning ?? 0) > 0 && (
               <Row
@@ -711,10 +919,7 @@ export default function JourneyAccordions({
       </Section>
 
       {/* ── Activity timeline ──────────────────────────────── */}
-      <Section
-        id="timeline"
-        open={openSection === "timeline"}
-      >
+      <Section id="timeline" open={openSection === "timeline"}>
         {(reservation.statusHistory?.length ?? 0) > 0 ? (
           <div className="space-y-3">
             {[...reservation.statusHistory!].reverse().map((entry, idx) => (

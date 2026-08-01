@@ -25,6 +25,7 @@ import { formatDateTimeInLondon } from "@/lib/englandTime";
 
 // Statuses where the customer must do something before the journey moves on.
 const ACTION_REQUIRED_STATUSES: ReservationStatus[] = [
+  "confirmed",
   "deposit_pending",
   "contract_pending",
 ];
@@ -44,7 +45,9 @@ const formatReservationDateTime = (
   if (reservation.endDateDisplay && reservation.returnTime) {
     return `${reservation.endDateDisplay} ${reservation.returnTime}`;
   }
-  return reservation.endDate ? formatDateTimeInLondon(reservation.endDate) : "-";
+  return reservation.endDate
+    ? formatDateTimeInLondon(reservation.endDate)
+    : "-";
 };
 
 const durationLabel = (reservation: Reservation): string => {
@@ -99,6 +102,7 @@ const buildSteps = (
   const waitingForVehicleAfterOfficePay =
     officeDepositSelected &&
     ["confirmed", "deposit_pending", "deposit_paid"].includes(status);
+  const waitingForDeposit = status === "confirmed" && !officeDepositSelected;
   const problem = isProblemStatus(status);
   // For a canceled/expired booking, the journey stopped at the step
   // of the last healthy status in the history.
@@ -113,7 +117,9 @@ const buildSteps = (
 
   const currentStep = waitingForVehicleAfterOfficePay
     ? "vehicle_assignment"
-    : STATUS_TO_PUBLIC_STEP[referenceStatus];
+    : waitingForDeposit
+      ? "deposit"
+      : STATUS_TO_PUBLIC_STEP[referenceStatus];
   const currentIdx = PUBLIC_JOURNEY_STEPS.indexOf(currentStep);
   const journeyDone = status === "completed";
   const actionRequired =
@@ -188,10 +194,9 @@ const buildNextAction = (
       return {
         type: "none",
         title: "Vehicle assignment pending",
-        description:
-          officeDepositSelected
-            ? "We’ll assign your van before collection. When you arrive at the office, we’ll complete the agreement and handover with you."
-            : "Your deposit is received. We’ll assign your van next, then your contract will be ready to sign.",
+        description: officeDepositSelected
+          ? "We’ll assign your van before collection. When you arrive at the office, we’ll complete the agreement and handover with you."
+          : "Your deposit is received. We’ll assign your van next, then your contract will be ready to sign.",
       };
     case "contract_pending":
       return {
@@ -274,8 +279,7 @@ const buildNextAction = (
     case "expired":
       return {
         type: "contact_support",
-        title:
-          status === "canceled" ? "Booking canceled" : "Booking expired",
+        title: status === "canceled" ? "Booking canceled" : "Booking expired",
         description:
           reservation.cancelReason?.trim() ||
           "This booking is no longer active. Contact us if you have any questions.",
@@ -289,8 +293,7 @@ export function buildReservationJourney(
   reservation: Reservation,
   contract?: SafeContractSummary | null,
 ): ReservationJourneyViewModel {
-  const status =
-    normalizeReservationStatus(reservation.status) ?? "pending";
+  const status = normalizeReservationStatus(reservation.status) ?? "pending";
 
   const category = reservation.category as
     | {
@@ -301,8 +304,7 @@ export function buildReservationJourney(
     | undefined;
   const vehicle = reservation.vehicle as { title?: string } | undefined;
   const office = reservation.office as
-    | { name?: string; address?: string }
-    | undefined;
+    { name?: string; address?: string } | undefined;
 
   const deposit = reservation.deposit;
   const refund = reservation.refund;
@@ -346,7 +348,8 @@ export function buildReservationJourney(
         : undefined,
     },
     collection: {
-      location: [office?.name, office?.address].filter(Boolean).join(", ") || "-",
+      location:
+        [office?.name, office?.address].filter(Boolean).join(", ") || "-",
       collectionCode: reservation.collectionCode,
       readyAt: reservation.startDateDisplay
         ? `${reservation.startDateDisplay} ${reservation.pickupTime || ""}`.trim()
@@ -360,6 +363,9 @@ export function buildReservationJourney(
             refundAmount: refund.refundAmount ?? 0,
             status: refund.status ?? "not_started",
             reference: refund.reference,
+            expectedBy: refund.expectedBy
+              ? new Date(refund.expectedBy).toISOString()
+              : undefined,
           }
         : undefined,
   };

@@ -2,9 +2,15 @@ import { NextRequest } from "next/server";
 import connect from "@/lib/data";
 import Vehicle from "@/model/vehicle";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { requireAuth } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/roles";
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireAuth(req);
+    if (!canAccessDashboard(auth.role)) {
+      return errorResponse("Admin access is required", 403);
+    }
     await connect();
     const { vehicleId, serviceType, serviceDate } = await req.json();
 
@@ -20,7 +26,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, Date | string> = {};
     updateData[`serviceHistory.${serviceType}`] = serviceDate || new Date();
 
     const vehicle = await Vehicle.findByIdAndUpdate(vehicleId, updateData, {
@@ -35,6 +41,9 @@ export async function POST(req: NextRequest) {
       vehicle,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return errorResponse("Unauthorized", 401);
+    }
     const message = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(message, 400);
   }

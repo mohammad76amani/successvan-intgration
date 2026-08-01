@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -40,23 +40,56 @@ export default function ReservesContent() {
     };
   }, [trackingModal]);
 
-  useEffect(() => {
+  const fetchReservations = useCallback(async () => {
     const token = localStorage.getItem("token");
-    fetch("/api/customer/reservations", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!json.success) throw new Error(json.error || "Request failed");
-        setReservations(json.data || []);
-      })
-      .catch((error) =>
-        setError(
-          error instanceof Error ? error.message : "Could not load reservations",
-        ),
-      )
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch("/api/customer/reservations", {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Request failed");
+      setReservations(json.data || []);
+      setError("");
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Could not load reservations",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchReservations();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void fetchReservations();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [fetchReservations]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("contractSigned") !== "1") return;
+
+    const timers = [0, 1_500, 3_500].map((delay) =>
+      window.setTimeout(() => void fetchReservations(), delay),
+    );
+    params.delete("contractSigned");
+    const query = params.toString();
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}#reserves`,
+    );
+    return () => timers.forEach(window.clearTimeout);
+  }, [fetchReservations]);
 
   if (loading) {
     return (
@@ -105,6 +138,7 @@ export default function ReservesContent() {
         const actionIsStrong =
           journey.nextAction.type !== "none" &&
           journey.nextAction.type !== "contact_support";
+        const isDepositAction = journey.nextAction.type === "pay_deposit";
         const openTracker = (initialSection?: string) =>
           setTrackingModal({
             reservationId: journey.reservationId,
@@ -242,7 +276,7 @@ export default function ReservesContent() {
                     {journey.nextAction.buttonLabel}
                   </Link>
                 )}
-                {actionIsStrong ? (
+                {isDepositAction ? (
                   <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-400">
                     <FiShield />
                     Secure payment

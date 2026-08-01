@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { showToast } from "@/lib/toast";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import type { Reservation } from "@/types/type";
 
 type CategoryHandoverField = {
+  _id?: string;
   label: string;
   fieldType: "input" | "file";
   inputType?: "text" | "number" | "date" | "textarea";
@@ -18,6 +21,14 @@ type CategoryHandoverField = {
 const fieldClass =
   "w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none";
 
+const dateInputValue = (date: Date | null) => {
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const lines = (value: string) =>
   value
     .split("\n")
@@ -26,6 +37,12 @@ const lines = (value: string) =>
 
 const listText = (value?: string[]) =>
   value && value.length > 0 ? value.join(", ") : "-";
+
+const normalizeFieldLabel = (label?: string) =>
+  String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 const isImageUrl = (url: string) =>
   /\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i.test(url) ||
@@ -36,14 +53,16 @@ async function uploadImages(files: FileList | null) {
   if (!files?.length) return [];
   const urls: string[] = [];
   for (const file of Array.from(files)) {
-    const allowed =
-      file.type.startsWith("image/") || file.type === "application/pdf";
+    const allowed = file.type.startsWith("image/");
     if (!allowed || file.size > 15 * 1024 * 1024) {
-      throw new Error("Files must be images or PDFs smaller than 15MB");
+      throw new Error("Files must be images smaller than 15MB");
     }
     const formData = new FormData();
     formData.append("file", file);
-    const response = await fetch("/api/upload", { method: "POST", body: formData });
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
     const payload = await response.json();
     if (!response.ok || payload.error) {
       throw new Error(payload.error || "Photo upload failed");
@@ -60,14 +79,21 @@ export default function ReservationOperationsPanel({
   reservation: Reservation;
   onUpdated: (reservation: Reservation) => void;
 }) {
+  const [loadedReservation, setLoadedReservation] =
+    useState<Reservation | null>(null);
+  const [loadingReservation, setLoadingReservation] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{
     url: string;
     title: string;
   } | null>(null);
-  const category = reservation.category as
+  const activeReservation = loadedReservation || reservation;
+  const category = activeReservation.category as
     | {
+        _id?: string;
+        name?: string;
         deposit?: { handoverDepositPrice?: number };
         handoverFormFields?: CategoryHandoverField[];
       }
@@ -77,10 +103,10 @@ export default function ReservationOperationsPanel({
     (field) => field.requiredBefore,
   );
   const returnFields = handoverFieldTemplates.filter(
-    (field) => field.requiredBefore || field.requiredAfter,
+    (field) => field.requiredAfter,
   );
   const defaultHandoverDeposit =
-    reservation.handoverDepositAmount ??
+    activeReservation.handoverDepositAmount ??
     category?.deposit?.handoverDepositPrice ??
     0;
   const [handover, setHandover] = useState({
@@ -89,16 +115,12 @@ export default function ReservationOperationsPanel({
     startFuelLevel: "",
     conditionNotes: "",
     existingDamages: "",
-    customerSignature: "",
     staffSignature: "",
     keyCount: "1",
     equipment: "",
   });
-  const [handoverPhotos, setHandoverPhotos] = useState<string[]>([]);
   const [beforeValues, setBeforeValues] = useState<Record<string, string>>({});
-  const [beforeFiles, setBeforeFiles] = useState<Record<string, string[]>>(
-    {},
-  );
+  const [beforeFiles, setBeforeFiles] = useState<Record<string, string[]>>({});
   const [inspection, setInspection] = useState({
     returnMileage: "",
     returnFuelLevel: "",
@@ -108,28 +130,119 @@ export default function ReservationOperationsPanel({
     notes: "",
     cleaningIssue: false,
   });
-  const [inspectionPhotos, setInspectionPhotos] = useState<string[]>([]);
   const [afterValues, setAfterValues] = useState<Record<string, string>>({});
-  const [afterFiles, setAfterFiles] = useState<Record<string, string[]>>(
-    {},
-  );
+  const [afterFiles, setAfterFiles] = useState<Record<string, string[]>>({});
   const [returnMiniStep, setReturnMiniStep] = useState<"form" | "compare">(
     "form",
   );
   const [refund, setRefund] = useState({
-    fuel: String(reservation.refund?.charges?.fuel ?? 0),
-    late: String(reservation.refund?.charges?.late ?? 0),
-    damage: String(reservation.refund?.charges?.damage ?? 0),
-    cleaning: String(reservation.refund?.charges?.cleaning ?? 0),
+    fuel: String(activeReservation.refund?.charges?.fuel ?? 0),
+    late: String(activeReservation.refund?.charges?.late ?? 0),
+    damage: String(activeReservation.refund?.charges?.damage ?? 0),
+    cleaning: String(activeReservation.refund?.charges?.cleaning ?? 0),
     missingEquipment: String(
-      reservation.refund?.charges?.missingEquipment ?? 0,
+      activeReservation.refund?.charges?.missingEquipment ?? 0,
     ),
-    other: String(reservation.refund?.charges?.other ?? 0),
-    chargeReason: reservation.refund?.chargeReason ?? "",
-    otherChargeReason: reservation.refund?.otherChargeReason ?? "",
-    reference: reservation.refund?.reference ?? "",
+    other: String(activeReservation.refund?.charges?.other ?? 0),
+    chargeReason: activeReservation.refund?.chargeReason ?? "",
+    otherChargeReason: activeReservation.refund?.otherChargeReason ?? "",
+    reference: activeReservation.refund?.reference ?? "",
     expectedBy: "",
   });
+
+  const loadReservation = useCallback(async () => {
+    if (!reservation._id) {
+      setLoadError("Reservation ID is missing");
+      setLoadingReservation(false);
+      return null;
+    }
+
+    setLoadingReservation(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`/api/reservations/${reservation._id}`, {
+        headers: clientAuthHeaders(),
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error || "Could not load reservation form");
+      }
+      const completeReservation = payload.data as Reservation;
+      setLoadedReservation(completeReservation);
+      return completeReservation;
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Could not load reservation form",
+      );
+      return null;
+    } finally {
+      setLoadingReservation(false);
+    }
+  }, [reservation._id]);
+
+  useEffect(() => {
+    setLoadedReservation(null);
+    setLoadError("");
+    setBeforeValues({});
+    setBeforeFiles({});
+    setAfterValues({});
+    setAfterFiles({});
+    setReturnMiniStep("form");
+    setPreviewImage(null);
+    setHandover({
+      handoverDepositAmount: "0",
+      startMileage: "",
+      startFuelLevel: "",
+      conditionNotes: "",
+      existingDamages: "",
+      staffSignature: "",
+      keyCount: "1",
+      equipment: "",
+    });
+    setInspection({
+      returnMileage: "",
+      returnFuelLevel: "",
+      lateMinutes: "0",
+      newDamages: "",
+      missingEquipment: "",
+      notes: "",
+      cleaningIssue: false,
+    });
+    void loadReservation();
+  }, [loadReservation]);
+
+  useEffect(() => {
+    if (!loadedReservation) return;
+    const loadedCategory = loadedReservation.category as
+      { deposit?: { handoverDepositPrice?: number } } | undefined;
+    setHandover((current) => ({
+      ...current,
+      handoverDepositAmount: String(
+        loadedReservation.handoverDepositAmount ??
+          loadedCategory?.deposit?.handoverDepositPrice ??
+          0,
+      ),
+    }));
+    setRefund({
+      fuel: String(loadedReservation.refund?.charges?.fuel ?? 0),
+      late: String(loadedReservation.refund?.charges?.late ?? 0),
+      damage: String(loadedReservation.refund?.charges?.damage ?? 0),
+      cleaning: String(loadedReservation.refund?.charges?.cleaning ?? 0),
+      missingEquipment: String(
+        loadedReservation.refund?.charges?.missingEquipment ?? 0,
+      ),
+      other: String(loadedReservation.refund?.charges?.other ?? 0),
+      chargeReason: loadedReservation.refund?.chargeReason ?? "",
+      otherChargeReason: loadedReservation.refund?.otherChargeReason ?? "",
+      reference: loadedReservation.refund?.reference ?? "",
+      expectedBy: loadedReservation.refund?.expectedBy
+        ? dateInputValue(new Date(loadedReservation.refund.expectedBy))
+        : "",
+    });
+  }, [loadedReservation]);
 
   const deductions = useMemo(
     () =>
@@ -144,9 +257,9 @@ export default function ReservationOperationsPanel({
     [refund],
   );
   const depositPaid =
-    reservation.refund?.depositPaid ??
-    reservation.handoverDepositAmount ??
-    reservation.deposit?.amount ??
+    activeReservation.refund?.depositPaid ??
+    activeReservation.handoverDepositAmount ??
+    activeReservation.deposit?.amount ??
     0;
   const refundAmount = Math.max(0, depositPaid - deductions);
 
@@ -158,11 +271,53 @@ export default function ReservationOperationsPanel({
     });
     const payload = await response.json();
     if (!payload.success) throw new Error(payload.error || "Request failed");
-    onUpdated(payload.data);
+    const refreshed = await loadReservation();
+    if (refreshed) {
+      onUpdated(refreshed);
+      return;
+    }
+
+    // Mutation endpoints can return unpopulated references. Preserve the full
+    // objects already loaded so a transient refresh failure cannot erase the
+    // category checklist while still applying the new status/data.
+    const mutationReservation = payload.data as Reservation;
+    const safeReservation = {
+      ...activeReservation,
+      ...mutationReservation,
+      category:
+        mutationReservation?.category &&
+        typeof mutationReservation.category === "object"
+          ? mutationReservation.category
+          : activeReservation.category,
+      vehicle:
+        mutationReservation?.vehicle &&
+        typeof mutationReservation.vehicle === "object"
+          ? mutationReservation.vehicle
+          : activeReservation.vehicle,
+      office:
+        mutationReservation?.office &&
+        typeof mutationReservation.office === "object"
+          ? mutationReservation.office
+          : activeReservation.office,
+      user:
+        mutationReservation?.user &&
+        typeof mutationReservation.user === "object"
+          ? mutationReservation.user
+          : activeReservation.user,
+    } as Reservation;
+    setLoadError("");
+    setLoadedReservation(safeReservation);
+    onUpdated(safeReservation);
   };
 
-  const customFieldKey = (field: CategoryHandoverField, index: number) =>
-    `${index}-${field.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const customFieldKey = (field: CategoryHandoverField) =>
+    `${field.fieldType}-${field.inputType || "file"}-${
+      field._id ||
+      field.label
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+    }`;
 
   const uploadSelectedImages = async (
     files: FileList | null,
@@ -188,9 +343,10 @@ export default function ReservationOperationsPanel({
     files: Record<string, string[]>,
   ) => {
     const entries = [];
-    for (const [index, field] of fields.entries()) {
-      const key = customFieldKey(field, index);
+    for (const field of fields) {
+      const key = customFieldKey(field);
       entries.push({
+        templateFieldId: field._id ? String(field._id) : undefined,
         label: field.label,
         fieldType: field.fieldType,
         inputType: field.inputType || "text",
@@ -207,8 +363,8 @@ export default function ReservationOperationsPanel({
     values: Record<string, string>,
     files: Record<string, string[]>,
   ) => {
-    for (const [index, field] of fields.entries()) {
-      const key = customFieldKey(field, index);
+    for (const field of fields) {
+      const key = customFieldKey(field);
       const hasValue =
         field.fieldType === "file"
           ? Boolean(files[key]?.length)
@@ -221,6 +377,58 @@ export default function ReservationOperationsPanel({
     return true;
   };
 
+  const renderUploadedFiles = (
+    label: string,
+    urls: string[],
+    onRemove: (index: number) => void,
+  ) => {
+    if (!urls.length) return null;
+
+    return (
+      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {urls.map((url, index) => (
+          <div
+            key={`${label}-${url}-${index}`}
+            className="group relative overflow-hidden rounded-lg border border-white/10 bg-black/25"
+          >
+            {isImageUrl(url) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewImage({ url, title: `${label} ${index + 1}` })
+                }
+                className="block w-full"
+              >
+                <img
+                  src={url}
+                  alt={`${label} ${index + 1}`}
+                  className="h-20 w-full object-cover transition group-hover:scale-105"
+                />
+              </button>
+            ) : (
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-20 items-center justify-center px-2 text-center text-[11px] font-semibold text-[#fe9a00]"
+              >
+                View PDF
+              </a>
+            )}
+            <button
+              type="button"
+              aria-label={`Remove ${label} ${index + 1}`}
+              onClick={() => onRemove(index)}
+              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-sm text-white hover:bg-red-500"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderCustomFields = (
     fields: CategoryHandoverField[],
     values: Record<string, string>,
@@ -228,30 +436,45 @@ export default function ReservationOperationsPanel({
     files: Record<string, string[]>,
     setFiles: Dispatch<SetStateAction<Record<string, string[]>>>,
   ) => {
-    if (!fields.length) return null;
+    if (!fields.length) {
+      return (
+        <div className="rounded-lg border border-dashed border-white/10 bg-black/10 px-3 py-4 text-center text-xs text-gray-500 sm:col-span-2">
+          No category checklist fields configured for this stage.
+        </div>
+      );
+    }
 
     return (
-      <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
-        <p className="text-sm font-semibold text-white">
-          Category checklist fields
-        </p>
-        {fields.map((field, index) => {
-          const key = customFieldKey(field, index);
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {fields.map((field) => {
+          const key = customFieldKey(field);
           const isUploading = uploadingKey === `custom-${key}`;
+          const inputId = `upload-${key}`;
           return (
-            <label key={key} className="block text-xs text-gray-400">
-              <span className="mb-1 block">
+            <div
+              key={key}
+              className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
+                field.inputType === "textarea" ? "sm:col-span-2" : ""
+              }`}
+            >
+              <label
+                htmlFor={field.fieldType === "file" ? inputId : undefined}
+                className="mb-1 block text-xs font-medium text-gray-300"
+              >
                 {field.label}
                 {field.helpText ? (
-                  <span className="ml-1 text-gray-500">— {field.helpText}</span>
+                  <span className="ml-1 font-normal text-gray-500">
+                    — {field.helpText}
+                  </span>
                 ) : null}
-              </span>
+              </label>
               {field.fieldType === "file" ? (
                 <>
                   <input
-                    className={fieldClass}
+                    id={inputId}
+                    className="sr-only"
                     type="file"
-                    accept="image/*,.pdf"
+                    accept="image/*"
                     multiple
                     required
                     disabled={isUploading}
@@ -259,21 +482,71 @@ export default function ReservationOperationsPanel({
                       uploadSelectedImages(
                         event.target.files,
                         `custom-${key}`,
-                        (urls) => setFiles({ ...files, [key]: urls }),
+                        (urls) =>
+                          setFiles((current) => ({
+                            ...current,
+                            [key]: [...(current[key] || []), ...urls],
+                          })),
                       )
                     }
                   />
-                  {isUploading && (
-                    <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
-                      Uploading files...
+                  <label
+                    htmlFor={inputId}
+                    className={`group flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-2 transition hover:border-[#fe9a00]/45 hover:bg-white/[0.06] focus-within:border-[#fe9a00] ${
+                      isUploading ? "pointer-events-none opacity-60" : ""
+                    }`}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#fe9a00]/20 bg-[#fe9a00]/10 text-[#fe9a00] transition group-hover:bg-[#fe9a00]/15">
+                      {isUploading ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#fe9a00]/30 border-t-[#fe9a00]" />
+                      ) : (
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="h-4 w-4"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 16V4" />
+                          <path d="m7 9 5-5 5 5" />
+                          <path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                        </svg>
+                      )}
                     </span>
+                    <span className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-xs font-semibold text-gray-100">
+                        {isUploading ? "Uploading…" : "Choose images"}
+                      </span>
+                      <span
+                        className={`block truncate text-[10px] ${
+                          (files[key] || []).length
+                            ? "text-emerald-400"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {(files[key] || []).length
+                          ? `${files[key].length} image${files[key].length === 1 ? "" : "s"} uploaded`
+                          : "PNG, JPG · max 15MB"}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-base text-gray-600 transition group-hover:text-[#fe9a00]"
+                    >
+                      +
+                    </span>
+                  </label>
+                  {renderUploadedFiles(field.label, files[key] || [], (index) =>
+                    setFiles((current) => ({
+                      ...current,
+                      [key]: (current[key] || []).filter(
+                        (_, fileIndex) => fileIndex !== index,
+                      ),
+                    })),
                   )}
-                  {files[key]?.length ? (
-                    <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
-                      {files[key].length} file
-                      {files[key].length === 1 ? "" : "s"} uploaded
-                    </span>
-                  ) : null}
                 </>
               ) : field.inputType === "textarea" ? (
                 <textarea
@@ -296,7 +569,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               )}
-            </label>
+            </div>
           );
         })}
       </div>
@@ -335,10 +608,7 @@ export default function ReservationOperationsPanel({
     </div>
   );
 
-  const renderFilePreviewList = (
-    label: string,
-    savedUrls?: string[],
-  ) => {
+  const renderFilePreviewList = (label: string, savedUrls?: string[]) => {
     const hasFiles = Boolean(savedUrls?.length);
 
     if (!hasFiles) {
@@ -406,15 +676,22 @@ export default function ReservationOperationsPanel({
     </div>
   );
 
+  const savedBeforeCustomFields =
+    activeReservation.handover?.customFields || [];
+  const beforeCustomByTemplateFieldId = new Map(
+    savedBeforeCustomFields
+      .filter((field) => field.templateFieldId)
+      .map((field) => [String(field.templateFieldId), field]),
+  );
   const beforeCustomByLabel = new Map(
-    (reservation.handover?.customFields || []).map((field) => [
-      field.label || "",
+    savedBeforeCustomFields.map((field) => [
+      normalizeFieldLabel(field.label),
       field,
     ]),
   );
 
   const renderReturnComparison = () => {
-    const handoverData = reservation.handover;
+    const handoverData = activeReservation.handover;
     if (!handoverData?.completedAt) return null;
 
     return (
@@ -449,14 +726,13 @@ export default function ReservationOperationsPanel({
             listText(handoverData.equipment),
             inspection.missingEquipment || "-",
           )}
-          {renderFileComparisonRow(
-            "Photos",
-            handoverData.photos,
-            inspectionPhotos,
-          )}
-          {returnFields.map((field, index) => {
-            const key = customFieldKey(field, index);
-            const beforeField = beforeCustomByLabel.get(field.label);
+          {returnFields.map((field) => {
+            const key = customFieldKey(field);
+            const beforeField =
+              (field._id
+                ? beforeCustomByTemplateFieldId.get(String(field._id))
+                : undefined) ||
+              beforeCustomByLabel.get(normalizeFieldLabel(field.label));
             return (
               <div key={key}>
                 {field.fieldType === "file"
@@ -485,7 +761,6 @@ export default function ReservationOperationsPanel({
       [handover.startFuelLevel, "Fuel level"],
       [handover.keyCount, "Key count"],
       [handover.staffSignature, "Staff signature/name"],
-      [handover.customerSignature, "Customer signature/name"],
       [handover.conditionNotes, "Condition notes"],
       [handover.existingDamages, "Existing damages"],
       [handover.equipment, "Equipment"],
@@ -493,10 +768,6 @@ export default function ReservationOperationsPanel({
     const missing = requiredFields.find(([, value]) => !String(value).trim());
     if (missing) {
       showToast.error(`${missing[1]} is required`);
-      return;
-    }
-    if (!handoverPhotos.length) {
-      showToast.error("Handover photos are required");
       return;
     }
     if (uploadingKey) {
@@ -512,17 +783,18 @@ export default function ReservationOperationsPanel({
         beforeValues,
         beforeFiles,
       );
-      await post(`/api/admin/reservations/${reservation._id}/handover`, {
+      await post(`/api/admin/reservations/${activeReservation._id}/handover`, {
         ...handover,
         handoverDepositAmount: Number(handover.handoverDepositAmount) || 0,
         existingDamages: lines(handover.existingDamages),
         equipment: lines(handover.equipment),
-        photos: handoverPhotos,
         customFields,
       });
       showToast.success("Vehicle handover completed");
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : "Handover failed");
+      showToast.error(
+        error instanceof Error ? error.message : "Handover failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -540,10 +812,6 @@ export default function ReservationOperationsPanel({
     const missing = requiredFields.find(([, value]) => !String(value).trim());
     if (missing) {
       showToast.error(`${missing[1]} is required`);
-      return false;
-    }
-    if (!inspectionPhotos.length) {
-      showToast.error("Return inspection photos are required");
       return false;
     }
     if (uploadingKey) {
@@ -569,17 +837,21 @@ export default function ReservationOperationsPanel({
         afterValues,
         afterFiles,
       );
-      await post(`/api/admin/reservations/${reservation._id}/inspection`, {
-        ...inspection,
-        lateReturn: Number(inspection.lateMinutes) > 0,
-        newDamages: lines(inspection.newDamages),
-        missingEquipment: lines(inspection.missingEquipment),
-        photos: inspectionPhotos,
-        customFields,
-      });
+      await post(
+        `/api/admin/reservations/${activeReservation._id}/inspection`,
+        {
+          ...inspection,
+          lateReturn: Number(inspection.lateMinutes) > 0,
+          newDamages: lines(inspection.newDamages),
+          missingEquipment: lines(inspection.missingEquipment),
+          customFields,
+        },
+      );
       showToast.success("Return inspection completed");
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : "Inspection failed");
+      showToast.error(
+        error instanceof Error ? error.message : "Inspection failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -592,7 +864,7 @@ export default function ReservationOperationsPanel({
     }
     setBusy(true);
     try {
-      await post(`/api/admin/reservations/${reservation._id}/refund`, {
+      await post(`/api/admin/reservations/${activeReservation._id}/refund`, {
         action,
         charges: refund,
         chargeReason: refund.chargeReason,
@@ -608,7 +880,9 @@ export default function ReservationOperationsPanel({
             : "Deductions saved",
       );
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : "Refund update failed");
+      showToast.error(
+        error instanceof Error ? error.message : "Refund update failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -618,88 +892,223 @@ export default function ReservationOperationsPanel({
     "contract_signed",
     "ready_for_collection",
     "handover_in_progress",
-  ].includes(reservation.status);
-  const showInspection = ["delivered", "vehicle_returned", "return_inspection"].includes(
-    reservation.status,
-  );
+  ].includes(activeReservation.status);
+  const showInspection = [
+    "delivered",
+    "vehicle_returned",
+    "return_inspection",
+  ].includes(activeReservation.status);
   const showRefund = ["deposit_review", "refund_processing"].includes(
-    reservation.status,
+    activeReservation.status,
   );
+  if (loadingReservation) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <div className="flex items-center gap-3">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#fe9a00]/25 border-t-[#fe9a00]" />
+          <div>
+            <p className="text-sm font-semibold text-white">
+              Loading vehicle inspection form…
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Reading the latest category checklist and reservation data.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="h-16 animate-pulse rounded-lg bg-white/5" />
+          <div className="h-16 animate-pulse rounded-lg bg-white/5" />
+        </div>
+      </div>
+    );
+  }
+  if (loadError || !loadedReservation) {
+    return (
+      <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-5 text-center">
+        <p className="text-sm font-semibold text-red-200">
+          Could not load the vehicle form
+        </p>
+        <p className="mt-1 text-xs text-gray-400">
+          {loadError || "The full reservation data was not returned."}
+        </p>
+        <button
+          type="button"
+          onClick={() => void loadReservation()}
+          className="mt-3 rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
   if (!showHandover && !showInspection && !showRefund) return null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
       {showHandover && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-white">Vehicle handover</h3>
-          <label className="block text-xs text-gray-400">
-            Handover deposit amount (£)
-            <input
-              className={`${fieldClass} mt-1`}
-              type="number"
-              required
-              min="0"
-              step="0.01"
-              value={handover.handoverDepositAmount}
-              onChange={(e) =>
-                setHandover({
-                  ...handover,
-                  handoverDepositAmount: e.target.value,
-                })
-              }
-            />
-            <span className="mt-1 block text-[11px] text-gray-500">
-              Defaults from the category, but you can edit it for special
-              occasions.
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-white">Vehicle handover</h3>
+              <p className="text-xs text-gray-500">
+                Record the vehicle state before collection.
+              </p>
+            </div>
+            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+              {category?.name || "Category"} · {beforeFields.length} checklist
+              {beforeFields.length === 1 ? " item" : " items"}
             </span>
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-gray-400">Starting mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Starting mileage" value={handover.startMileage} onChange={(e) => setHandover({ ...handover, startMileage: e.target.value })} /></label>
-            <label className="text-xs text-gray-400">Starting fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={handover.startFuelLevel} onChange={(e) => setHandover({ ...handover, startFuelLevel: e.target.value })} /></label>
-            <label className="text-xs text-gray-400">Key count<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Key count" value={handover.keyCount} onChange={(e) => setHandover({ ...handover, keyCount: e.target.value })} /></label>
-            <label className="text-xs text-gray-400">Staff signature/name<input className={`${fieldClass} mt-1`} required placeholder="Staff signature/name" value={handover.staffSignature} onChange={(e) => setHandover({ ...handover, staffSignature: e.target.value })} /></label>
           </div>
-          <label className="block text-xs text-gray-400">Customer signature/name<input className={`${fieldClass} mt-1`} required placeholder="Customer signature/name" value={handover.customerSignature} onChange={(e) => setHandover({ ...handover, customerSignature: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Condition notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Condition notes" value={handover.conditionNotes} onChange={(e) => setHandover({ ...handover, conditionNotes: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Existing damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.existingDamages} onChange={(e) => setHandover({ ...handover, existingDamages: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">Equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={handover.equipment} onChange={(e) => setHandover({ ...handover, equipment: e.target.value })} /></label>
-          <label className="block text-xs text-gray-400">
-            Handover photos
-            <input
-              className={`${fieldClass} mt-1`}
-              type="file"
-              accept="image/*"
-              multiple
-              required
-              disabled={uploadingKey === "handover-photos"}
-              onChange={(event) =>
-                uploadSelectedImages(
-                  event.target.files,
-                  "handover-photos",
-                  setHandoverPhotos,
-                )
-              }
-            />
-            {uploadingKey === "handover-photos" && (
-              <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
-                Uploading handover photos...
-              </span>
+
+          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Vehicle readings
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="text-xs text-gray-400">
+                Starting mileage
+                <input
+                  className={`${fieldClass} mt-1`}
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="e.g. 42,500"
+                  value={handover.startMileage}
+                  onChange={(e) =>
+                    setHandover({ ...handover, startMileage: e.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Starting fuel level
+                <input
+                  className={`${fieldClass} mt-1`}
+                  required
+                  placeholder="e.g. Full"
+                  value={handover.startFuelLevel}
+                  onChange={(e) =>
+                    setHandover({ ...handover, startFuelLevel: e.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Key count
+                <input
+                  className={`${fieldClass} mt-1`}
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="Key count"
+                  value={handover.keyCount}
+                  onChange={(e) =>
+                    setHandover({ ...handover, keyCount: e.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Handover deposit (£)
+                <input
+                  className={`${fieldClass} mt-1`}
+                  type="number"
+                  required
+                  min="0"
+                  step="0.01"
+                  value={handover.handoverDepositAmount}
+                  onChange={(e) =>
+                    setHandover({
+                      ...handover,
+                      handoverDepositAmount: e.target.value,
+                    })
+                  }
+                />
+                <span className="mt-1 block text-[10px] text-gray-500">
+                  Category default; editable for this booking.
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Condition and checks
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="text-xs text-gray-400">
+                Condition notes
+                <textarea
+                  className={`${fieldClass} mt-1`}
+                  required
+                  rows={2}
+                  placeholder="Overall condition"
+                  value={handover.conditionNotes}
+                  onChange={(e) =>
+                    setHandover({ ...handover, conditionNotes: e.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Existing damages
+                <textarea
+                  className={`${fieldClass} mt-1`}
+                  required
+                  rows={2}
+                  placeholder="One per line; enter None if clear"
+                  value={handover.existingDamages}
+                  onChange={(e) =>
+                    setHandover({
+                      ...handover,
+                      existingDamages: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Equipment
+                <textarea
+                  className={`${fieldClass} mt-1`}
+                  required
+                  rows={2}
+                  placeholder="One item per line"
+                  value={handover.equipment}
+                  onChange={(e) =>
+                    setHandover({ ...handover, equipment: e.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-gray-400">
+                Staff name / signature
+                <input
+                  className={`${fieldClass} mt-1`}
+                  required
+                  placeholder="Staff name"
+                  value={handover.staffSignature}
+                  onChange={(e) =>
+                    setHandover({ ...handover, staffSignature: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Category checklist · Before
+            </p>
+            {renderCustomFields(
+              beforeFields,
+              beforeValues,
+              setBeforeValues,
+              beforeFiles,
+              setBeforeFiles,
             )}
-            {handoverPhotos.length ? (
-              <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
-                {handoverPhotos.length} photo
-                {handoverPhotos.length === 1 ? "" : "s"} uploaded
-              </span>
-            ) : null}
-          </label>
-          {renderCustomFields(
-            beforeFields,
-            beforeValues,
-            setBeforeValues,
-            beforeFiles,
-            setBeforeFiles,
-          )}
-          <button disabled={busy || Boolean(uploadingKey)} onClick={submitHandover} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Confirm handover</button>
+          </section>
+          <button
+            disabled={busy || Boolean(uploadingKey)}
+            onClick={submitHandover}
+            className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            Confirm handover
+          </button>
         </div>
       )}
 
@@ -718,62 +1127,183 @@ export default function ReservationOperationsPanel({
               {returnMiniStep === "form" ? "Fill form" : "Compare"}
             </span>
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-400/15 bg-emerald-400/5 px-3 py-2">
+            <p className="text-xs text-gray-400">
+              Loaded from{" "}
+              <strong className="text-gray-200">
+                {category?.name || "category"}
+              </strong>
+            </p>
+            <span className="text-[11px] font-semibold text-emerald-300">
+              {returnFields.length} return checklist
+              {returnFields.length === 1 ? " item" : " items"}
+            </span>
+          </div>
 
           {returnMiniStep === "form" ? (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-gray-400">Return mileage<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Return mileage" value={inspection.returnMileage} onChange={(e) => setInspection({ ...inspection, returnMileage: e.target.value })} /></label>
-                <label className="text-xs text-gray-400">Return fuel level<input className={`${fieldClass} mt-1`} required placeholder="Fuel level" value={inspection.returnFuelLevel} onChange={(e) => setInspection({ ...inspection, returnFuelLevel: e.target.value })} /></label>
-                <label className="text-xs text-gray-400">Late minutes<input className={`${fieldClass} mt-1`} type="number" required min="0" placeholder="Late minutes" value={inspection.lateMinutes} onChange={(e) => setInspection({ ...inspection, lateMinutes: e.target.value })} /></label>
-                <label className="flex items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-gray-300"><input type="checkbox" checked={inspection.cleaningIssue} onChange={(e) => setInspection({ ...inspection, cleaningIssue: e.target.checked })} /> Cleaning issue</label>
-              </div>
-              <label className="block text-xs text-gray-400">New damages<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.newDamages} onChange={(e) => setInspection({ ...inspection, newDamages: e.target.value })} /></label>
-              <label className="block text-xs text-gray-400">Missing equipment<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="One per line" value={inspection.missingEquipment} onChange={(e) => setInspection({ ...inspection, missingEquipment: e.target.value })} /></label>
-              <label className="block text-xs text-gray-400">Inspection notes<textarea className={`${fieldClass} mt-1`} required rows={2} placeholder="Inspection notes" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /></label>
-              <label className="block text-xs text-gray-400">
-                Return inspection photos
-                <input
-                  className={`${fieldClass} mt-1`}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  required
-                  disabled={uploadingKey === "inspection-photos"}
-                  onChange={(event) =>
-                    uploadSelectedImages(
-                      event.target.files,
-                      "inspection-photos",
-                      setInspectionPhotos,
-                    )
-                  }
-                />
-                {uploadingKey === "inspection-photos" && (
-                  <span className="mt-1 block text-[11px] font-semibold text-[#fe9a00]">
-                    Uploading return photos...
-                  </span>
+              <section className="rounded-lg border border-white/10 bg-black/15 p-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  Vehicle readings
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-gray-400">
+                    Return mileage
+                    <input
+                      className={`${fieldClass} mt-1`}
+                      type="number"
+                      required
+                      min="0"
+                      placeholder="e.g. 42,650"
+                      value={inspection.returnMileage}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          returnMileage: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400">
+                    Return fuel level
+                    <input
+                      className={`${fieldClass} mt-1`}
+                      required
+                      placeholder="e.g. Three quarters"
+                      value={inspection.returnFuelLevel}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          returnFuelLevel: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400">
+                    Late minutes
+                    <input
+                      className={`${fieldClass} mt-1`}
+                      type="number"
+                      required
+                      min="0"
+                      placeholder="0"
+                      value={inspection.lateMinutes}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          lateMinutes: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="flex min-h-[62px] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      className="accent-[#fe9a00]"
+                      checked={inspection.cleaningIssue}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          cleaningIssue: e.target.checked,
+                        })
+                      }
+                    />{" "}
+                    Cleaning issue found
+                  </label>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-black/15 p-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  Condition and checks
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-gray-400">
+                    New damages
+                    <textarea
+                      className={`${fieldClass} mt-1`}
+                      required
+                      rows={2}
+                      placeholder="One per line; enter None if clear"
+                      value={inspection.newDamages}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          newDamages: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400">
+                    Missing equipment
+                    <textarea
+                      className={`${fieldClass} mt-1`}
+                      required
+                      rows={2}
+                      placeholder="One per line; enter None if clear"
+                      value={inspection.missingEquipment}
+                      onChange={(e) =>
+                        setInspection({
+                          ...inspection,
+                          missingEquipment: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 sm:col-span-2">
+                    Inspection notes
+                    <textarea
+                      className={`${fieldClass} mt-1`}
+                      required
+                      rows={2}
+                      placeholder="Final inspection notes"
+                      value={inspection.notes}
+                      onChange={(e) =>
+                        setInspection({ ...inspection, notes: e.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  Category checklist · After
+                </p>
+                {renderCustomFields(
+                  returnFields,
+                  afterValues,
+                  setAfterValues,
+                  afterFiles,
+                  setAfterFiles,
                 )}
-                {inspectionPhotos.length ? (
-                  <span className="mt-1 block text-[11px] font-semibold text-emerald-300">
-                    {inspectionPhotos.length} photo
-                    {inspectionPhotos.length === 1 ? "" : "s"} uploaded
-                  </span>
-                ) : null}
-              </label>
-              {renderCustomFields(
-                returnFields,
-                afterValues,
-                setAfterValues,
-                afterFiles,
-                setAfterFiles,
-              )}
-              <button disabled={busy || Boolean(uploadingKey)} onClick={goToReturnComparison} className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Continue to comparison</button>
+              </section>
+              <button
+                disabled={busy || Boolean(uploadingKey)}
+                onClick={goToReturnComparison}
+                className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+              >
+                Continue to comparison
+              </button>
             </>
           ) : (
             <>
               {renderReturnComparison()}
               <div className="grid grid-cols-2 gap-2">
-                <button disabled={busy} onClick={() => setReturnMiniStep("form")} className="rounded-lg bg-white/10 px-4 py-2 font-semibold text-white disabled:opacity-50">Back to form</button>
-                <button disabled={busy} onClick={submitInspection} className="rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50">Complete inspection</button>
+                <button
+                  disabled={busy}
+                  onClick={() => setReturnMiniStep("form")}
+                  className="rounded-lg bg-white/10 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                >
+                  Back to form
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={submitInspection}
+                  className="rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+                >
+                  Complete inspection
+                </button>
               </div>
             </>
           )}
@@ -782,23 +1312,127 @@ export default function ReservationOperationsPanel({
 
       {showRefund && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-white">Deposit and refund review</h3>
+          <h3 className="font-semibold text-white">
+            Deposit and refund review
+          </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {(["fuel", "late", "damage", "cleaning", "missingEquipment", "other"] as const).map((field) => (
-              <label key={field} className="text-xs capitalize text-gray-400">{field.replace(/([A-Z])/g, " $1")} charge (£)<input className={`${fieldClass} mt-1`} type="number" min="0" step="0.01" value={refund[field]} onChange={(e) => setRefund({ ...refund, [field]: e.target.value })} /></label>
+            {(
+              [
+                "fuel",
+                "late",
+                "damage",
+                "cleaning",
+                "missingEquipment",
+                "other",
+              ] as const
+            ).map((field) => (
+              <label key={field} className="text-xs capitalize text-gray-400">
+                {field.replace(/([A-Z])/g, " $1")} charge (£)
+                <input
+                  className={`${fieldClass} mt-1`}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={refund[field]}
+                  onChange={(e) =>
+                    setRefund({ ...refund, [field]: e.target.value })
+                  }
+                />
+              </label>
             ))}
           </div>
-          <textarea className={fieldClass} rows={2} placeholder="Charge reason" value={refund.chargeReason} onChange={(e) => setRefund({ ...refund, chargeReason: e.target.value })} />
-          <textarea className={fieldClass} rows={2} placeholder="Other charge reason" value={refund.otherChargeReason} onChange={(e) => setRefund({ ...refund, otherChargeReason: e.target.value })} />
-          <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 p-3 text-sm"><p className="text-gray-400">Deposit<br /><strong className="text-white">£{depositPaid.toFixed(2)}</strong></p><p className="text-gray-400">Deductions<br /><strong className="text-red-300">£{deductions.toFixed(2)}</strong></p><p className="text-gray-400">Refund<br /><strong className="text-emerald-300">£{refundAmount.toFixed(2)}</strong></p></div>
+          <textarea
+            className={fieldClass}
+            rows={2}
+            placeholder="Charge reason"
+            value={refund.chargeReason}
+            onChange={(e) =>
+              setRefund({ ...refund, chargeReason: e.target.value })
+            }
+          />
+          <textarea
+            className={fieldClass}
+            rows={2}
+            placeholder="Other charge reason"
+            value={refund.otherChargeReason}
+            onChange={(e) =>
+              setRefund({ ...refund, otherChargeReason: e.target.value })
+            }
+          />
+          <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 p-3 text-sm">
+            <p className="text-gray-400">
+              Deposit
+              <br />
+              <strong className="text-white">£{depositPaid.toFixed(2)}</strong>
+            </p>
+            <p className="text-gray-400">
+              Deductions
+              <br />
+              <strong className="text-red-300">£{deductions.toFixed(2)}</strong>
+            </p>
+            <p className="text-gray-400">
+              Refund
+              <br />
+              <strong className="text-emerald-300">
+                £{refundAmount.toFixed(2)}
+              </strong>
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <input className={fieldClass} placeholder="Refund reference" value={refund.reference} onChange={(e) => setRefund({ ...refund, reference: e.target.value })} />
-            <input className={fieldClass} type="date" value={refund.expectedBy} onChange={(e) => setRefund({ ...refund, expectedBy: e.target.value })} />
+            <input
+              className={fieldClass}
+              placeholder="Refund reference"
+              value={refund.reference}
+              onChange={(e) =>
+                setRefund({ ...refund, reference: e.target.value })
+              }
+            />
+            <label className="text-xs text-gray-400">
+              Expected refund date
+              <DatePicker
+                selected={
+                  refund.expectedBy
+                    ? new Date(`${refund.expectedBy}T00:00:00`)
+                    : null
+                }
+                onChange={(date: Date | null) =>
+                  setRefund({
+                    ...refund,
+                    expectedBy: dateInputValue(date),
+                  })
+                }
+                minDate={new Date()}
+                dateFormat="dd/MM/yyyy"
+                placeholderText="Select refund date"
+                className={`${fieldClass} mt-1`}
+                wrapperClassName="w-full"
+                calendarClassName="svh-refund-date-picker"
+                showPopperArrow={false}
+              />
+            </label>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <button disabled={busy} onClick={() => submitRefund("review")} className="rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50">Save review</button>
-            <button disabled={busy} onClick={() => submitRefund("approve")} className="rounded-lg bg-[#fe9a00]/20 px-2 py-2 text-xs font-semibold text-[#fe9a00] disabled:opacity-50">Approve refund</button>
-            <button disabled={busy} onClick={() => submitRefund("complete")} className="rounded-lg bg-emerald-500/20 px-2 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-50">Mark completed</button>
+            <button
+              disabled={busy}
+              onClick={() => submitRefund("review")}
+              className="rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Save review
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => submitRefund("approve")}
+              className="rounded-lg bg-[#fe9a00]/20 px-2 py-2 text-xs font-semibold text-[#fe9a00] disabled:opacity-50"
+            >
+              Approve refund
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => submitRefund("complete")}
+              className="rounded-lg bg-emerald-500/20 px-2 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-50"
+            >
+              Mark completed
+            </button>
           </div>
         </div>
       )}

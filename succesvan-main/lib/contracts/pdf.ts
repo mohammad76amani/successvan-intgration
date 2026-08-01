@@ -1,5 +1,8 @@
 import "server-only";
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { sha256Hex } from "./hash";
 
 export type ContractPdfReservation = {
@@ -94,18 +97,6 @@ function valueOrDash(value: unknown) {
   return String(value);
 }
 
-function formatDate(value?: string | Date, displayValue?: string) {
-  if (displayValue) return displayValue;
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function formatDateTime(value?: string | Date) {
   if (!value) return "-";
   const date = new Date(value);
@@ -117,10 +108,6 @@ function formatDateTime(value?: string | Date) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatCurrency(value?: number) {
-  return `GBP ${Number(value || 0).toFixed(2)}`;
 }
 
 function customerName(reservation: ContractPdfReservation) {
@@ -155,83 +142,51 @@ function vehicleProperty(
   return match?.value;
 }
 
-const leftMargin = 48;
-const valueColumnX = 218;
+const templatePath = path.join(
+  process.cwd(),
+  "public",
+  "contracts",
+  "successvan-vehicle-hire-agreement-template.pdf",
+);
 
-function addSection(doc: PDFKit.PDFDocument, title: string) {
-  doc.moveDown(1);
-  doc
-    .fontSize(13)
-    .fillColor("#111827")
-    .font("Helvetica-Bold")
-    .text(title, leftMargin);
-  doc.moveDown(0.3);
-  doc
-    .moveTo(leftMargin, doc.y)
-    .lineTo(540, doc.y)
-    .strokeColor("#fe9a00")
-    .lineWidth(1)
-    .stroke();
-  doc.moveDown(0.6);
-}
-
-function addRows(doc: PDFKit.PDFDocument, rows: Array<[string, unknown]>) {
-  rows.forEach(([label, value]) => {
-    // Two fixed columns: label on the left, value starting at valueColumnX.
-    const rowY = doc.y;
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(9)
-      .fillColor("#4b5563")
-      .text(label, leftMargin, rowY + 1.5, { width: valueColumnX - leftMargin - 10 });
-    const labelBottom = doc.y;
-    doc
-      .font("Helvetica")
-      .fontSize(10)
-      .fillColor("#111827")
-      .text(valueOrDash(value), valueColumnX, rowY, { width: 540 - valueColumnX });
-    doc.y = Math.max(labelBottom, doc.y);
-    doc.x = leftMargin;
-    doc.moveDown(0.35);
+function contractDate(value?: string | Date, displayValue?: string) {
+  const source = displayValue || value;
+  if (!source) return "-";
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return valueOrDash(source);
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 }
 
-function ensureSpace(doc: PDFKit.PDFDocument, needed = 120) {
-  if (doc.y + needed > doc.page.height - doc.page.margins.bottom) {
-    doc.addPage();
+function rentalHours(reservation: ContractPdfReservation) {
+  const start = reservation.startDate ? new Date(reservation.startDate) : null;
+  const end = reservation.endDate ? new Date(reservation.endDate) : null;
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { days: "-", hours: "-" };
   }
+  const totalHours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
+  return {
+    days: Math.floor(totalHours / 24),
+    hours: Math.round(totalHours % 24),
+  };
 }
 
 export async function generateRentalAgreementPdf(input: ContractPdfInput) {
-  // Runtime require so Turbopack never statically analyzes pdfkit's
-  // internal dynamic font requires (which cause "expression is too dynamic").
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const PDFDocument = require("pdfkit") as typeof import("pdfkit");
-  const doc = new PDFDocument({
-    size: "A4",
-    margin: 48,
-    info: {
-      Title: `Success Van Hire Rental Agreement ${input.contractNumber}`,
-      Author: "Success Van Hire",
-    },
-  });
-
-  const chunks: Buffer[] = [];
-  doc.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
-
-  const bufferPromise = new Promise<Buffer>((resolve, reject) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-  });
-
+  const template = await readFile(templatePath);
+  const doc = await PDFDocument.load(template);
+  doc.setTitle(`Success Van Hire Rental Agreement ${input.contractNumber}`);
+  doc.setAuthor("Success Van Hire");
+  doc.setCreationDate(input.createdAt);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
   const reservation = input.reservation;
   const name = customerName(reservation) || "Customer";
   const licence = reservation.user?.licenceDetails?.isFrontSide
     ? reservation.user.licenceDetails
     : undefined;
-  const bookingReference = valueOrDash(
-    reservation.reservationCode || reservation._id,
-  );
   const address = [
     reservation.user?.address,
     reservation.user?.city,
@@ -239,183 +194,235 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   ]
     .filter(Boolean)
     .join(", ");
-
-  doc.rect(0, 0, doc.page.width, 105).fill("#0f172b");
-  doc
-    .fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(24)
-    .text("VEHICLE HIRE AGREEMENT", 48, 34);
-  doc
-    .fillColor("#fe9a00")
-    .fontSize(13)
-    .text("Success Van Hire", 48, 67);
-  doc
-    .fillColor("#ffffff")
-    .fontSize(10)
-    .text(`Contract: ${input.contractNumber}`, 350, 42, { align: "right" })
-    .text(`Created: ${formatDateTime(input.createdAt)}`, 350, 58, {
-      align: "right",
+  const term = rentalHours(reservation);
+  const insuranceExcess = vehicleProperty(reservation, [
+    "insurance excess",
+    "excess cost",
+  ]);
+  const insuranceExcessLabel = insuranceExcess
+    ? /^[£$€]/.test(insuranceExcess)
+      ? insuranceExcess
+      : `£${insuranceExcess}`
+    : "-";
+  const page = doc.getPage(0);
+  const page2 = doc.getPage(1);
+  const ink = rgb(0.04, 0.04, 0.04);
+  const white = rgb(1, 1, 1);
+  const topY = (targetPage: typeof page, top: number, size = 7) =>
+    targetPage.getHeight() - top - size;
+  const put = (
+    targetPage: typeof page,
+    value: unknown,
+    x: number,
+    top: number,
+    width = 120,
+    size = 7,
+  ) => {
+    targetPage.drawRectangle({
+      x: x - 7,
+      y: topY(targetPage, top, size) - 5,
+      // The supplied template contains short Excel placeholders (#N/A / "-").
+      // Clear only that placeholder area so neighbouring printed labels remain.
+      width: Math.min(width + 5, 44),
+      height: size + 12,
+      color: white,
     });
-
-  // Reset the write position under the header banner (the banner text left
-  // doc.x at the right-hand column).
-  doc.x = leftMargin;
-  doc.y = 130;
-  addSection(doc, "Agreement Reference");
-  addRows(doc, [
-    ["Ref", input.contractNumber],
-    ["Date", formatDateTime(input.createdAt)],
-    ["Booking reference", bookingReference],
-    ["From", "Success Van Hire"],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Hirer Details");
-  addRows(doc, [
-    ["Hirer name", name],
-    ["Email", reservation.user?.emaildata?.emailAddress],
-    ["Mobile", reservation.user?.phoneData?.phoneNumber],
-    ["Address", licence?.address || address || "-"],
-    ["Postcode", licence?.postcode || reservation.user?.postalCode],
-    ["Driving licence number", licence?.licenceNumber || licence?.licenseNumber],
-    ["Exp date", licence?.expiryDate || licence?.expirationDate],
-    ["DOB", licence?.dateOfBirth],
-    ["Issuing authority", licence?.issuingAuthority],
-    ["Licence categories", licence?.licenceCategories?.join(", ")],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Additional Driver");
-  addRows(doc, [
-    ["Name", "-"],
-    ["Licence number", "-"],
-    ["DOB", "-"],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Vehicle");
-  addRows(doc, [
-    ["Register", reservation.vehicle?.number],
-    ["Make", vehicleProperty(reservation, ["make"]) || reservation.category?.name],
-    ["Model", reservation.vehicle?.title || reservation.category?.name],
-    [
-      "Colour",
-      reservation.vehicle?.color ||
-        reservation.vehicle?.colour ||
-        vehicleProperty(reservation, ["colour", "color"]),
-    ],
-    ["Transmission", reservation.selectedGear],
-    ["Fuel", reservation.category?.fuel],
-    ["Required licence", reservation.category?.requiredLicense],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Rental Term");
-  addRows(doc, [
-    ["Rental start date", formatDate(reservation.startDate, reservation.startDateDisplay)],
-    ["Rental start time", reservation.pickupTime || formatDateTime(reservation.startDate)],
-    ["Rental end date", formatDate(reservation.endDate, reservation.endDateDisplay)],
-    ["Rental end time", reservation.returnTime || formatDateTime(reservation.endDate)],
-    ["Reservation status", reservation.status],
-    ["Pickup location", reservation.office?.name],
-    ["Pickup address", reservation.office?.address],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Rental Fee");
-  addRows(doc, [
-    ["Subscription price", formatCurrency(reservation.totalPrice)],
-    ["Deposit", formatCurrency(reservation.deposit?.amount)],
-    ["Deposit option", reservation.deposit?.option],
-    ["Deposit status", reservation.deposit?.status],
-    ["Deposit transaction ref", reservation.deposit?.transactionRef],
-    ["Pickup extension", formatCurrency(reservation.pickupExtensionPrice)],
-    ["Return extension", formatCurrency(reservation.returnExtensionPrice)],
-    ["Discount code", reservation.discountCode],
-  ]);
-
-  ensureSpace(doc);
-  addSection(doc, "Mileage & Insurance");
-  addRows(doc, [
-    ["Weekly mileage", "-"],
-    ["Daily mileage", "-"],
-    ["Excess mileage charge", "-"],
-    ["Arranged insurance", "Subject to Success Van Hire approval and policy terms"],
-    ["Insurance excess cost", "-"],
-  ]);
-
-  const addOns = reservation.addOns || [];
-  if (addOns.length) {
-    ensureSpace(doc);
-    addSection(doc, "Selected Add-ons");
-    addOns.forEach((item) => {
-      doc
-        .font("Helvetica")
-        .fontSize(10)
-        .fillColor("#111827")
-        .text(
-          `${item.addOn?.name || "Add-on"} - quantity ${item.quantity || 1}${
-            item.selectedTierIndex !== undefined
-              ? `, tier ${item.selectedTierIndex + 1}`
-              : ""
-          }`,
-        );
-      doc.moveDown(0.25);
+    targetPage.drawText(valueOrDash(value), {
+      x,
+      y: topY(targetPage, top, size),
+      size,
+      font,
+      color: ink,
+      maxWidth: width - 4,
     });
-  }
+  };
+  const cover = (
+    targetPage: typeof page,
+    x: number,
+    top: number,
+    width: number,
+    height: number,
+  ) =>
+    targetPage.drawRectangle({
+      x,
+      y: targetPage.getHeight() - top - height,
+      width,
+      height,
+      color: white,
+    });
+  const text = (
+    targetPage: typeof page,
+    value: unknown,
+    x: number,
+    top: number,
+    width: number,
+    options?: { bold?: boolean; size?: number },
+  ) => {
+    const size = options?.size ?? 7;
+    targetPage.drawText(valueOrDash(value), {
+      x,
+      y: topY(targetPage, top, size),
+      size,
+      font: options?.bold ? boldFont : font,
+      color: ink,
+      maxWidth: width,
+    });
+  };
 
-  ensureSpace(doc, 220);
-  addSection(doc, "Declaration");
-  const terms = [
-    "The customer confirms the booking information above is accurate and must present a valid driving licence and any required identity checks before collection.",
-    "The vehicle must be returned at the agreed date, time, location, fuel level, and condition unless Success Van Hire agrees otherwise in writing.",
-    "The customer is responsible for traffic, parking, toll, congestion, penalty, damage, excess, key, fuel, and late-return charges that apply during the hire period.",
-    "Insurance, deposit, cancellation, mileage, and damage terms are governed by the Success Van Hire reservation terms and conditions supplied to the customer.",
-    "Signing this agreement does not replace required payment, deposit, licence, identity, or operational approval checks.",
-  ];
-  doc.font("Helvetica").fontSize(10).fillColor("#111827");
-  terms.forEach((term) => {
-    doc.text(`- ${term}`, { indent: 12 });
-    doc.moveDown(0.4);
+  cover(page, 320, 147, 220, 27);
+  text(page, "Ref:", 324, 154, 67, { bold: true });
+  text(page, input.contractNumber, 392, 154, 120);
+  text(page, "DATE:", 324, 166, 67, { bold: true });
+  text(page, contractDate(input.createdAt), 392, 166, 90);
+
+  // Customer data is intentionally laid out as full-width rows. Licence
+  // names, addresses, emails and document numbers can be long, and the old
+  // multi-column layout allowed them to overlap neighbouring labels.
+  cover(page, 50, 246, 490, 138);
+  text(page, "Hirer Name:", 53, 251, 66, { bold: true });
+  text(page, name.toUpperCase(), 121, 251, 414);
+  text(page, "Address:", 53, 264, 66, { bold: true });
+  text(page, licence?.address || address, 121, 264, 414, { size: 6.5 });
+  text(page, "From (business name):", 53, 277, 112, { bold: true });
+  text(page, reservation.office?.name || "Success Van Hire", 167, 277, 368);
+  text(page, "Driving Licence number:", 53, 290, 112, { bold: true });
+  text(
+    page,
+    licence?.licenceNumber || licence?.licenseNumber,
+    167,
+    290,
+    368,
+    { size: 6.5 },
+  );
+  text(page, "Email:", 53, 303, 66, { bold: true });
+  text(page, reservation.user?.emaildata?.emailAddress, 121, 303, 414, {
+    size: 6.5,
+  });
+  text(page, "Postcode:", 53, 316, 66, { bold: true });
+  text(page, licence?.postcode || reservation.user?.postalCode, 121, 316, 86);
+  text(page, "Country of Issue:", 211, 316, 82, { bold: true });
+  text(page, licence?.issuingCountry || licence?.issuingAuthority, 295, 316, 75);
+  text(page, "Exp Date:", 374, 316, 55, { bold: true });
+  text(
+    page,
+    contractDate(licence?.expiryDate || licence?.expirationDate || undefined),
+    431,
+    316,
+    104,
+  );
+  text(page, "Contact Number:", 53, 329, 86, { bold: true });
+  text(page, reservation.user?.phoneData?.phoneNumber, 141, 329, 145);
+  text(page, "DOB:", 292, 329, 42, { bold: true });
+  text(page, contractDate(licence?.dateOfBirth || undefined), 336, 329, 100);
+
+  page.drawText(
+    "The Driver subscribes to use the vehicle supplied by Diba Cooperation LTD for the Rental fee during the Term. Only the authorised driver/drivers named above may drive the Vehicle.",
+    {
+      x: 53,
+      y: topY(page, 343, 6.5),
+      size: 6.5,
+      lineHeight: 8,
+      font,
+      color: ink,
+      maxWidth: 482,
+    },
+  );
+  text(page, "Additional Driver:", 53, 365, 84, { bold: true });
+  text(page, "-", 139, 365, 120);
+  text(
+    page,
+    "Only the authorised driver/drivers above can drive the Vehicle during the Subscription",
+    53,
+    377,
+    482,
+    { size: 6.5 },
+  );
+
+  cover(page, 50, 391, 370, 28);
+  text(page, "Register:", 53, 398, 44, { bold: true });
+  text(page, reservation.vehicle?.number, 98, 398, 90);
+  text(page, "Model:", 242, 398, 44, { bold: true });
+  text(page, reservation.vehicle?.title || reservation.category?.name, 287, 398, 120);
+  text(page, "Make:", 53, 411, 44, { bold: true });
+  text(page, vehicleProperty(reservation, ["make"]) || reservation.category?.name, 98, 411, 90);
+  text(page, "Colour:", 242, 411, 44, { bold: true });
+  text(
+    page,
+    reservation.vehicle?.color ||
+      reservation.vehicle?.colour ||
+      vehicleProperty(reservation, ["colour", "color"]),
+    287,
+    411,
+    120,
+  );
+
+  cover(page, 58, 430, 310, 16);
+  text(page, "1.", 61, 437, 16, { bold: true });
+  text(page, "RENTAL TERM:", 80, 437, 82, { bold: true });
+  text(page, term.days, 164, 437, 28);
+  text(page, "Day/Days", 204, 437, 72);
+  text(page, term.hours, 287, 437, 28);
+  text(page, "Hours", 326, 437, 42);
+
+  cover(page, 50, 475, 330, 29);
+  text(page, "Rental Start Date:", 53, 482, 109);
+  text(page, contractDate(reservation.startDate, reservation.startDateDisplay), 164, 482, 80);
+  text(page, "Time:", 242, 482, 44);
+  text(page, reservation.pickupTime || formatDateTime(reservation.startDate), 287, 482, 72);
+  text(page, "Rental End Date:", 53, 495, 109);
+  text(page, contractDate(reservation.endDate, reservation.endDateDisplay), 164, 495, 80);
+  text(page, "Time:", 242, 495, 44);
+  text(page, reservation.returnTime || formatDateTime(reservation.endDate), 287, 495, 72);
+  cover(page, 50, 549, 270, 28);
+  text(page, "Subscription Price:", 53, 556, 109);
+  text(page, `£${Number(reservation.totalPrice || 0).toFixed(2)}`, 164, 556, 76);
+  text(page, "for duration in section 1.", 204, 556, 130);
+  text(page, "Deposit:", 53, 569, 109);
+  text(page, `£${Number(reservation.deposit?.amount || 0).toFixed(2)}`, 164, 569, 76);
+
+  cover(page, 50, 613, 270, 41);
+  text(page, "Mileage Allowance Weekly:", 53, 620, 202);
+  text(page, "-", 256, 620, 45);
+  text(page, "Mileage Allowance Daily:", 53, 633, 202);
+  text(page, "-", 256, 633, 45);
+  text(page, "Excess Mileage Charge is:", 53, 646, 202);
+  text(page, "-", 256, 646, 45);
+
+  cover(page, 50, 673, 330, 15);
+  text(page, "Arranged Insurance:", 53, 680, 110);
+  text(page, "Subject to approval", 165, 680, 180, { size: 6.5 });
+  put(page2, insuranceExcessLabel, 164, 76, 80);
+
+  // Invisible DocuSign anchors sit on the existing signature/name lines.
+  page2.drawText(signatureAnchor, {
+    x: 104,
+    y: topY(page2, 253, 1),
+    size: 1,
+    font,
+    color: white,
+  });
+  page2.drawText(nameAnchor, {
+    x: 327,
+    y: topY(page2, 253, 1),
+    size: 1,
+    font,
+    color: white,
+  });
+  page2.drawText(dateAnchor, {
+    x: 327,
+    y: topY(page2, 270, 1),
+    size: 1,
+    font,
+    color: white,
   });
 
-  ensureSpace(doc, 170);
-  addSection(doc, "Customer Signature");
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .fillColor("#111827")
-    .text("Please review the agreement and sign through DocuSign.");
-  doc.moveDown(1.2);
-  doc.text("Customer signature:");
-  doc.moveDown(0.2);
-  doc
-    .moveTo(48, doc.y + 18)
-    .lineTo(300, doc.y + 18)
-    .strokeColor("#111827")
-    .lineWidth(0.5)
-    .stroke();
-  doc
-    .fontSize(6)
-    .fillColor("#ffffff")
-    .text(signatureAnchor, 52, doc.y + 4);
-  doc.moveDown(2);
-  doc.fillColor("#111827").fontSize(10).text("Customer name:");
-  doc
-    .fontSize(6)
-    .fillColor("#ffffff")
-    .text(nameAnchor, 52, doc.y + 2);
-  doc.moveDown(1.8);
-  doc.fillColor("#111827").fontSize(10).text("Date signed:");
-  doc
-    .fontSize(6)
-    .fillColor("#ffffff")
-    .text(dateAnchor, 52, doc.y + 2);
+  // Preserve crisp page numbering after the template is rewritten by pdf-lib.
+  cover(page, 520, 805, 32, 18);
+  text(page, "1/2", 528, 812, 22);
+  cover(page2, 520, 805, 32, 18);
+  text(page2, "2/2", 528, 812, 22);
 
-  doc.end();
-
-  const buffer = await bufferPromise;
+  const buffer = Buffer.from(await doc.save());
   return {
     buffer,
     sha256: sha256Hex(buffer),

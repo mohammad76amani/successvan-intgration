@@ -9,6 +9,7 @@ import { deleteImage } from "@/lib/s3";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { createContractForBooking } from "@/lib/contracts/service";
+import Vehicle from "@/model/vehicle";
 import {
   normalizeReservationStatus,
   CUSTOMER_CANCELABLE_STATUSES,
@@ -76,15 +77,69 @@ export async function PATCH(
       body.status = normalized;
     }
 
+    // Completing/canceling releases the fleet vehicle, but the reservation
+    // keeps its reference as permanent booking history.
+    if (
+      ["completed", "canceled", "expired"].includes(String(body.status)) &&
+      body.vehicle === null
+    ) {
+      delete body.vehicle;
+    }
+
+    if (
+      !isCustomerRequest &&
+      typeof body.vehicle === "string" &&
+      body.vehicle.trim() &&
+      String(body.vehicle) !== String(oldReservation.vehicle || "")
+    ) {
+      const assignedVehicle = await Vehicle.findById(body.vehicle).select(
+        "title number keyNumber color",
+      );
+      if (!assignedVehicle) {
+        return errorResponse("Vehicle not found", 404);
+      }
+      body.vehicleSnapshot = {
+        vehicleId: assignedVehicle._id,
+        title: assignedVehicle.title,
+        number: assignedVehicle.number,
+        keyNumber: assignedVehicle.keyNumber,
+        color: assignedVehicle.color,
+        assignedAt: new Date(),
+      };
+    }
+
     const adminAssignedVehicle =
       !isCustomerRequest &&
       typeof body.vehicle === "string" &&
       body.vehicle.trim() &&
       String(body.vehicle) !== String(oldReservation.vehicle || "");
 
+    // This remains true when retrying contract generation for a vehicle that
+    // was already selected by an earlier failed DocuSign request.
+    const adminRequestedContractGeneration =
+      !isCustomerRequest &&
+      body.status === "contract_pending" &&
+      typeof body.vehicle === "string" &&
+      Boolean(body.vehicle.trim());
+
+    const depositAllowsVehicleAssignment =
+      oldReservation.status === "deposit_paid" ||
+      oldReservation.deposit?.status === "paid" ||
+      oldReservation.deposit?.option === "office";
+
     if (
-      adminAssignedVehicle &&
-      body.status === "delivered" &&
+      (adminAssignedVehicle || adminRequestedContractGeneration) &&
+      !depositAllowsVehicleAssignment
+    ) {
+      return errorResponse(
+        "The deposit must be verified, or the customer must choose pay at office, before assigning a vehicle.",
+        409,
+      );
+    }
+
+    if (
+      (adminAssignedVehicle || adminRequestedContractGeneration) &&
+      (body.status === "delivered" || body.status === "contract_pending") &&
       [
         "pending",
         "confirmed",
@@ -93,10 +148,10 @@ export async function PATCH(
         "contract_pending",
       ].includes(oldReservation.status)
     ) {
-      body.status =
-        oldReservation.deposit?.status === "paid"
-          ? "deposit_paid"
-          : oldReservation.status;
+      // Contract status is applied only after contract creation succeeds.
+      // Keeping the current status here prevents a failed request from
+      // jumping directly to the signing step.
+      body.status = oldReservation.status;
     }
 
     let updatePayload: Record<string, unknown> = body;
@@ -175,11 +230,22 @@ export async function PATCH(
       .populate("category")
       .populate({
         path: "vehicle",
-        select: "title number color",
+        select: "title number keyNumber color",
       })
       .populate("addOns.addOn");
 
     if (!reservation) return errorResponse("Reservation not found", 404);
+
+    if (
+      requestedStatus &&
+      ["completed", "canceled", "expired"].includes(requestedStatus) &&
+      oldReservation.vehicle
+    ) {
+      await Vehicle.findByIdAndUpdate(oldReservation.vehicle, {
+        $set: { available: true },
+        $unset: { reservation: 1 },
+      });
+    }
     
     // Send admin edited notification if flagged
     if (!isCustomerRequest && body.adminEdited === true) {
@@ -270,12 +336,10 @@ export async function PATCH(
     }
 
     const depositIsPaidForContract =
-      reservation.deposit?.status === "paid" ||
-      reservation.deposit?.option === "office" ||
-      adminMarkedDepositPaid;
+      depositAllowsVehicleAssignment || adminMarkedDepositPaid;
 
     if (
-      adminAssignedVehicle &&
+      adminRequestedContractGeneration &&
       depositIsPaidForContract &&
       ["confirmed", "deposit_pending", "deposit_paid", "contract_pending"].includes(
         reservation.status,
@@ -295,7 +359,7 @@ export async function PATCH(
           .populate("category")
           .populate({
             path: "vehicle",
-            select: "title number color",
+            select: "title number keyNumber color",
           })
           .populate("addOns.addOn");
 
@@ -331,11 +395,13 @@ export async function PATCH(
           return successResponse(latestReservation);
         }
       } catch (contractError) {
-        console.error(
-          "Automatic contract creation after vehicle assignment failed:",
+        const contractErrorMessage =
           contractError instanceof Error
             ? contractError.message
-            : "Unknown contract error",
+            : "Unknown contract error";
+        console.error(
+          "Automatic contract creation after vehicle assignment failed:",
+          contractErrorMessage,
         );
         const reservationForContract = await Reservation.findById(id);
         if (reservationForContract) {
@@ -347,14 +413,26 @@ export async function PATCH(
           });
           await reservationForContract.save();
         }
+
+        // Do not report a successful assignment/contract step when DocuSign
+        // rejected the envelope. The same action can safely retry because the
+        // contract service reuses the generated contract document.
+        return errorResponse(
+          `Vehicle assigned, but contract generation failed: ${contractErrorMessage}`,
+          502,
+        );
       }
     }
 
     if (oldReservation.status !== nextStatus && nextStatus) {
+      // Admin confirmation now moves a pending reservation straight into the
+      // deposit step. Keep sending the existing booking-confirmed message.
       const notifiable =
-        NOTIFIABLE_STATUS_MAP[
-          nextStatus as keyof typeof NOTIFIABLE_STATUS_MAP
-        ];
+        oldReservation.status === "pending" && nextStatus === "deposit_pending"
+          ? "confirmed"
+          : NOTIFIABLE_STATUS_MAP[
+              nextStatus as keyof typeof NOTIFIABLE_STATUS_MAP
+            ];
       if (notifiable) {
         try {
           await sendStatusNotification(id, notifiable);

@@ -7,6 +7,7 @@ import Reservation from "@/model/reservation";
 import Vehicle from "@/model/vehicle";
 
 type CustomFieldPayload = {
+  templateFieldId?: unknown;
   label?: unknown;
   fieldType?: unknown;
   inputType?: unknown;
@@ -59,14 +60,15 @@ export async function POST(
             missingEquipment: Array.isArray(body.missingEquipment)
               ? body.missingEquipment.filter(Boolean)
               : [],
-            photos: Array.isArray(body.photos) ? body.photos.filter(Boolean) : [],
+            photos: Array.isArray(body.photos)
+              ? body.photos.filter(Boolean)
+              : [],
             notes: String(body.notes || "").trim(),
             customFields: Array.isArray(body.customFields)
               ? body.customFields
-                  .filter(
-                    (field: CustomFieldPayload) => field && field.label,
-                  )
+                  .filter((field: CustomFieldPayload) => field && field.label)
                   .map((field: CustomFieldPayload) => ({
+                    templateFieldId: String(field.templateFieldId || "").trim(),
                     label: String(field.label || "").trim(),
                     fieldType: field.fieldType === "file" ? "file" : "input",
                     inputType: String(field.inputType || ""),
@@ -109,8 +111,13 @@ export async function POST(
       },
       { new: true, runValidators: true },
     );
-    if (existing.vehicle) {
-      await Vehicle.findByIdAndUpdate(existing.vehicle, { available: true });
+    const linkedVehicleId =
+      existing.vehicle || existing.vehicleSnapshot?.vehicleId;
+    if (linkedVehicleId) {
+      await Vehicle.findByIdAndUpdate(linkedVehicleId, {
+        $set: { available: true },
+        $unset: { reservation: 1 },
+      });
     }
     return successResponse(reservation);
   } catch (error) {
