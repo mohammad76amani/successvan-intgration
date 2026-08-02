@@ -40,35 +40,42 @@ export default function ReservesContent() {
     };
   }, [trackingModal]);
 
-  const fetchReservations = useCallback(async () => {
+  const fetchReservations = useCallback(async (signal?: AbortSignal) => {
     const token = localStorage.getItem("token");
     try {
       const res = await fetch("/api/customer/reservations", {
         cache: "no-store",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal,
       });
       const json = await res.json();
+      if (signal?.aborted) return;
       if (!json.success) throw new Error(json.error || "Request failed");
       setReservations(json.data || []);
       setError("");
     } catch (error) {
+      if (signal?.aborted || (error as Error).name === "AbortError") return;
       setError(
         error instanceof Error ? error.message : "Could not load reservations",
       );
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void fetchReservations();
+    const controller = new AbortController();
+    void fetchReservations(controller.signal);
 
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void fetchReservations();
+      if (document.visibilityState === "visible") {
+        void fetchReservations(controller.signal);
+      }
     };
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      controller.abort();
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -78,8 +85,12 @@ export default function ReservesContent() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("contractSigned") !== "1") return;
 
+    const controller = new AbortController();
     const timers = [0, 1_500, 3_500].map((delay) =>
-      window.setTimeout(() => void fetchReservations(), delay),
+      window.setTimeout(
+        () => void fetchReservations(controller.signal),
+        delay,
+      ),
     );
     params.delete("contractSigned");
     const query = params.toString();
@@ -88,7 +99,10 @@ export default function ReservesContent() {
       "",
       `${window.location.pathname}${query ? `?${query}` : ""}#reserves`,
     );
-    return () => timers.forEach(window.clearTimeout);
+    return () => {
+      controller.abort();
+      timers.forEach(window.clearTimeout);
+    };
   }, [fetchReservations]);
 
   if (loading) {

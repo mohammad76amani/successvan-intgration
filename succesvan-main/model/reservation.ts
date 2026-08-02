@@ -110,6 +110,8 @@ const reservationSchema = new mongoose.Schema(
     // ── Booking journey data ─────────────────────────────────────
     deposit: {
       amount: { type: Number },
+      originalAmount: { type: Number, min: 0 },
+      discountAmount: { type: Number, min: 0 },
       // Which deposit rule the customer chose (see category.deposit).
       option: { type: String, enum: DEPOSIT_OPTIONS },
       status: { type: String, enum: DEPOSIT_STATUSES, default: "not_paid" },
@@ -125,6 +127,20 @@ const reservationSchema = new mongoose.Schema(
       failureReason: { type: String, trim: true },
       // Snapshot of the full-pay discount promised when the option was chosen.
       discountPercent: { type: Number, min: 0, max: 100 },
+      // Reconciliation created when an admin changes an already-paid full
+      // booking before handover.
+      priceAdjustment: {
+        previousTotal: { type: Number, min: 0 },
+        revisedTotal: { type: Number, min: 0 },
+        paidAmount: { type: Number, min: 0 },
+        balanceDue: { type: Number, min: 0, default: 0 },
+        creditAmount: { type: Number, min: 0, default: 0 },
+        status: {
+          type: String,
+          enum: ["balanced", "payment_due", "credit_due"],
+        },
+        adjustedAt: { type: Date },
+      },
     },
     collectionCode: { type: String, trim: true },
     // Snapshot of the category handover deposit. Admin can adjust this per
@@ -188,6 +204,12 @@ const reservationSchema = new mongoose.Schema(
         missingEquipment: { type: Number, default: 0 },
         other: { type: Number, default: 0 },
       },
+      additionalCharges: [
+        {
+          amount: { type: Number, min: 0, required: true },
+          reason: { type: String, trim: true, required: true },
+        },
+      ],
       chargeReason: { type: String, trim: true },
       otherChargeReason: { type: String, trim: true },
       evidence: [{ type: String, trim: true }],

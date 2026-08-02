@@ -18,6 +18,51 @@ type CategoryHandoverField = {
   helpText?: string;
 };
 
+type AdditionalChargeForm = {
+  id: string;
+  amount: string;
+  reason: string;
+};
+
+const HANDOVER_STATUSES = [
+  "contract_signed",
+  "ready_for_collection",
+  "handover_in_progress",
+];
+const INSPECTION_STATUSES = [
+  "delivered",
+  "vehicle_returned",
+  "return_inspection",
+];
+const REFUND_STATUSES = ["deposit_review", "refund_processing"];
+const OPERATION_STATUSES = [
+  ...HANDOVER_STATUSES,
+  ...INSPECTION_STATUSES,
+  ...REFUND_STATUSES,
+];
+
+const additionalChargeRows = (reservation: Reservation) => {
+  const saved = reservation.refund?.additionalCharges || [];
+  if (saved.length > 0) {
+    return saved.map((charge, index) => ({
+      id: `saved-${index}`,
+      amount: String(charge.amount),
+      reason: charge.reason,
+    }));
+  }
+
+  const legacyAmount = Number(reservation.refund?.charges?.other) || 0;
+  return legacyAmount > 0
+    ? [
+        {
+          id: "legacy-other",
+          amount: String(legacyAmount),
+          reason: reservation.refund?.otherChargeReason || "Other deduction",
+        },
+      ]
+    : [];
+};
+
 const fieldClass =
   "w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none";
 
@@ -89,6 +134,7 @@ export default function ReservationOperationsPanel({
     url: string;
     title: string;
   } | null>(null);
+  const needsOperationsData = OPERATION_STATUSES.includes(reservation.status);
   const activeReservation = loadedReservation || reservation;
   const category = activeReservation.category as
     | {
@@ -143,14 +189,19 @@ export default function ReservationOperationsPanel({
     missingEquipment: String(
       activeReservation.refund?.charges?.missingEquipment ?? 0,
     ),
-    other: String(activeReservation.refund?.charges?.other ?? 0),
     chargeReason: activeReservation.refund?.chargeReason ?? "",
-    otherChargeReason: activeReservation.refund?.otherChargeReason ?? "",
     reference: activeReservation.refund?.reference ?? "",
     expectedBy: "",
   });
+  const [additionalCharges, setAdditionalCharges] = useState<
+    AdditionalChargeForm[]
+  >(() => additionalChargeRows(activeReservation));
 
-  const loadReservation = useCallback(async () => {
+  const loadReservation = useCallback(async (signal?: AbortSignal) => {
+    if (!needsOperationsData) {
+      setLoadingReservation(false);
+      return null;
+    }
     if (!reservation._id) {
       setLoadError("Reservation ID is missing");
       setLoadingReservation(false);
@@ -163,8 +214,10 @@ export default function ReservationOperationsPanel({
       const response = await fetch(`/api/reservations/${reservation._id}`, {
         headers: clientAuthHeaders(),
         cache: "no-store",
+        signal,
       });
       const payload = await response.json();
+      if (signal?.aborted) return null;
       if (!response.ok || !payload.success || !payload.data) {
         throw new Error(payload.error || "Could not load reservation form");
       }
@@ -172,6 +225,7 @@ export default function ReservationOperationsPanel({
       setLoadedReservation(completeReservation);
       return completeReservation;
     } catch (error) {
+      if (signal?.aborted || (error as Error).name === "AbortError") return null;
       setLoadError(
         error instanceof Error
           ? error.message
@@ -179,11 +233,12 @@ export default function ReservationOperationsPanel({
       );
       return null;
     } finally {
-      setLoadingReservation(false);
+      if (!signal?.aborted) setLoadingReservation(false);
     }
-  }, [reservation._id]);
+  }, [needsOperationsData, reservation._id]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoadedReservation(null);
     setLoadError("");
     setBeforeValues({});
@@ -211,7 +266,8 @@ export default function ReservationOperationsPanel({
       notes: "",
       cleaningIssue: false,
     });
-    void loadReservation();
+    void loadReservation(controller.signal);
+    return () => controller.abort();
   }, [loadReservation]);
 
   useEffect(() => {
@@ -234,14 +290,13 @@ export default function ReservationOperationsPanel({
       missingEquipment: String(
         loadedReservation.refund?.charges?.missingEquipment ?? 0,
       ),
-      other: String(loadedReservation.refund?.charges?.other ?? 0),
       chargeReason: loadedReservation.refund?.chargeReason ?? "",
-      otherChargeReason: loadedReservation.refund?.otherChargeReason ?? "",
       reference: loadedReservation.refund?.reference ?? "",
       expectedBy: loadedReservation.refund?.expectedBy
         ? dateInputValue(new Date(loadedReservation.refund.expectedBy))
         : "",
     });
+    setAdditionalCharges(additionalChargeRows(loadedReservation));
   }, [loadedReservation]);
 
   const deductions = useMemo(
@@ -252,16 +307,24 @@ export default function ReservationOperationsPanel({
         refund.damage,
         refund.cleaning,
         refund.missingEquipment,
-        refund.other,
       ].reduce((total, value) => total + Math.max(0, Number(value) || 0), 0),
     [refund],
   );
+  const additionalDeductions = useMemo(
+    () =>
+      additionalCharges.reduce(
+        (total, charge) => total + Math.max(0, Number(charge.amount) || 0),
+        0,
+      ),
+    [additionalCharges],
+  );
+  const totalDeductions = deductions + additionalDeductions;
   const depositPaid =
     activeReservation.refund?.depositPaid ??
     activeReservation.handoverDepositAmount ??
     activeReservation.deposit?.amount ??
     0;
-  const refundAmount = Math.max(0, depositPaid - deductions);
+  const refundAmount = Math.max(0, depositPaid - totalDeductions);
 
   const post = async (path: string, body: object) => {
     const response = await fetch(path, {
@@ -858,8 +921,13 @@ export default function ReservationOperationsPanel({
   };
 
   const submitRefund = async (action: "review" | "approve" | "complete") => {
-    if ((Number(refund.other) || 0) > 0 && !refund.otherChargeReason.trim()) {
-      showToast.error("Other charge reason is required");
+    if (
+      additionalCharges.some(
+        (charge) =>
+          (Number(charge.amount) || 0) <= 0 || !charge.reason.trim(),
+      )
+    ) {
+      showToast.error("Every additional deduction needs an amount and reason");
       return;
     }
     setBusy(true);
@@ -867,8 +935,11 @@ export default function ReservationOperationsPanel({
       await post(`/api/admin/reservations/${activeReservation._id}/refund`, {
         action,
         charges: refund,
+        additionalCharges: additionalCharges.map((charge) => ({
+          amount: Number(charge.amount),
+          reason: charge.reason.trim(),
+        })),
         chargeReason: refund.chargeReason,
-        otherChargeReason: refund.otherChargeReason,
         reference: refund.reference,
         expectedBy: refund.expectedBy || undefined,
       });
@@ -876,8 +947,8 @@ export default function ReservationOperationsPanel({
         action === "complete"
           ? "Refund completed"
           : action === "approve"
-            ? "Refund approved"
-            : "Deductions saved",
+            ? `Refund approved with ${additionalCharges.length} additional deduction${additionalCharges.length === 1 ? "" : "s"}`
+            : `${additionalCharges.length} additional deduction${additionalCharges.length === 1 ? "" : "s"} saved`,
       );
     } catch (error) {
       showToast.error(
@@ -888,19 +959,10 @@ export default function ReservationOperationsPanel({
     }
   };
 
-  const showHandover = [
-    "contract_signed",
-    "ready_for_collection",
-    "handover_in_progress",
-  ].includes(activeReservation.status);
-  const showInspection = [
-    "delivered",
-    "vehicle_returned",
-    "return_inspection",
-  ].includes(activeReservation.status);
-  const showRefund = ["deposit_review", "refund_processing"].includes(
-    activeReservation.status,
-  );
+  const showHandover = HANDOVER_STATUSES.includes(activeReservation.status);
+  const showInspection = INSPECTION_STATUSES.includes(activeReservation.status);
+  const showRefund = REFUND_STATUSES.includes(activeReservation.status);
+  if (!showHandover && !showInspection && !showRefund) return null;
   if (loadingReservation) {
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-5">
@@ -941,8 +1003,6 @@ export default function ReservationOperationsPanel({
       </div>
     );
   }
-  if (!showHandover && !showInspection && !showRefund) return null;
-
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
       {showHandover && (
@@ -1323,7 +1383,6 @@ export default function ReservationOperationsPanel({
                 "damage",
                 "cleaning",
                 "missingEquipment",
-                "other",
               ] as const
             ).map((field) => (
               <label key={field} className="text-xs capitalize text-gray-400">
@@ -1350,15 +1409,100 @@ export default function ReservationOperationsPanel({
               setRefund({ ...refund, chargeReason: e.target.value })
             }
           />
-          <textarea
-            className={fieldClass}
-            rows={2}
-            placeholder="Other charge reason"
-            value={refund.otherChargeReason}
-            onChange={(e) =>
-              setRefund({ ...refund, otherChargeReason: e.target.value })
-            }
-          />
+          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  Additional deductions
+                </p>
+                <p className="text-xs text-gray-500">
+                  Add each extra cost with its own reason.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setAdditionalCharges((current) => [
+                    ...current,
+                    {
+                      id: `charge-${Date.now()}-${current.length}`,
+                      amount: "",
+                      reason: "",
+                    },
+                  ])
+                }
+                className="flex h-9 items-center gap-1 rounded-lg border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-3 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+              >
+                <span className="text-lg leading-none">+</span>
+                Add
+              </button>
+            </div>
+
+            {additionalCharges.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-gray-500">
+                No additional deductions
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {additionalCharges.map((charge, index) => (
+                  <div
+                    key={charge.id}
+                    className="grid grid-cols-[110px_minmax(0,1fr)_36px] gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2"
+                  >
+                    <label className="text-[11px] text-gray-400">
+                      Amount (£)
+                      <input
+                        className={`${fieldClass} mt-1`}
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={charge.amount}
+                        onChange={(event) =>
+                          setAdditionalCharges((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, amount: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="text-[11px] text-gray-400">
+                      Reason
+                      <input
+                        className={`${fieldClass} mt-1`}
+                        maxLength={300}
+                        placeholder="Reason for this deduction"
+                        value={charge.reason}
+                        onChange={(event) =>
+                          setAdditionalCharges((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, reason: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      aria-label={`Remove deduction ${index + 1}`}
+                      onClick={() =>
+                        setAdditionalCharges((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                      className="mt-[18px] h-9 rounded-lg bg-red-500/10 text-lg text-red-300 transition hover:bg-red-500/20"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
           <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 p-3 text-sm">
             <p className="text-gray-400">
               Deposit
@@ -1368,7 +1512,9 @@ export default function ReservationOperationsPanel({
             <p className="text-gray-400">
               Deductions
               <br />
-              <strong className="text-red-300">£{deductions.toFixed(2)}</strong>
+              <strong className="text-red-300">
+                £{totalDeductions.toFixed(2)}
+              </strong>
             </p>
             <p className="text-gray-400">
               Refund
@@ -1417,7 +1563,7 @@ export default function ReservationOperationsPanel({
               onClick={() => submitRefund("review")}
               className="rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
-              Save review
+              Save deductions
             </button>
             <button
               disabled={busy}

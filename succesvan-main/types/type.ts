@@ -292,6 +292,8 @@ export interface Reservation {
   reservationType?: "Office" | "Website";
   deposit?: {
     amount?: number;
+    originalAmount?: number;
+    discountAmount?: number;
     option?: DepositOption;
     status?: DepositStatus;
     dueAt?: Date | string;
@@ -304,6 +306,15 @@ export interface Reservation {
     verifiedBy?: string;
     failureReason?: string;
     discountPercent?: number;
+    priceAdjustment?: {
+      previousTotal?: number;
+      revisedTotal?: number;
+      paidAmount?: number;
+      balanceDue?: number;
+      creditAmount?: number;
+      status?: "balanced" | "payment_due" | "credit_due";
+      adjustedAt?: Date | string;
+    };
   };
   collectionCode?: string;
   handoverDepositAmount?: number;
@@ -361,6 +372,10 @@ export interface Reservation {
       missingEquipment?: number;
       other?: number;
     };
+    additionalCharges?: {
+      amount: number;
+      reason: string;
+    }[];
     chargeReason?: string;
     otherChargeReason?: string;
     evidence?: string[];

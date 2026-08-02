@@ -421,6 +421,63 @@ export async function createContractForBooking(
   return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
 }
 
+export async function supersedeContractForBooking(
+  bookingId: string,
+  reason: string,
+  actor: ActorInput,
+) {
+  await connect();
+  objectId(bookingId, "BOOKING_NOT_FOUND");
+
+  const contract = await Contract.findOne({
+    bookingId,
+    status: { $nin: ["voided", "expired", "declined"] },
+  }).select(contractDocumentSelect);
+  if (!contract) return null;
+
+  // Completed envelopes cannot be voided in DocuSign. Their signed files stay
+  // on the historical contract record, while the local revision is expired so
+  // a fresh active agreement can be created for the edited booking.
+  if (
+    contract.status !== "completed" &&
+    contract.docusign?.envelopeId &&
+    canVoidContract(contract.status)
+  ) {
+    try {
+      await voidRentalAgreementEnvelope(contract.docusign.envelopeId, reason);
+      contract.docusign.envelopeStatus = "voided";
+      contract.docusign.voidedAt = new Date();
+      contract.docusign.voidReason = reason;
+    } catch (voidError) {
+      // DocuSign may complete the envelope between loading the booking and
+      // voiding it. Refresh that terminal state, retain the signed documents,
+      // and then supersede the local revision. Other void failures stay fatal.
+      const metadata = await getEnvelopeMetadata(contract.docusign.envelopeId);
+      const envelopeStatus = String(metadata.status || "").toLowerCase();
+      if (!["completed", "signed"].includes(envelopeStatus)) {
+        throw voidError;
+      }
+      await applyEnvelopeStatus(
+        contract,
+        envelopeStatus,
+        metadata.statusChangedDateTime
+          ? new Date(metadata.statusChangedDateTime)
+          : new Date(),
+        actor,
+      );
+    }
+  }
+
+  contract.status = "expired";
+  addAudit(contract, "contract_superseded_after_booking_edit", actor.source, actor.actorId, {
+    reason,
+  });
+  await contract.save();
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
+}
+
 export async function listAdminContracts(query: ContractQuery) {
   await connect();
   const page = Math.max(1, Number(query.page || 1));

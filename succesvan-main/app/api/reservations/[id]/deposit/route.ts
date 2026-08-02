@@ -51,9 +51,26 @@ export async function POST(
       } | null
     )?.deposit;
 
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, Number(categoryDeposit?.fullPayDiscountPercent) || 0),
+    );
+    const originalAmount = Math.max(
+      0,
+      Number(
+        reservation.deposit?.option === "full" &&
+          reservation.deposit?.originalAmount !== undefined
+          ? reservation.deposit.originalAmount
+          : reservation.totalPrice,
+      ) || 0,
+    );
+    const discountAmount =
+      option === "full"
+        ? Math.round(originalAmount * (discountPercent / 100) * 100) / 100
+        : 0;
     const amount =
       option === "full"
-        ? (reservation.totalPrice ?? 0)
+        ? Math.round((originalAmount - discountAmount) * 100) / 100
         : option === "secure"
           ? (categoryDeposit?.securePayPrice ?? 0)
           : (categoryDeposit?.officePayPrice ?? 0);
@@ -74,6 +91,8 @@ export async function POST(
     reservation.deposit = {
       ...(reservation.deposit?.toObject?.() ?? reservation.deposit ?? {}),
       amount,
+      originalAmount: option === "full" ? originalAmount : undefined,
+      discountAmount: option === "full" ? discountAmount : 0,
       option,
       method: option === "office" ? "office" : "bank_transfer",
       receiptUrl,
@@ -81,8 +100,13 @@ export async function POST(
       // "pending" = waiting for admin verification of the transfer.
       status: receiptUrl ? "pending" : "not_paid",
       discountPercent:
-        option === "full" ? (categoryDeposit?.fullPayDiscountPercent ?? 0) : 0,
+        option === "full" ? discountPercent : 0,
     };
+
+    // Full payment settles the complete booking at the discounted price. If a
+    // customer changes away from that option after a failed attempt, restore
+    // the original booking total instead of retaining or reapplying a discount.
+    reservation.totalPrice = option === "full" ? amount : originalAmount;
 
     if (receiptUrl && ["confirmed", "deposit_pending"].includes(reservation.status)) {
       reservation.status = "deposit_pending";

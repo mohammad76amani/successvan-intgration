@@ -33,6 +33,14 @@ const isImageReceipt = (url: string) =>
   url.startsWith("blob:") ||
   url.startsWith("data:image/");
 
+const formatGBP = (amount?: number) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(amount) || 0);
+
 export default function DepositPanel({
   reservation,
   onUpdated,
@@ -41,6 +49,7 @@ export default function DepositPanel({
   onUpdated: () => void;
 }) {
   const deposit = reservation.deposit;
+  const priceAdjustment = deposit?.priceAdjustment;
   const config =
     ((reservation.category as Reservation["category"])?.deposit as
       | {
@@ -78,9 +87,22 @@ export default function DepositPanel({
   );
   const transferDetailsAvailable = hasCardNumber || hasBankAccount;
 
+  const fullOriginalAmount =
+    deposit?.option === "full" && deposit.originalAmount !== undefined
+      ? deposit.originalAmount
+      : (reservation.totalPrice ?? 0);
+  const fullDiscountPercent = Math.min(
+    100,
+    Math.max(0, Number(config.fullPayDiscountPercent) || 0),
+  );
+  const fullDiscountAmount =
+    Math.round(fullOriginalAmount * (fullDiscountPercent / 100) * 100) / 100;
+  const fullPaymentAmount =
+    Math.round((fullOriginalAmount - fullDiscountAmount) * 100) / 100;
+
   const optionAmount = (option: DepositOption) =>
     option === "full"
-      ? (reservation.totalPrice ?? 0)
+      ? fullPaymentAmount
       : option === "secure"
         ? (config?.securePayPrice ?? 0)
         : (config?.officePayPrice ?? 0);
@@ -287,6 +309,88 @@ export default function DepositPanel({
           {deposit?.transactionRef && (
             <Row label="Transaction reference" value={deposit.transactionRef} />
           )}
+          {priceAdjustment?.status && (
+            <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
+              <div className="border-b border-white/10 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-500">
+                  Updated booking price
+                </p>
+                <p className="mt-1 text-xs leading-5 text-gray-300">
+                  Your booking was updated after payment. Here is the saved
+                  balance calculation.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 divide-y divide-white/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <div className="min-w-0 px-4 py-3">
+                  <p className="text-xs font-medium text-gray-400">
+                    Amount already paid
+                  </p>
+                  <p className="mt-1 break-words text-lg font-black text-white">
+                    {formatGBP(priceAdjustment.paidAmount)}
+                  </p>
+                </div>
+                <div className="min-w-0 px-4 py-3">
+                  <p className="text-xs font-medium text-gray-400">
+                    Revised booking total
+                  </p>
+                  <p className="mt-1 break-words text-lg font-black text-white">
+                    {formatGBP(priceAdjustment.revisedTotal)}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className={`border-t px-4 py-3 ${
+                  priceAdjustment.status === "payment_due"
+                    ? "border-[#fe9a00]/25 bg-[#fe9a00]/10"
+                    : priceAdjustment.status === "credit_due"
+                      ? "border-emerald-400/25 bg-emerald-400/10"
+                      : "border-white/10 bg-white/[0.03]"
+                }`}
+              >
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p
+                    className={`text-sm font-bold ${
+                      priceAdjustment.status === "payment_due"
+                        ? "text-[#fe9a00]"
+                        : priceAdjustment.status === "credit_due"
+                          ? "text-emerald-300"
+                          : "text-white"
+                    }`}
+                  >
+                    {priceAdjustment.status === "payment_due"
+                      ? "Additional payment due"
+                      : priceAdjustment.status === "credit_due"
+                        ? "Customer credit"
+                        : "No payment adjustment required"}
+                  </p>
+                  {priceAdjustment.status !== "balanced" && (
+                    <p
+                      className={`shrink-0 text-xl font-black ${
+                        priceAdjustment.status === "payment_due"
+                          ? "text-[#fe9a00]"
+                          : "text-emerald-300"
+                      }`}
+                    >
+                      {formatGBP(
+                        priceAdjustment.status === "payment_due"
+                          ? priceAdjustment.balanceDue
+                          : priceAdjustment.creditAmount,
+                      )}
+                    </p>
+                  )}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-gray-300">
+                  {priceAdjustment.status === "payment_due"
+                    ? "SuccessVanHire will contact you with the next payment instructions."
+                    : priceAdjustment.status === "credit_due"
+                      ? "SuccessVanHire will handle this credit and contact you with the next steps."
+                      : "Your payment matches the revised booking total, so nothing else is required."}
+                </p>
+              </div>
+            </div>
+          )}
           {deposit?.receiptUrl && renderReceiptPreview(deposit.receiptUrl)}
         </div>
         {receiptPreviewModal}
@@ -301,12 +405,17 @@ export default function DepositPanel({
     price: number;
     note: string;
     badge?: string;
+    originalPrice?: number;
   }> = [
     {
       key: "full",
       title: DEPOSIT_OPTION_LABELS.full,
-      price: reservation.totalPrice ?? 0,
-      note: "Pay the full booking total now by bank transfer.",
+      price: fullPaymentAmount,
+      originalPrice: fullDiscountPercent > 0 ? fullOriginalAmount : undefined,
+      note:
+        fullDiscountPercent > 0
+          ? `Pay in full now and save £${fullDiscountAmount.toFixed(2)}. You pay £${fullPaymentAmount.toFixed(2)} instead of £${fullOriginalAmount.toFixed(2)}.`
+          : "Pay the full booking total now by bank transfer.",
       badge:
         (config.fullPayDiscountPercent ?? 0) > 0
           ? `${config.fullPayDiscountPercent}% off your rental`
@@ -345,7 +454,16 @@ export default function DepositPanel({
               <span className="text-white font-semibold text-sm">
                 {option.title}
               </span>
-              <span className="text-[#fe9a00] font-black">£{option.price}</span>
+              <span className="text-right">
+                {option.originalPrice !== undefined && (
+                  <span className="mr-2 text-xs font-semibold text-gray-500 line-through">
+                    £{option.originalPrice.toFixed(2)}
+                  </span>
+                )}
+                <span className="font-black text-[#fe9a00]">
+                  £{option.price.toFixed(2)}
+                </span>
+              </span>
             </div>
             <p className="text-gray-400 text-xs mt-1">{option.note}</p>
             {option.badge && (
@@ -362,6 +480,11 @@ export default function DepositPanel({
         <>
           {transferDetailsAvailable ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              {DEPOSIT_PAYMENT_DETAILS.isTestCard && (
+                <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">
+                  Test payment details only — no real payment will be processed.
+                </div>
+              )}
               <p className="mb-2 text-xs text-gray-400">
                 Make a direct transfer of{" "}
                 <span className="font-black text-[#fe9a00]">

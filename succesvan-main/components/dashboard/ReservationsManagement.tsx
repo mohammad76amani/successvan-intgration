@@ -13,6 +13,7 @@ import {
   FiPlus,
   FiPrinter,
   FiDownload,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import DynamicTableView from "./DynamicTableView";
@@ -254,6 +255,14 @@ function ReservationStepManagerModal({
   const depositOption = deposit?.option
     ? DEPOSIT_OPTION_LABELS[deposit.option]
     : "Not selected";
+  const savedPriceAdjustment = deposit?.priceAdjustment;
+  const savedAdjustmentStatus = savedPriceAdjustment?.status;
+  const savedAdjustmentAmount =
+    savedAdjustmentStatus === "payment_due"
+      ? Number(savedPriceAdjustment?.balanceDue || 0)
+      : savedAdjustmentStatus === "credit_due"
+        ? Number(savedPriceAdjustment?.creditAmount || 0)
+        : 0;
   const canAssignVehicle =
     reservation.status === "deposit_paid" ||
     deposit?.status === "paid" ||
@@ -603,6 +612,43 @@ function ReservationStepManagerModal({
                   Assigning the van will create the contract automatically and
                   move the customer to the signing step.
                 </p>
+                {savedPriceAdjustment && (
+                  <div
+                    className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
+                      savedAdjustmentStatus === "payment_due"
+                        ? "border-[#fe9a00]/30 bg-[#fe9a00]/10"
+                        : "border-emerald-400/25 bg-emerald-400/10"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        Saved payment reconciliation
+                      </p>
+                      <p
+                        className={`mt-0.5 text-xs font-semibold ${
+                          savedAdjustmentStatus === "payment_due"
+                            ? "text-orange-200"
+                            : "text-emerald-200"
+                        }`}
+                      >
+                        {savedAdjustmentStatus === "payment_due"
+                          ? "Additional payment due"
+                          : savedAdjustmentStatus === "credit_due"
+                            ? "Customer credit"
+                            : "Payment balanced"}
+                      </p>
+                    </div>
+                    <p
+                      className={`font-black tabular-nums ${
+                        savedAdjustmentStatus === "payment_due"
+                          ? "text-[#fe9a00]"
+                          : "text-emerald-300"
+                      }`}
+                    >
+                      £{savedAdjustmentAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
                 <div className="mt-4 space-y-3">
                   <CustomSelect
                     options={vehicles}
@@ -1126,6 +1172,58 @@ export default function ReservationsManagement() {
     addOnsCost,
   ]);
 
+  const requiresFreshContract = Boolean(
+    selectedReservation?.vehicle &&
+      ["contract_pending", "contract_signed", "ready_for_collection"].includes(
+        selectedReservation.status,
+      ),
+  );
+
+  const proposedBaseTotal = editPerInvoice
+    ? 0
+    : Number(
+        editFinalPrice ??
+          priceCalc?.totalPrice ??
+          selectedReservation?.totalPrice ??
+          0,
+      );
+
+  const fullPaymentPreview = useMemo(() => {
+    const deposit = selectedReservation?.deposit;
+    if (
+      !requiresFreshContract ||
+      deposit?.option !== "full" ||
+      deposit.status !== "paid"
+    ) {
+      return null;
+    }
+
+    const discountPercent = Math.min(
+      100,
+      Math.max(0, Number(deposit.discountPercent || 0)),
+    );
+    const previouslyPaid = Number(deposit.amount || 0);
+    const revisedBookingTotal = Number(
+      (proposedBaseTotal * (1 - discountPercent / 100)).toFixed(2),
+    );
+    const difference = Number(
+      (revisedBookingTotal - previouslyPaid).toFixed(2),
+    );
+
+    return {
+      discountPercent,
+      previouslyPaid,
+      revisedBookingTotal,
+      difference,
+      state:
+        difference > 0
+          ? ("payment_due" as const)
+          : difference < 0
+            ? ("credit_due" as const)
+            : ("balanced" as const),
+    };
+  }, [proposedBaseTotal, requiresFreshContract, selectedReservation]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -1618,11 +1716,9 @@ export default function ReservationsManagement() {
           pickupTime: editTimes.startTime,
           returnTime: editTimes.endTime,
           category: editCategory,
-          totalPrice: editPerInvoice
-            ? 0
-            : (editFinalPrice ??
-              priceCalc?.totalPrice ??
-              selectedReservation.totalPrice),
+          totalPrice: proposedBaseTotal,
+          repricedBaseTotal: proposedBaseTotal,
+          ...(requiresFreshContract ? { status: "deposit_paid" } : {}),
           perInvoice: editPerInvoice,
           addOns: selectedAddOns,
           selectedGear: selectedGear,
@@ -2869,12 +2965,92 @@ export default function ReservationsManagement() {
                       )
                     )}
 
+                    {requiresFreshContract && (
+                      <div className="overflow-hidden rounded-xl border border-[#fe9a00]/35 bg-[#fe9a00]/[0.07]">
+                        <div className="flex gap-3 p-4">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#fe9a00]/35 bg-[#fe9a00]/15 text-[#fe9a00]">
+                            <FiAlertTriangle className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white">
+                              A fresh agreement will be required
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-slate-300">
+                              Saving returns this booking to Assign Vehicle. The
+                              current vehicle stays preselected, but the previous
+                              agreement will no longer be used. Confirm the
+                              assigned vehicle to generate and send a fresh
+                              contract.
+                            </p>
+                          </div>
+                        </div>
+
+                        {fullPaymentPreview && (
+                          <div className="border-t border-white/10 bg-[#07101f]/35 p-4">
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                                  Full payment adjustment
+                                </p>
+                                <p className="mt-1 text-xs text-slate-400">
+                                  Includes the saved {fullPaymentPreview.discountPercent}% full-payment discount.
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                                Preview
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <p className="text-xs text-slate-400">Previously paid</p>
+                                <p className="mt-0.5 font-bold tabular-nums text-white">
+                                  £{fullPaymentPreview.previouslyPaid.toFixed(2)}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-slate-400">Revised booking total</p>
+                                <p className="mt-0.5 font-bold tabular-nums text-white">
+                                  £{fullPaymentPreview.revisedBookingTotal.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                            <div
+                              className={`mt-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+                                fullPaymentPreview.state === "payment_due"
+                                  ? "border-[#fe9a00]/30 bg-[#fe9a00]/10"
+                                  : "border-emerald-400/25 bg-emerald-400/10"
+                              }`}
+                            >
+                              <span className={fullPaymentPreview.state === "payment_due" ? "text-xs font-semibold text-orange-200" : "text-xs font-semibold text-emerald-200"}>
+                                {fullPaymentPreview.state === "payment_due"
+                                  ? "Additional payment due"
+                                  : fullPaymentPreview.state === "credit_due"
+                                    ? "Customer credit"
+                                    : "Payment balanced"}
+                              </span>
+                              <span className={fullPaymentPreview.state === "payment_due" ? "font-black tabular-nums text-[#fe9a00]" : "font-black tabular-nums text-emerald-300"}>
+                                £{Math.abs(fullPaymentPreview.difference).toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                              Preview only. The backend performs the authoritative
+                              payment calculation when this update is saved.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <button
                       onClick={handleDatesUpdate}
                       disabled={isSubmitting || !editCategory}
                       className="w-full px-4 py-2 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
                     >
-                      {isSubmitting ? "Updating..." : "Update Reservation"}
+                      {isSubmitting
+                        ? "Updating..."
+                        : requiresFreshContract
+                          ? "Save & prepare new contract"
+                          : "Update Reservation"}
                     </button>
                   </div>
                 )}

@@ -38,11 +38,38 @@ export async function POST(
       damage: money(body.charges?.damage),
       cleaning: money(body.charges?.cleaning),
       missingEquipment: money(body.charges?.missingEquipment),
-      other: money(body.charges?.other),
+      other: 0,
     };
-    const deductionsTotal = Object.values(charges).reduce(
+    const submittedAdditionalCharges = Array.isArray(body.additionalCharges)
+      ? body.additionalCharges
+      : [];
+    if (submittedAdditionalCharges.length > 50) {
+      return errorResponse("A maximum of 50 additional deductions is allowed", 400);
+    }
+    const additionalCharges = submittedAdditionalCharges.map(
+      (item: { amount?: unknown; reason?: unknown }) => ({
+        amount: money(item?.amount),
+        reason: String(item?.reason || "").trim(),
+      }),
+    );
+    if (
+      additionalCharges.some(
+        (item: { amount: number; reason: string }) =>
+          item.amount <= 0 || !item.reason || item.reason.length > 300,
+      )
+    ) {
+      return errorResponse(
+        "Each additional deduction needs a positive amount and a reason of 300 characters or fewer",
+        400,
+      );
+    }
+    const fixedDeductions = Object.values(charges).reduce(
       (total, charge) => total + charge,
       0,
+    );
+    const deductionsTotal = additionalCharges.reduce(
+      (total: number, charge: { amount: number }) => total + charge.amount,
+      fixedDeductions,
     );
     const depositPaid = money(existing.refund?.depositPaid ?? existing.deposit?.amount);
     const refundAmount = Math.max(0, depositPaid - deductionsTotal);
@@ -73,46 +100,46 @@ export async function POST(
       expectedBy = new Date(createLondonDateTime(expectedDay, "23:59"));
     }
 
-    const reservation = await Reservation.findByIdAndUpdate(
-      id,
-      {
-        $set: {
-          status: reservationStatus,
-          refund: {
-            depositPaid,
-            charges,
-            deductionsTotal,
-            refundAmount,
-            status,
-            chargeReason: String(body.chargeReason || "").trim(),
-            otherChargeReason: String(body.otherChargeReason || "").trim(),
-            evidence: Array.isArray(body.evidence)
-              ? body.evidence.filter(Boolean)
-              : [],
-            reference: String(body.reference || "").trim(),
-            expectedBy,
-            approvedAt: body.action === "approve" ? now : existing.refund?.approvedAt,
-            processedAt: body.action === "complete" ? now : undefined,
-          },
-        },
-        $push: {
-          statusHistory: {
-            status: reservationStatus,
-            changedAt: now,
-            source: "admin",
-            note:
-              body.action === "complete"
-                ? "Refund completed"
-                : body.action === "approve"
-                  ? "Refund approved and processing"
-                  : "Deposit deductions reviewed",
-          },
-        },
-      },
-      { new: true, runValidators: true },
+    // Save nested refund values explicitly. Replacing the whole refund object
+    // can discard newly introduced fields when an older/partial subdocument is
+    // loaded, which previously caused additional deduction rows to disappear.
+    existing.set("status", reservationStatus);
+    existing.set("refund.depositPaid", depositPaid);
+    existing.set("refund.charges", charges);
+    existing.set("refund.additionalCharges", additionalCharges);
+    existing.set("refund.deductionsTotal", deductionsTotal);
+    existing.set("refund.refundAmount", refundAmount);
+    existing.set("refund.status", status);
+    existing.set(
+      "refund.chargeReason",
+      String(body.chargeReason || "").trim(),
     );
-
-    if (!reservation) return errorResponse("Reservation not found", 404);
+    existing.set("refund.otherChargeReason", "");
+    existing.set(
+      "refund.evidence",
+      Array.isArray(body.evidence) ? body.evidence.filter(Boolean) : [],
+    );
+    existing.set("refund.reference", String(body.reference || "").trim());
+    existing.set("refund.expectedBy", expectedBy);
+    if (body.action === "approve") {
+      existing.set("refund.approvedAt", now);
+    }
+    if (body.action === "complete") {
+      existing.set("refund.processedAt", now);
+    }
+    existing.statusHistory.push({
+      status: reservationStatus,
+      changedAt: now,
+      source: "admin",
+      note:
+        body.action === "complete"
+          ? "Refund completed"
+          : body.action === "approve"
+            ? "Refund approved and processing"
+            : "Deposit deductions reviewed",
+    });
+    existing.markModified("refund.additionalCharges");
+    const reservation = await existing.save();
 
     if (body.action === "approve") {
       await scheduleRefundDueOwnerNotifications(id);

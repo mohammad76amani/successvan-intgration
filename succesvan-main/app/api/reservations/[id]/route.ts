@@ -8,7 +8,10 @@ import { sendSMS } from "@/lib/sms";
 import { deleteImage } from "@/lib/s3";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
-import { createContractForBooking } from "@/lib/contracts/service";
+import {
+  createContractForBooking,
+  supersedeContractForBooking,
+} from "@/lib/contracts/service";
 import Vehicle from "@/model/vehicle";
 import {
   normalizeReservationStatus,
@@ -61,12 +64,86 @@ export async function PATCH(
     const oldReservation = await Reservation.findById(id);
     if (!oldReservation) return errorResponse("Reservation not found", 404);
     const isCustomerRequest = !canAccessDashboard(auth.role);
+    const isAssignedPreHandoverAdminEdit =
+      !isCustomerRequest &&
+      body.adminEdited === true &&
+      Boolean(oldReservation.vehicle) &&
+      ["contract_pending", "contract_signed", "ready_for_collection"].includes(
+        oldReservation.status,
+      );
     if (
       isCustomerRequest &&
       String(oldReservation.user) !== String(auth.userId)
     ) {
       return errorResponse("Forbidden", 403);
     }
+
+    if (isAssignedPreHandoverAdminEdit) {
+      const reason =
+        "Reservation details changed before handover. Replaced by a new rental agreement.";
+      await supersedeContractForBooking(
+        id,
+        reason,
+        { actorId: auth.userId, source: "admin" },
+      );
+
+      // Keep the vehicle linked and return the workflow to the assignment
+      // action. Re-confirming that vehicle generates a fresh agreement.
+      body.status =
+        oldReservation.deposit?.option === "office"
+          ? "deposit_pending"
+          : "deposit_paid";
+
+      if (
+        oldReservation.deposit?.option === "full" &&
+        oldReservation.deposit?.status === "paid"
+      ) {
+        const requestedBaseTotal = Math.max(
+          0,
+          Number(body.repricedBaseTotal ?? body.totalPrice) || 0,
+        );
+        const discountPercent = Math.min(
+          100,
+          Math.max(0, Number(oldReservation.deposit.discountPercent) || 0),
+        );
+        const discountAmount =
+          Math.round(
+            requestedBaseTotal * (discountPercent / 100) * 100,
+          ) / 100;
+        const revisedTotal =
+          Math.round((requestedBaseTotal - discountAmount) * 100) / 100;
+        const paidAmount = Math.max(
+          0,
+          Number(oldReservation.deposit.amount) || 0,
+        );
+        const balanceDue =
+          Math.round(Math.max(0, revisedTotal - paidAmount) * 100) / 100;
+        const creditAmount =
+          Math.round(Math.max(0, paidAmount - revisedTotal) * 100) / 100;
+
+        body.totalPrice = revisedTotal;
+        body["deposit.originalAmount"] = requestedBaseTotal;
+        body["deposit.discountAmount"] = discountAmount;
+        body["deposit.priceAdjustment"] = {
+          previousTotal: Math.max(0, Number(oldReservation.totalPrice) || 0),
+          revisedTotal,
+          paidAmount,
+          balanceDue,
+          creditAmount,
+          status:
+            balanceDue > 0
+              ? "payment_due"
+              : creditAmount > 0
+                ? "credit_due"
+                : "balanced",
+          adjustedAt: new Date(),
+        };
+      }
+    }
+
+    // This is a UI-only helper used to preview full-payment repricing. It is
+    // never a Reservation model field.
+    delete body.repricedBaseTotal;
 
     // Normalize/validate the requested status against the journey enum.
     if (body.status !== undefined) {
@@ -212,10 +289,12 @@ export async function PATCH(
             changedAt: new Date(),
             source: isCustomerRequest ? "customer" : "admin",
             note:
-              requestedStatus === "canceled" &&
+              isAssignedPreHandoverAdminEdit
+                ? "Reservation edited before handover. Vehicle must be confirmed and a new rental agreement generated."
+                : requestedStatus === "canceled" &&
               typeof updatePayload.cancelReason === "string"
-                ? updatePayload.cancelReason
-                : undefined,
+                  ? updatePayload.cancelReason
+                  : undefined,
           },
         },
       };

@@ -75,7 +75,9 @@ export function canVoidContract(status: ContractStatus) {
 }
 
 export function canDownloadSignedDocument(status: ContractStatus) {
-  return status === "completed";
+  // A signed agreement that was replaced after a pre-handover booking edit is
+  // retained as an expired historical revision and must remain downloadable.
+  return status === "completed" || status === "expired";
 }
 
 export function shouldApplyIncomingStatus(

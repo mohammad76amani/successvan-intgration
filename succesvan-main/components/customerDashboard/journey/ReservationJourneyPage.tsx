@@ -228,7 +228,7 @@ export default function ReservationJourneyPage({
   const [signBusy, setSignBusy] = useState(false);
   const [licence, setLicence] = useState(getLicenceStateFromStorage);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     try {
       const userRaw = localStorage.getItem("user");
       const userId = userRaw ? JSON.parse(userRaw)?._id : null;
@@ -239,9 +239,10 @@ export default function ReservationJourneyPage({
 
       const res = await fetch(
         `/api/customer/reservations/${reservationId}/journey`,
-        { headers: authHeaders() },
+        { headers: authHeaders(), signal },
       );
       const json = await res.json();
+      if (signal?.aborted) return;
       const data: Reservation | undefined = json.data?.reservation;
       if (!json.success || !data) {
         setNotFound(true);
@@ -250,15 +251,18 @@ export default function ReservationJourneyPage({
       setReservation(data);
       setContract(json.data.contract || null);
     } catch (error) {
+      if (signal?.aborted || (error as Error).name === "AbortError") return;
       console.log("Failed to load reservation:", error);
       setNotFound(true);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [reservationId, router]);
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+    void fetchData(controller.signal);
+    return () => controller.abort();
   }, [fetchData]);
 
   const journey = reservation

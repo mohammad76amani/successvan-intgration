@@ -57,6 +57,70 @@ const compactDate = (value?: Date | string) =>
 
 const money = (value?: number) => `£${Number(value || 0).toFixed(2)}`;
 
+type RefundDeduction = {
+  key: string;
+  label: string;
+  amount: number;
+  reason?: string;
+  category: "standard" | "other" | "additional";
+};
+
+type CurrentFact = {
+  key?: string;
+  label: string;
+  value: React.ReactNode;
+  tone?: "deduction" | "refund";
+};
+
+function refundDeductionItems(
+  refund?: Reservation["refund"],
+): RefundDeduction[] {
+  if (!refund) return [];
+
+  const standardCharges = [
+    ["fuel", "Fuel charge", refund.charges?.fuel],
+    ["late", "Late return charge", refund.charges?.late],
+    ["damage", "Damage charge", refund.charges?.damage],
+    ["cleaning", "Cleaning charge", refund.charges?.cleaning],
+    [
+      "missing-equipment",
+      "Missing equipment",
+      refund.charges?.missingEquipment,
+    ],
+  ] as const;
+
+  const items: RefundDeduction[] = standardCharges
+    .filter(([, , amount]) => Number(amount || 0) > 0)
+    .map(([key, label, amount]) => ({
+      key,
+      label,
+      amount: Number(amount),
+      category: "standard" as const,
+    }));
+
+  if (Number(refund.charges?.other || 0) > 0) {
+    items.push({
+      key: "other",
+      label: "Other charge",
+      amount: Number(refund.charges?.other),
+      reason: refund.otherChargeReason?.trim() || undefined,
+      category: "other",
+    });
+  }
+
+  refund.additionalCharges?.forEach((charge, index) => {
+    if (Number(charge.amount || 0) <= 0) return;
+    items.push({
+      key: `additional-${index}-${charge.reason}`,
+      label: charge.reason?.trim() || "Additional charge",
+      amount: Number(charge.amount),
+      category: "additional",
+    });
+  });
+
+  return items;
+}
+
 function profileFieldsFromLicence(details: LicenceDetailsReview) {
   return {
     ...(details.address?.trim() ? { address: details.address.trim() } : {}),
@@ -279,6 +343,15 @@ export default function JourneyAccordions({
   const handover = reservation.handover;
   const inspection = reservation.inspection;
   const refund = reservation.refund;
+  const refundDeductions = refundDeductionItems(refund);
+  const compactRefundDeductions = refundDeductions.slice(0, 3);
+  const hiddenRefundDeductionCount = Math.max(
+    refundDeductions.length - compactRefundDeductions.length,
+    0,
+  );
+  const hasStandardRefundDeductions = refundDeductions.some(
+    (deduction) => deduction.category === "standard",
+  );
   const reservationUser = reservation.user as
     | {
         name?: string;
@@ -307,7 +380,7 @@ export default function JourneyAccordions({
     reservation.statusHistory?.find((entry) => entry.status === "pending")
       ?.changedAt ||
     (reservation as Reservation & { createdAt?: string }).createdAt;
-  const currentFacts = (() => {
+  const currentFacts: CurrentFact[] = (() => {
     const status = journey.mainStatus;
     const vehicleName =
       reservation.vehicle?.title ||
@@ -419,8 +492,35 @@ export default function JourneyAccordions({
       )
     ) {
       return [
-        { label: "Deductions", value: money(refund?.deductionsTotal) },
-        { label: "Refund", value: money(refund?.refundAmount) },
+        {
+          label: "Deposit paid",
+          value: money(journey.refund?.depositPaid),
+        },
+        ...compactRefundDeductions.map((deduction) => ({
+          key: deduction.key,
+          label: deduction.label,
+          value: `-${money(deduction.amount)}`,
+          tone: "deduction" as const,
+        })),
+        ...(hiddenRefundDeductionCount > 0
+          ? [
+              {
+                key: "more-deductions",
+                label: "More deductions",
+                value: `${hiddenRefundDeductionCount} more — see full breakdown`,
+              },
+            ]
+          : []),
+        {
+          label: "Total deductions",
+          value: `-${money(journey.refund?.deductionsTotal)}`,
+          tone: "deduction" as const,
+        },
+        {
+          label: "Refund",
+          value: money(journey.refund?.refundAmount),
+          tone: "refund" as const,
+        },
         {
           label: "Status",
           value: refund?.status?.replace(/_/g, " ") || "Under review",
@@ -537,12 +637,23 @@ export default function JourneyAccordions({
               {activeStep?.label || journey.publicStatusLabel}
             </h3>
             <div className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
-              {currentFacts.map((fact) => (
-                <div key={fact.label} className="min-w-0">
+              {currentFacts.map((fact, index) => (
+                <div
+                  key={fact.key || `${fact.label}-${index}`}
+                  className="min-w-0"
+                >
                   <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
                     {fact.label}
                   </p>
-                  <p className="mt-0.5 break-words text-xs font-semibold capitalize text-slate-200">
+                  <p
+                    className={`mt-0.5 break-words text-xs font-semibold capitalize ${
+                      fact.tone === "deduction"
+                        ? "text-red-300"
+                        : fact.tone === "refund"
+                          ? "text-emerald-400"
+                          : "text-slate-200"
+                    }`}
+                  >
                     {fact.value}
                   </p>
                 </div>
@@ -849,70 +960,119 @@ export default function JourneyAccordions({
       {/* ── Refund summary ─────────────────────────────────── */}
       <Section id="refund" open={openSection === "refund"}>
         {refund && journey.refund ? (
-          <>
-            <Row
-              label="Deposit paid"
-              value={`£${journey.refund.depositPaid}`}
-            />
-            {(refund.charges?.fuel ?? 0) > 0 && (
-              <Row label="Fuel charge" value={`-£${refund.charges!.fuel}`} />
-            )}
-            {(refund.charges?.late ?? 0) > 0 && (
-              <Row label="Late charge" value={`-£${refund.charges!.late}`} />
-            )}
-            {(refund.charges?.damage ?? 0) > 0 && (
-              <Row
-                label="Damage charge"
-                value={`-£${refund.charges!.damage}`}
-              />
-            )}
-            {(refund.charges?.cleaning ?? 0) > 0 && (
-              <Row
-                label="Cleaning charge"
-                value={`-£${refund.charges!.cleaning}`}
-              />
-            )}
-            {(refund.charges?.missingEquipment ?? 0) > 0 && (
-              <Row
-                label="Missing equipment"
-                value={`-£${refund.charges!.missingEquipment}`}
-              />
-            )}
-            {(refund.charges?.other ?? 0) > 0 && (
-              <Row label="Other charge" value={`-£${refund.charges!.other}`} />
-            )}
-            <Row
-              label="Total deductions"
-              value={`-£${journey.refund.deductionsTotal}`}
-            />
-            <Row
-              label="Refund amount"
-              value={
-                <span className="text-green-400">
-                  £{journey.refund.refundAmount}
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/15">
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Refund calculation
+                </p>
+                <p className="mt-1 text-sm text-slate-300">
+                  Your deposit, less the deductions listed below.
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Deposit paid
+                </p>
+                <p className="text-base font-black tabular-nums text-white">
+                  {money(journey.refund.depositPaid)}
+                </p>
+              </div>
+            </div>
+
+            <div className="px-4 py-2">
+              {refundDeductions.length > 0 ? (
+                <div className="divide-y divide-white/[0.07]">
+                  {refundDeductions.map((deduction) => (
+                    <div
+                      key={deduction.key}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 py-3"
+                    >
+                      <p className="min-w-0 break-words text-sm font-semibold text-slate-200">
+                        {deduction.label}
+                      </p>
+                      <p className="text-sm font-bold tabular-nums text-red-300">
+                        -{money(deduction.amount)}
+                      </p>
+                      {deduction.reason && (
+                        <p className="col-span-2 break-words text-xs leading-5 text-slate-500 sm:col-span-1">
+                          {deduction.reason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-4 py-3 text-sm">
+                  <span className="text-slate-400">No deductions</span>
+                  <span className="font-bold tabular-nums text-emerald-400">
+                    {money(0)}
+                  </span>
+                </div>
+              )}
+              {hasStandardRefundDeductions && refund.chargeReason?.trim() && (
+                <div className="mb-2 rounded-lg border border-[#fe9a00]/15 bg-[#fe9a00]/[0.05] px-3 py-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#fe9a00]">
+                    Reason for all standard deductions
+                  </p>
+                  <p className="mt-1 break-words text-xs leading-5 text-slate-300">
+                    {refund.chargeReason}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-[#fe9a00]/25 bg-[#fe9a00]/[0.04] px-4 py-4">
+              <div className="flex items-center justify-between gap-4 text-sm">
+                <span className="font-semibold text-slate-300">
+                  Total deductions
                 </span>
-              }
-            />
-            <Row
-              label="Status"
-              value={journey.refund.status.replace(/_/g, " ")}
-            />
-            {journey.refund.reference && (
-              <Row label="Refund reference" value={journey.refund.reference} />
-            )}
-            {refund.chargeReason && (
-              <Row label="Deduction reason" value={refund.chargeReason} />
-            )}
-            {refund.expectedBy && (
-              <Row
-                label="Expected by"
-                value={new Date(refund.expectedBy).toLocaleDateString("en-GB")}
-              />
-            )}
-            <p className="text-gray-500 text-xs mt-2">
+                <span className="font-black tabular-nums text-red-300">
+                  -{money(journey.refund.deductionsTotal)}
+                </span>
+              </div>
+              <div className="mt-2 flex items-end justify-between gap-4">
+                <span className="font-black text-white">Refund amount</span>
+                <span className="text-xl font-black tabular-nums text-emerald-400">
+                  {money(journey.refund.refundAmount)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-3 border-t border-white/10 px-4 py-4 text-xs sm:grid-cols-3">
+              <div className="min-w-0">
+                <p className="font-bold uppercase tracking-wide text-slate-500">
+                  Status
+                </p>
+                <p className="mt-1 break-words font-semibold capitalize text-[#fe9a00]">
+                  {journey.refund.status.replace(/_/g, " ")}
+                </p>
+              </div>
+              {refund.expectedBy && (
+                <div className="min-w-0">
+                  <p className="font-bold uppercase tracking-wide text-slate-500">
+                    Expected by
+                  </p>
+                  <p className="mt-1 font-semibold text-white">
+                    {new Date(refund.expectedBy).toLocaleDateString("en-GB")}
+                  </p>
+                </div>
+              )}
+              {journey.refund.reference && (
+                <div className="min-w-0">
+                  <p className="font-bold uppercase tracking-wide text-slate-500">
+                    Reference
+                  </p>
+                  <p className="mt-1 break-all font-semibold text-white">
+                    {journey.refund.reference}
+                  </p>
+                </div>
+              )}
+            </div>
+            <p className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-slate-500">
               Refunds usually reach your account within 5–10 working days.
             </p>
-          </>
+          </div>
         ) : (
           <Placeholder text="Your deposit refund will be reviewed after the return inspection. Details will appear here." />
         )}

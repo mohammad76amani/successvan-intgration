@@ -28,7 +28,11 @@ export default function SigningCompletePage() {
               },
             );
             const payload = await response.json();
-            if (payload.success && payload.data?.status === "completed") {
+            if (
+              !cancelled &&
+              payload.success &&
+              payload.data?.status === "completed"
+            ) {
               setMessage("Contract signed successfully. Opening your bookings…");
               break;
             }
