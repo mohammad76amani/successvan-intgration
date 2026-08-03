@@ -121,11 +121,12 @@ export default function CheapVanHireLondonPage() {
       />
 
       <CheapVanHireLondonHero />
+      <CheapVanListing />
       <PricingBenefitsSection />
       <WhyCheapSection />
 
       <PricingTableSection />
-      <CheapVanListing />
+
       <SavingTipsSection />
       <FAQSection />
       <FinalCTASection />

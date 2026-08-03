@@ -52,7 +52,7 @@ const LutonFinalCTA = dynamic(
     import("@/components/pillar/LutonVanHireLondonPillar").then(
       (m) => m.LutonFinalCTA,
     ),
-  { loading: () => <div className="h-70" /> }, 
+  { loading: () => <div className="h-70" /> },
 );
 export const metadata: Metadata = {
   metadataBase: new URL("https://successvanhire.co.uk"),
@@ -123,8 +123,8 @@ export default function LutonVanHireLondonPage() {
       />
 
       <LutonVanHireLondonHero />
-      <WhyChooseLutonSection />
       <LutonVanListing />
+      <WhyChooseLutonSection />
       <LutonSpecificationsSection />
       <TailLiftBenefitsSection />
       <LutonUseCasesSection />

@@ -9,6 +9,7 @@ import {
   VanTypesSection,
 } from "@/components/pillar/VanHireLondonPillar";
 import { vanHireLondonFAQSchema, vanHireLondonSchema } from "@/lib/schema";
+import VanListingHome from "@/components/global/vanListingBackup";
 
 // Dynamic imports برای کامپوننت‌های below-the-fold
 const AllVanListing = dynamic(
@@ -93,7 +94,7 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://successvanhire.co.uk/van-hire-london",
   },
-  
+
   twitter: {
     card: "summary_large_image",
     title: "Van Hire London | Self-Drive Van Rental & Clear Prices",
@@ -103,7 +104,6 @@ export const metadata: Metadata = {
       "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/van-hire-london.jpg",
     ],
   },
-
 };
 
 export default function VanHireLondonPage() {
@@ -128,6 +128,7 @@ export default function VanHireLondonPage() {
       />
 
       <VanHireLondonHero />
+      <VanListingHome />
       <WhyChooseSection />
       <VanTypesSection />
       <AllVanListing />

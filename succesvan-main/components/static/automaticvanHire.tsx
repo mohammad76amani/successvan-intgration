@@ -19,6 +19,7 @@ import {
 import { TbAutomaticGearbox } from "react-icons/tb";
 import Link from "next/link";
 import { useCases } from "@/lib/areas";
+import VanListingHome from "../global/vanListingBackup";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -236,6 +237,8 @@ export default function AutomaticVanHire() {
           </div>
         </div>
       </section>
+
+      <VanListingHome />
 
       {/* Why Choose Success Van Hire */}
       <section className="relative py-20 border-t border-white/10">

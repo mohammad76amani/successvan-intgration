@@ -4,6 +4,7 @@ import { RemovalVanHireLondonHero } from "@/components/pillar/RemovalVanHireLond
 import RemovalVanListing from "@/components/pillar/RemovalVanListing";
 import { removalVanSchema, removalFAQSchema } from "@/lib/schema";
 import dynamic from "next/dynamic";
+import VanListingHome from "@/components/global/vanListingBackup";
 const WhyChooseRemovalSection = dynamic(
   () =>
     import("@/components/pillar/RemovalVanHireLondonPillar").then(
@@ -125,6 +126,7 @@ export default function RemovalVanHireLondonPage() {
         }}
       />
       <RemovalVanHireLondonHero />
+      <VanListingHome />
       <WhyChooseRemovalSection />
       <VanSizesForMovingSection />
       <RemovalVanListing />

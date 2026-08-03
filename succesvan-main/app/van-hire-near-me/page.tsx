@@ -1,12 +1,9 @@
 import { Metadata } from "next";
-import {
-  VanHireNearMeHero,
- 
-} from "@/components/pillar/VanHireNearMePillar";
+import { VanHireNearMeHero } from "@/components/pillar/VanHireNearMePillar";
 import Script from "next/script";
 import { vanHireNearMeSchema, vanHireNearMeFAQSchema } from "@/lib/schema";
 import dynamic from "next/dynamic";
-
+import VanListingHome from "@/components/global/vanListingBackup";
 
 const WhyChooseVanHireNearMeSection = dynamic(
   () =>
@@ -64,7 +61,6 @@ const VanFinalCTANearMeSection = dynamic(
   { loading: () => <div className="h-70" /> },
 );
 
-
 export const metadata: Metadata = {
   metadataBase: new URL("https://successvanhire.co.uk"),
   title: "Van Hire Near Me London | Local Van Rental from £78/Day",
@@ -119,8 +115,6 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://successvanhire.co.uk/van-hire-near-me",
   },
-
-   
 };
 
 export default function VanHireNearMePage() {
@@ -145,6 +139,7 @@ export default function VanHireNearMePage() {
       />
       <main>
         <VanHireNearMeHero />
+        <VanListingHome />
         <WhyChooseVanHireNearMeSection />
         <VanFleetNearMeSection />
         <VanCoverageAreasNearMeSection />
