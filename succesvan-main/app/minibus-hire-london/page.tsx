@@ -11,6 +11,7 @@ import {
 } from "@/components/pillar/MinibusHireLondonPillar";
 import Script from "next/script";
 import { minibusFAQSchema, minibusSchema } from "@/lib/schema";
+import VanListingHome from "@/components/global/vanListingBackup";
 
 export const metadata: Metadata = {
   title: "Minibus Hire London | 8–17 Seater Minibus Rental from £89/day",
@@ -38,12 +39,13 @@ export const metadata: Metadata = {
     title: "Minibus Hire London | 8–17 Seater Rental from £89/Day",
     description:
       "Group travel made easy with minibus hire London. 8–17 seater options, ULEZ compliant, fully insured. Book online now.",
-    images: ["https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/minibushire.webp"],
+    images: [
+      "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/minibushire.webp",
+    ],
   },
   alternates: {
     canonical: "https://successvanhire.co.uk/minibus-hire-london",
   },
-   
 };
 
 export default function MinibusHireLondonPage() {
@@ -68,6 +70,7 @@ export default function MinibusHireLondonPage() {
       />
       <main>
         <MinibusHireLondonHero />
+        <VanListingHome />
         <WhyChooseMinibusSection />
         <MinibusFleetSection />
         <MinibusCoverageAreasSection />

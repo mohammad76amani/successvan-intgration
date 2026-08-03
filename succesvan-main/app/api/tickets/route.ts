@@ -4,6 +4,7 @@ import connect from "@/lib/data";
 import jwt from "jsonwebtoken";
 import User from "@/model/user";
 import { canAccessDashboard } from "@/lib/roles";
+import { withLastReservations } from "@/lib/ticketLastReservation";
 
 type TokenPayload = {
   userId: string;
@@ -38,9 +39,11 @@ export async function GET(request: NextRequest) {
 
     let tickets;
     if (canAccessDashboard(userRole)) {
-      tickets = await Ticket.find()
-        .populate("userId", "name lastName email")
-        .sort({ updatedAt: -1 });
+      const ticketList = await Ticket.find()
+        .populate("userId", "name lastName email emaildata phoneData")
+        .sort({ updatedAt: -1 })
+        .lean();
+      tickets = await withLastReservations(ticketList);
     } else {
       tickets = await Ticket.find({ userId }).sort({ updatedAt: -1 });
     }

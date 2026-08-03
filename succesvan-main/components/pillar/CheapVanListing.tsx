@@ -30,5 +30,5 @@ export default function CheapVanListing() {
 
   if (isLoading) return null;
 
-  return <VanListingHome vans={cheapVans} showHeader={false} gridCols={2} />;
+  return <VanListingHome vans={cheapVans} gridCols={3} />;
 }

@@ -261,9 +261,9 @@ export default function Navbar() {
     };
 
     return [
-      ...staticMenuItems.slice(0, 4),
+      ...staticMenuItems.slice(0, 3),
       vansMenu,
-      ...staticMenuItems.slice(4),
+      ...staticMenuItems.slice(3),
     ];
   }, [categoryMenuItems]);
 

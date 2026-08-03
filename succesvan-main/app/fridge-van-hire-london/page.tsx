@@ -11,6 +11,7 @@ import {
 } from "@/components/pillar/FridgeVanHireLondonPillar";
 import Script from "next/script";
 import { fridgeVanFAQSchema, fridgeVanSchema } from "@/lib/schema";
+import FridgeVanListing from "@/components/pillar/FridgeVanListing";
 
 export const metadata: Metadata = {
   title: "Fridge Van Hire London | Refrigerated Van Rental from £99/day",
@@ -38,7 +39,9 @@ export const metadata: Metadata = {
     title: "Fridge Van Hire London | Refrigerated Van Rental from £99/Day",
     description:
       "Chilled & frozen deliveries made easy with fridge van hire London. Small, medium & Luton refrigerated vans, ULEZ compliant, fully insured. Book online now.",
-    images: ["https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/minibushire.webp"],
+    images: [
+      "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/minibushire.webp",
+    ],
   },
   alternates: {
     canonical: "https://successvanhire.co.uk/fridge-van-hire-london",
@@ -67,6 +70,7 @@ export default function FridgeVanHireLondonPage() {
       />
       <main>
         <FridgeVanHireLondonHero />
+        <FridgeVanListing />
         <WhyChooseFridgeVanSection />
         <FridgeVanFleetSection />
         <FridgeVanCoverageAreasSection />

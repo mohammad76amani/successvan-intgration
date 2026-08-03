@@ -14,7 +14,7 @@ export default function LutonVanListing() {
       .then((data) => {
         const categories = data?.data?.data || data?.data || [];
         const filtered = categories.filter(
-          (van: VanData) => van._id === "69467c301f709928d7406638"
+          (van: VanData) => van._id === "69467c301f709928d7406638",
         );
         setLutonVans(filtered);
         setIsLoading(false);
@@ -24,5 +24,5 @@ export default function LutonVanListing() {
 
   if (isLoading) return null;
 
-  return <VanListingHome vans={lutonVans}   gridCols={3} />;
+  return <VanListingHome vans={lutonVans} gridCols={1} />;
 }

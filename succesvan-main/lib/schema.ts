@@ -2053,36 +2053,28 @@ export const vanHireLondonFAQSchema = {
 
 export const homeSchema = {
   "@context": "https://schema.org",
-  "@type": "Service",
-  name: "Van Hire London - Success Van Hire",
-  serviceType: "Van Hire Service",
-  provider: {
-    "@type": "AutoRental",
-    "@id": "https://successvanhire.co.uk/",
-    name: "Success Van Hire",
-    url: "https://successvanhire.co.uk/",
-    telephone: "+44 20 3011 1198",
-    email: "Info@successvanhire.com",
-    address: {
-      "@type": "PostalAddress",
-      streetAddress: "Strata House, Waterloo Road, London, NW2 7UH",
-      addressLocality: "London",
-      addressRegion: "Greater London",
-      postalCode: "NW2 7UH",
-      addressCountry: "GB",
-    },
-    image: "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/newww.png",
-    sameAs: [
-      "https://www.facebook.com/topvanhire",
-      "https://www.instagram.com/success.van.hire",
-      "https://twitter.com/MatinDiba?t=GKR1BWNSQK6yB2Rj4W5Jhg&s=09",
-    ],
-    aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: "4.9",
-      ratingCount: "5000",
-    },
+  "@type": "AutoRental",
+  "@id": "https://successvanhire.co.uk/",
+  name: "Success Van Hire",
+  url: "https://successvanhire.co.uk/",
+  description:
+    "Success Van Hire is a London van rental company providing self-drive vans and minibuses with online reservation and local customer support.",
+  telephone: "+44 20 3011 1198",
+  email: "Info@successvanhire.com",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "Strata House, Waterloo Road, London, NW2 7UH",
+    addressLocality: "London",
+    addressRegion: "Greater London",
+    postalCode: "NW2 7UH",
+    addressCountry: "GB",
   },
+  image: "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/newww.png",
+  sameAs: [
+    "https://www.facebook.com/topvanhire",
+    "https://www.instagram.com/success.van.hire",
+    "https://twitter.com/MatinDiba?t=GKR1BWNSQK6yB2Rj4W5Jhg&s=09",
+  ],
   areaServed: [
     {
       "@type": "City",
@@ -2093,47 +2085,24 @@ export const homeSchema = {
       name: "Greater London",
     },
   ],
-  availableChannel: {
-    "@type": "ServiceChannel",
-    serviceUrl: "https://successvanhire.co.uk/",
-    availableLanguage: ["en"],
+  hasOfferCatalog: {
+    "@type": "OfferCatalog",
+    name: "Success Van Hire vehicle rental services",
+    itemListElement: [
+      {
+        "@type": "OfferCatalog",
+        name: "Self-drive van rental",
+      },
+      {
+        "@type": "OfferCatalog",
+        name: "Minibus rental",
+      },
+      {
+        "@type": "OfferCatalog",
+        name: "Specialist van rental",
+      },
+    ],
   },
-  description:
-    "Van hire London - affordable van rental with small, medium, large & Luton vans. Fast booking, flexible hire, same-day availability across all London areas.",
-  url: "https://successvanhire.co.uk/",
-  image: "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/newww.png",
-  offers: [
-    {
-      "@type": "Offer",
-      name: "Small Van Hire",
-      description: "City van hire for small deliveries and furniture pickups",
-      priceCurrency: "GBP",
-      price: "From £25",
-    },
-    {
-      "@type": "Offer",
-      name: "Medium Van Hire",
-      description:
-        "Transit van hire for 1-bed flat moves and business deliveries",
-      priceCurrency: "GBP",
-      price: "From £35",
-    },
-    {
-      "@type": "Offer",
-      name: "Large Van Hire",
-      description: "Long wheelbase van hire for house removals",
-      priceCurrency: "GBP",
-      price: "From £45",
-    },
-    {
-      "@type": "Offer",
-      name: "Luton Van Hire",
-      description:
-        "Box van hire for full house removals and commercial logistics",
-      priceCurrency: "GBP",
-      price: "From £55",
-    },
-  ],
 };
 
 export const homeFAQSchema = {
@@ -2142,19 +2111,18 @@ export const homeFAQSchema = {
   mainEntity: [
     {
       "@type": "Question",
-
-      name: "What types of vans do you offer for rental?",
+      name: "What does Success Van Hire offer?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We offer a range of vans including Small Vans for compact and efficient light deliveries, Medium Vans for versatile cargo space and comfortable seating, Large Vans for heavy-duty major relocations with maximum load capacity and tail lift options, and Luton Vans as a premium choice for house moves with the largest capacity, tail lift included, and climate control.",
+        text: "Success Van Hire provides self-drive vans and minibuses for personal, moving, group travel and business transport needs. The fleet includes small, medium, large and Luton-style van options, plus minibuses for larger passenger groups.",
       },
     },
     {
       "@type": "Question",
-      name: "How long has Success Van Hire been in business?",
+      name: "How long has Success Van Hire been operating?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We have been London's trusted van rental specialist for over 15 years, with 10+ years of experience specializing in long-term and short-term business van rentals.",
+        text: "The project describes Success Van Hire as a London rental specialist with over 15 years of experience supporting short-term and long-term self-drive customers.",
       },
     },
     {
@@ -2162,63 +2130,63 @@ export const homeFAQSchema = {
       name: "What driving licences do you accept?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We accept full UK and EU driving licences with a quick and easy verification process.",
+        text: "You need a full valid UK or EU driving licence. The team can help with the licence verification process before collection.",
       },
     },
     {
       "@type": "Question",
-      name: "Are your vans eco-friendly?",
+      name: "Are the vehicles suitable for London driving?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes, all our vans meet EU6 emission standards and are part of our eco-friendly fleet, as we are committed to environmental protection.",
+        text: "The fleet is described in the project as modern, clean and well maintained, with EU6 emission standards referenced across the site.",
       },
     },
     {
       "@type": "Question",
-      name: "What insurance and guarantees are provided?",
+      name: "Is insurance included with self-drive rental?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Your rental reservation is 100% secure with comprehensive insurance coverage. All vans are fully insured for self-drive with complete peace of mind.",
+        text: "The site states that self-drive rental includes insurance cover. The team will explain the booking, documents and any relevant terms before you drive away.",
       },
     },
     {
       "@type": "Question",
-      name: "What is your pricing policy?",
+      name: "How does pricing work?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We offer the best value for money with a wide range of prices to fit every budget. Our pricing is transparent with no hidden charges.",
+        text: "Pricing depends on the vehicle, dates and hire duration. Success Van Hire presents costs during the booking process so customers can review the details before confirming.",
       },
     },
     {
       "@type": "Question",
-      name: "How many vehicles are in your fleet?",
+      name: "How many vehicles are in the fleet?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We have a modern fleet of 50+ vehicles, all maintained to the highest standards.",
+        text: "The site references a modern fleet of 50+ vehicles, including different van sizes and minibuses.",
       },
     },
     {
       "@type": "Question",
-      name: "What are your availability and support options?",
+      name: "Can I reserve online?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "We provide 24/7 availability, so you can book anytime and pick up anytime. We offer round-the-clock support for all your needs.",
+        text: "Yes. You can choose a vehicle, select dates and submit a reservation online, with support available if you need help choosing the right option.",
       },
     },
     {
       "@type": "Question",
-      name: "What services do you provide for different needs?",
+      name: "What jobs can the vehicles be used for?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "From small deliveries to house moves, we offer flexible solutions with comprehensive van rental options, including self-drive rentals with exceptional customer service.",
+        text: "Customers use Success Van Hire vehicles for house moves, student moves, furniture collection, courier work, business deliveries, events, group travel and everyday transport needs.",
       },
     },
     {
       "@type": "Question",
-      name: "How can I contact you to book or get more information?",
+      name: "Where can I compare dedicated London van options?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "You can reserve your van online or call us at +44 20 3011 1198. We're always here to help with round-the-clock support.",
+        text: "For transactional booking details, vehicle comparisons and local service information, visit the dedicated van hire in London page or call Success Van Hire on +44 20 3011 1198.",
       },
     },
   ],

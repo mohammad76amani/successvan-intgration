@@ -4,6 +4,7 @@
 import { useRef, useEffect, useState, memo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import Link from "next/link";
 
 // ✅ Lazy load فرم - چون زیر fold نیست ولی سنگینه
 const ReservationForm = dynamic(
@@ -115,10 +116,10 @@ const FormHeader = memo(function FormHeader({
             compact ? "text-base" : "text-lg"
           }`}
         >
-          Book Your Van in London
+          Book with Success Van Hire
         </h3>
         <p className={`text-gray-400 ${compact ? "text-[10px]" : "text-xs"}`}>
-          Quick &amp; easy van hire reservation
+          Quick &amp; easy self-drive reservation
         </p>
       </div>
     </div>
@@ -128,28 +129,24 @@ const FormHeader = memo(function FormHeader({
 // ============ کامپوننت اصلی ============
 function ReservationHero({ onBookNow }: { onBookNow?: () => void }) {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     // ✅ تشخیص موبایل فقط یکبار - جلوگیری از رندر دوبل فرم
     const mql = window.matchMedia("(min-width: 768px)");
-    setIsMobile(!mql.matches);
+    const frame = requestAnimationFrame(() => {
+      setIsMobile(!mql.matches);
+      setIsLoaded(true);
+    });
 
     const handler = (e: MediaQueryListEvent) => setIsMobile(!e.matches);
     mql.addEventListener("change", handler);
 
-    // ✅ تاخیر حداقلی برای انیمیشن - بدون setTimeout طولانی
-    requestAnimationFrame(() => setIsLoaded(true));
-
-    return () => mql.removeEventListener("change", handler);
+    return () => {
+      cancelAnimationFrame(frame);
+      mql.removeEventListener("change", handler);
+    };
   }, []);
-
-  const scrollToVans = () => {
-    document.getElementById("available-vans")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
 
   return (
     <>
@@ -189,11 +186,7 @@ function ReservationHero({ onBookNow }: { onBookNow?: () => void }) {
             ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
           {/* ✅ شرطی رندر کردن بر اساس سایز صفحه - فقط یک فرم رندر شود */}
-          {isMobile === null ? (
-            <div className="grid min-h-160 place-items-center">
-              <FormSkeleton />
-            </div>
-          ) : isMobile ? (
+          {isMobile ? (
             <MobileLayout isLoaded={isLoaded} onBookNow={onBookNow} />
           ) : (
             <DesktopLayout isLoaded={isLoaded} onBookNow={onBookNow} />
@@ -245,16 +238,16 @@ const DesktopLayout = memo(function DesktopLayout({
     });
   };
   return (
-    <div className="hidden md:grid grid-cols-2 gap-8 lg:gap-16 items-center">
+    <div className="hidden md:grid grid-cols-2 gap-8 lg:gap-16 justify-center items-center">
       {/* Left: Text Content */}
       <div className="text-white space-y-5 lg:space-y-7">
         <h1
-          className={`text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] tracking-tight
+          className={`text-4xl   lg:text-5xl font-bold leading-[1.1] tracking-tight
     transition-opacity duration-300 delay-100
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
           <span className="block mt-1">
-            Success Van{" "}
+            Flexible Van Rental from Success Van{" "}
             <span className="text-transparent bg-clip-text bg-linear-to-r from-[#fe9a00] via-[#ffb940] to-[#fe9a00]">
               Hire
             </span>
@@ -266,7 +259,7 @@ const DesktopLayout = memo(function DesktopLayout({
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
           <span className="text-transparent bg-clip-text bg-linear-to-r from-[#fe9a00] to-[#ffcc66] tracking-widest">
-            van Hire London
+            Van Rental Company in London
           </span>
         </h2>
 
@@ -275,10 +268,9 @@ const DesktopLayout = memo(function DesktopLayout({
     transition-opacity duration-300 delay-200
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
-          Affordable self-drive van hire in London for house moves, deliveries,
-          student moves and business use. Choose your van, check availability
-          and reserve online in less than 60 seconds with clear pricing and no
-          hidden fees.
+          Success Van Hire helps drivers, families and businesses choose clean
+          self-drive vans and minibuses with clear booking, local support and
+          practical vehicle options for everyday transport.
         </p>
         <div
           className={`flex flex-wrap gap-3 pt-2 transition-opacity duration-300 delay-300
@@ -315,6 +307,12 @@ const DesktopLayout = memo(function DesktopLayout({
           >
             See Available Vans
           </button>
+          <Link
+            href="/van-hire-london"
+            className="rounded-xl border border-white/15 bg-white/10 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15"
+          >
+            Explore London van hire options
+          </Link>
         </div>
       </div>
 
@@ -353,7 +351,7 @@ const MobileLayout = memo(function MobileLayout({
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
           {" "}
-          Success Van Hire
+          Flexible Van Rental from Success Van Hire
         </h1>
 
         <h2
@@ -361,7 +359,7 @@ const MobileLayout = memo(function MobileLayout({
     transition-opacity duration-200 delay-100
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
-          Van Hire London
+          Van Rental Company in London
         </h2>
 
         <p
@@ -369,9 +367,8 @@ const MobileLayout = memo(function MobileLayout({
     transition-opacity duration-200 delay-150
     ${isLoaded ? "opacity-100" : "opacity-0"}`}
         >
-          Rent a clean, reliable van in London for moving, deliveries or
-          business use. Check availability and reserve online in under 60
-          seconds.
+          Choose clean self-drive vans and minibuses from a local team with
+          clear booking, practical fleet options and friendly support.
         </p>
         <div
           className={`mt-5 flex flex-wrap justify-center gap-2 transition-opacity duration-300 delay-200
@@ -379,7 +376,7 @@ const MobileLayout = memo(function MobileLayout({
         >
           {["50+ Vehicles", "No Hidden Fees", "Quick Booking"].map((item) => (
             <span
-               key={item}
+              key={item}
               className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-medium text-white backdrop-blur-md"
             >
               {item}
@@ -392,6 +389,14 @@ const MobileLayout = memo(function MobileLayout({
         className={`transition-opacity duration-300
           ${isLoaded ? "opacity-100" : "opacity-0"}`}
       >
+        <div className="mb-4 text-center">
+          <Link
+            href="/van-hire-london"
+            className="inline-flex rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15"
+          >
+            Explore London van hire options
+          </Link>
+        </div>
         <div className="glass-form backdrop-blur-2xl rounded-2xl p-5 sm:p-6">
           <FormHeader compact />
           <Suspense fallback={<FormSkeleton />}>

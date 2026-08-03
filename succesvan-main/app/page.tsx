@@ -4,24 +4,24 @@ import { Metadata } from "next";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: "Success Van Hire | Professional Van Rental Services London",
+  title: "Success Van Hire | Van Rental Company in London",
   metadataBase: new URL("https://successvanhire.co.uk"),
   description:
-    "Rent a van in London with Success Van Hire. Affordable, reliable van rental services with a wide selection of vehicles. Book your van today!",
+    "Meet Success Van Hire, a London van rental company with self-drive vans, minibuses, clear booking, modern vehicles and helpful local support.",
   keywords:
-    "van hire london, van rental london, rent a van, professional van hire, affordable van rental, london van rental company",
+    "Success Van Hire, van rental company London, London van rental company, self-drive van rental",
   robots: {
     index: true,
     follow: true,
   },
   openGraph: {
-    title: "Success Van Hire - Professional Van Rental London",
+    title: "Success Van Hire | Van Rental Company in London",
     description:
-      "Affordable and reliable van rental in London. Wide selection of vans, competitive prices, and exceptional service.",
+      "Discover Success Van Hire, our self-drive fleet, company values, booking support and vehicle rental services across London.",
     type: "website",
   },
   alternates: {
-    canonical: "https://successvanhire.co.uk/",
+    canonical: "https://successvanhire.co.uk",
   },
 };
 
