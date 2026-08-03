@@ -8,6 +8,7 @@ import {
   FiCheckCircle,
   FiClock,
   FiPercent,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import type { Reservation } from "@/types/type";
@@ -80,6 +81,7 @@ export default function DepositPanel({
     deposit?.status === "refund_processing";
   const awaitingVerification =
     deposit?.status === "pending" && Boolean(deposit?.receiptUrl);
+  const receiptRejected = deposit?.status === "failed";
   const payAtOfficeSelected = deposit?.option === "office";
   const hasCardNumber = Boolean(DEPOSIT_PAYMENT_DETAILS.cardNumber);
   const hasBankAccount = Boolean(
@@ -437,6 +439,26 @@ export default function DepositPanel({
 
   return (
     <div className="space-y-4">
+      {receiptRejected && (
+        <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <FiAlertCircle className="mt-0.5 shrink-0 text-lg text-red-300" />
+            <div className="min-w-0">
+              <p className="text-sm font-black text-red-200">
+                Payment receipt rejected
+              </p>
+              <p className="mt-1 break-words text-sm leading-5 text-red-100">
+                {deposit?.failureReason ||
+                  "The uploaded receipt could not be verified."}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-300">
+                Check the reason above, then upload a new receipt for review.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Options */}
       <div className="space-y-2">
         {options.map((option) => (

@@ -74,9 +74,7 @@ export async function GET(req: NextRequest) {
         ? normalizeReservationStatus(status)
         : null;
       query.status = requestedHistoryStatus
-        ? ["completed", "canceled", "expired"].includes(
-            requestedHistoryStatus,
-          )
+        ? ["completed", "canceled", "expired"].includes(requestedHistoryStatus)
           ? requestedHistoryStatus
           : { $in: [] }
         : { $in: ["completed", "canceled", "expired"] };
@@ -86,10 +84,7 @@ export async function GET(req: NextRequest) {
       query.status = { $ne: normalizeReservationStatus(statusNe) ?? statusNe };
     }
     if (vehicle) {
-      query.$or = [
-        { vehicle },
-        { "vehicleSnapshot.vehicleId": vehicle },
-      ];
+      query.$or = [{ vehicle }, { "vehicleSnapshot.vehicleId": vehicle }];
     }
     if (refundDue) {
       query.status = "refund_processing";
@@ -106,11 +101,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (startDateRange) {
-      const [year, month, day] = startDateRange.split('-').map(Number);
+      const [year, month, day] = startDateRange.split("-").map(Number);
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
       const startDateFilter: DateRangeFilter = { $gte: start };
       if (startDateRangeEnd) {
-        const [endYear, endMonth, endDay] = startDateRangeEnd.split('-').map(Number);
+        const [endYear, endMonth, endDay] = startDateRangeEnd
+          .split("-")
+          .map(Number);
         const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
         startDateFilter.$lte = end;
       }
@@ -118,11 +115,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (endDateRange) {
-      const [year, month, day] = endDateRange.split('-').map(Number);
+      const [year, month, day] = endDateRange.split("-").map(Number);
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
       const endDateFilter: DateRangeFilter = { $gte: start };
       if (endDateRangeEnd) {
-        const [endYear, endMonth, endDay] = endDateRangeEnd.split('-').map(Number);
+        const [endYear, endMonth, endDay] = endDateRangeEnd
+          .split("-")
+          .map(Number);
         const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
         endDateFilter.$lte = end;
       }
@@ -132,11 +131,11 @@ export async function GET(req: NextRequest) {
     if (createdAtStart || createdAtEnd) {
       const createdAtFilter: DateRangeFilter = {};
       if (createdAtStart) {
-        const [year, month, day] = createdAtStart.split('-').map(Number);
+        const [year, month, day] = createdAtStart.split("-").map(Number);
         createdAtFilter.$gte = new Date(year, month - 1, day, 0, 0, 0, 0);
       }
       if (createdAtEnd) {
-        const [endYear, endMonth, endDay] = createdAtEnd.split('-').map(Number);
+        const [endYear, endMonth, endDay] = createdAtEnd.split("-").map(Number);
         createdAtFilter.$lte = new Date(
           endYear,
           endMonth - 1,
@@ -241,7 +240,6 @@ export async function GET(req: NextRequest) {
 
       const countResult = await Reservation.aggregate(countPipeline);
       total = countResult[0]?.total || 0;
-
     } else {
       reservations = await Reservation.find(query)
         .populate("user", "-password")
@@ -263,7 +261,6 @@ export async function GET(req: NextRequest) {
       data: reservations,
       pagination: { page, limit, total, pages },
     });
-
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return errorResponse("Unauthorized", 401);
@@ -281,11 +278,11 @@ export async function POST(req: NextRequest) {
     // Server-side date validation: the client clock cannot be trusted
     // (users change their device date to book past dates). Admins may
     // back-date reservations from the dashboard.
-    let isAdmin = false;
+    let isDashboardUser = false;
     try {
-      isAdmin = verifyToken(req).role === "admin";
+      isDashboardUser = canAccessDashboard(verifyToken(req).role);
     } catch {
-      isAdmin = false;
+      isDashboardUser = false;
     }
 
     const startDate = new Date(reservationData?.startDate);
@@ -296,7 +293,7 @@ export async function POST(req: NextRequest) {
     if (endDate.getTime() < startDate.getTime()) {
       return errorResponse("Return date cannot be before pickup date", 400);
     }
-    if (!isAdmin) {
+    if (!isDashboardUser) {
       // Compare calendar dates in London time ("YYYY-MM-DD" compares lexicographically)
       const todayLondon = formatDateInputInLondon(new Date());
       const pickupLondon = formatDateInputInLondon(startDate);
@@ -344,9 +341,10 @@ export async function POST(req: NextRequest) {
       ...reservationData,
       user: user._id,
       totalPrice: reservationData.totalPrice || 0,
-      // Creation never confirms, pays, assigns, or contracts a booking. Those
-      // changes belong to the explicit journey actions and their audit trail.
-      status: "pending",
+      // Dashboard-created bookings have already been reviewed by staff and
+      // begin at the customer deposit-payment step. Website bookings still
+      // enter the normal pending-review flow.
+      status: isDashboardUser ? "deposit_pending" : "pending",
       vehicle: undefined,
       vehicleSnapshot: undefined,
       contract: undefined,
@@ -375,12 +373,14 @@ export async function POST(req: NextRequest) {
     try {
       await sendSMS(
         user.phoneData.phoneNumber.replace("+", ""),
-        `Dear ${user.name}, reservation created, pending review.${licenceMessage} SuccessVanHire.co.uk/register`
+        isDashboardUser
+          ? `Dear ${user.name}, your reservation is ready for deposit payment.${licenceMessage} SuccessVanHire.co.uk/register`
+          : `Dear ${user.name}, reservation created, pending review.${licenceMessage} SuccessVanHire.co.uk/register`,
       );
     } catch (error) {
       console.log(
         "Creation SMS Error:",
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
     }
 
@@ -389,12 +389,12 @@ export async function POST(req: NextRequest) {
       try {
         await sendSMS(
           admin.phoneData.phoneNumber,
-          "You have a new reservation. Check the admin dashboard."
+          "You have a new reservation. Check the admin dashboard.",
         );
       } catch (error) {
         console.log(
           `Admin SMS Error (${admin.phoneData.phoneNumber}):`,
-          error instanceof Error ? error.message : "Unknown error"
+          error instanceof Error ? error.message : "Unknown error",
         );
       }
     }

@@ -9,7 +9,6 @@ import {
   FiCheckCircle,
   FiAlertCircle,
   FiDownload,
-  FiEdit3,
   FiUploadCloud,
 } from "react-icons/fi";
 import type { Reservation } from "@/types/type";
@@ -162,7 +161,6 @@ export default function JourneyAccordions({
   journey,
   contract,
   openSection,
-  onEditBooking,
   onSignContract,
   onDownloadContract,
   onDepositUpdated,
@@ -173,8 +171,6 @@ export default function JourneyAccordions({
   journey: ReservationJourneyViewModel;
   contract: SafeContractSummary | null;
   openSection: JourneySectionId | null;
-  onToggle: (id: JourneySectionId) => void;
-  onEditBooking: () => void;
   onSignContract: () => void;
   onDownloadContract: (kind: "source" | "signed" | "certificate") => void;
   onDepositUpdated: () => void;
@@ -352,16 +348,6 @@ export default function JourneyAccordions({
   const hasStandardRefundDeductions = refundDeductions.some(
     (deduction) => deduction.category === "standard",
   );
-  const reservationUser = reservation.user as
-    | {
-        name?: string;
-        lastName?: string;
-        emaildata?: { emailAddress?: string };
-        phoneData?: { phoneNumber?: string };
-      }
-    | undefined;
-
-  const canEdit = journey.mainStatus === "pending";
   const licenceComplete = licence.front && licence.back;
   const activeStep =
     journey.steps.find((step) =>
@@ -677,64 +663,6 @@ export default function JourneyAccordions({
           </div>
         </div>
       </div>
-
-      {/* ── Booking summary ─────────────────────────────────── */}
-      <Section id="summary" open={openSection === "summary"}>
-        <Row label="Booking reference" value={journey.bookingReference} />
-        <Row label="Vehicle" value={journey.vehicleName} />
-        <Row label="Pickup" value={journey.pickupDateTime} />
-        <Row label="Return" value={journey.returnDateTime} />
-        <Row label="Duration" value={journey.durationLabel} />
-        <Row label="Office" value={journey.collection?.location} />
-        <Row
-          label="Gear"
-          value={
-            reservation.selectedGear === "automatic" ? "Automatic" : "Manual"
-          }
-        />
-        <Row
-          label="Driver"
-          value={
-            [reservationUser?.name, reservationUser?.lastName]
-              .filter(Boolean)
-              .join(" ") || "-"
-          }
-        />
-        <Row label="Phone" value={reservationUser?.phoneData?.phoneNumber} />
-        <Row label="Email" value={reservationUser?.emaildata?.emailAddress} />
-        {(reservation.addOns?.length ?? 0) > 0 && (
-          <Row
-            label="Add-ons"
-            value={reservation
-              .addOns!.map((a) => {
-                const name =
-                  typeof a.addOn === "object" ? a.addOn?.name : undefined;
-                return `${name || "Add-on"} ×${a.quantity}`;
-              })
-              .join(", ")}
-          />
-        )}
-        {reservation.messege && (
-          <Row label="Notes" value={reservation.messege} />
-        )}
-        <Row
-          label="Total price"
-          value={
-            reservation.perInvoice && !reservation.totalPrice
-              ? "Per Invoice"
-              : `£${reservation.totalPrice}`
-          }
-        />
-        {canEdit && (
-          <button
-            type="button"
-            onClick={onEditBooking}
-            className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[#fe9a00]/10 hover:bg-[#fe9a00]/20 text-[#fe9a00] rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-          >
-            <FiEdit3 /> Edit booking
-          </button>
-        )}
-      </Section>
 
       {/* ── Documents ───────────────────────────────────────── */}
       <Section id="documents" open={openSection === "documents"}>

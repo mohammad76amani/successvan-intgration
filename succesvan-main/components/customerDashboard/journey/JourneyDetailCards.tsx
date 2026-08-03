@@ -132,6 +132,15 @@ export default function JourneyDetailCards({
                   : deposit.dueAt
                     ? [{ label: "Due", value: deposit.dueAt }]
                     : []),
+                ...(deposit.status === "failed" && deposit.failureReason
+                  ? [
+                      {
+                        label: "Reason",
+                        value: deposit.failureReason,
+                        tone: "bad" as const,
+                      },
+                    ]
+                  : []),
               ]
             : [{ label: "Status", value: "Not requested yet" }]
         }

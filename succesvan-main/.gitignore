@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Contract PDFs are private customer documents. Local storage is only a
+# development fallback and must never be committed.
+private/contracts/
+
 # vercel
 .vercel
 

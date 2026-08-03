@@ -37,6 +37,7 @@ import {
   FiZap,
   FiUser,
   FiArchive,
+  FiShield,
 } from "react-icons/fi";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import { HiOutlineSparkles } from "react-icons/hi2";
@@ -66,6 +67,7 @@ import BucketManager from "./BucketManager";
 import TicketsManagement from "./TicketsManagement";
 import ContractsManagement from "./ContractsManagement";
 import ReservationHistory from "./ReservationHistory";
+import TrafficViolationsManagement from "./TrafficViolationsManagement";
 import { useDueRefunds } from "@/hooks/useDueRefunds";
 import { FiFileText, FiFile } from "react-icons/fi";
 import { useAuth } from "@/context/AuthContext";
@@ -130,6 +132,12 @@ const menuItems: MenuItem[] = [
     label: "Reserves",
     icon: <FiClipboard />,
     color: "from-indigo-500 to-indigo-600",
+  },
+  {
+    id: "traffic-violations",
+    label: "Traffic Violations",
+    icon: <FiShield />,
+    color: "from-red-500 to-orange-600",
   },
   {
     id: "reservation-history",
@@ -366,7 +374,6 @@ export default function Dashboard() {
                   </>
                 )}
               </button>
-
             </div>
           ))}
         </nav>
@@ -446,6 +453,9 @@ export default function Dashboard() {
           {displayedActiveTab === "addons" && <AddOnsContent />}
           {displayedActiveTab === "discounts" && <DiscountManagement />}
           {displayedActiveTab === "reserves" && <ReservationsManagement />}
+          {displayedActiveTab === "traffic-violations" && (
+            <TrafficViolationsManagement />
+          )}
           {displayedActiveTab === "reservation-history" && (
             <ReservationHistory />
           )}
@@ -1306,7 +1316,8 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             </div>
           ) : dueRefundsError ? (
             <div className="rounded-xl border border-red-500/10 bg-red-500/[0.04] px-4 py-3 text-sm text-red-300">
-              Due refunds could not be loaded. The dashboard will retry automatically.
+              Due refunds could not be loaded. The dashboard will retry
+              automatically.
             </div>
           ) : dueRefunds.length === 0 ? (
             <div className="flex items-center gap-3 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.04] px-4 py-3">
@@ -1323,12 +1334,10 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {dueRefunds.slice(0, 6).map((reservation) => {
-                const customer = [
-                  reservation.user?.name,
-                  reservation.user?.lastName,
-                ]
-                  .filter(Boolean)
-                  .join(" ") || "Customer";
+                const customer =
+                  [reservation.user?.name, reservation.user?.lastName]
+                    .filter(Boolean)
+                    .join(" ") || "Customer";
                 const vehicle =
                   reservation.vehicle || reservation.vehicleSnapshot;
                 const expectedBy = reservation.refund?.expectedBy
@@ -1371,7 +1380,8 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                         {vehicle?.number ? ` · ${vehicle.number}` : ""}
                       </p>
                       <p className="mt-1 text-[10px] text-white/25">
-                        Expected {expectedBy
+                        Expected{" "}
+                        {expectedBy
                           ? expectedBy.toLocaleString("en-GB", {
                               timeZone: "Europe/London",
                               day: "2-digit",
@@ -1384,7 +1394,8 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-black text-[#fe9a00]">
-                      £{Number(reservation.refund?.refundAmount || 0).toFixed(2)}
+                      £
+                      {Number(reservation.refund?.refundAmount || 0).toFixed(2)}
                     </span>
                   </button>
                 );
@@ -1530,10 +1541,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
 
       {/* ═══ 6. TODAY'S ACTIVITY ═══════════════════════════════ */}
       <div className="bg-[#111827] border border-white/5 rounded-2xl overflow-hidden">
-        <button
-           
-          className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors"
-        >
+        <button className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <FiClock className="w-4 h-4 text-[#fe9a00]" />
             Today&apos;s Activity
@@ -1763,9 +1771,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                         </div>
                         {res.status === "delivered" ? (
                           <button
-                            onClick={() =>
-                              handleCompleteReservation(res._id)
-                            }
+                            onClick={() => handleCompleteReservation(res._id)}
                             className="px-3.5 py-2 text-xs bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-emerald-600/20 shrink-0"
                           >
                             Complete
@@ -1787,9 +1793,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
 
       {/* ═══ 7. RECENT RESERVES ════════════════════════════════ */}
       <div className="bg-[#111827] border border-white/5 rounded-2xl overflow-hidden">
-        <button
-           className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors"
-        >
+        <button className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <FiClipboard className="w-4 h-4 text-[#fe9a00]" />
             Recent Reserves
