@@ -41,39 +41,6 @@ const categorySchema = new mongoose.Schema(
       },
     ],
     extrahoursRate: { type: Number, required: true, min: 0 },
-    // Deposit rules for this category. The customer picks one of three ways
-    // to cover the deposit:
-    //  - full:   pay the reservation total up front by bank transfer
-    //            and get fullPayDiscountPercent off the rental price
-    //  - secure: pay the smaller non-refundable securePayPrice
-    //  - office: pay the deposit at the office (officePayPrice fee, if any)
-    deposit: {
-      fullPayDiscountPercent: { type: Number, min: 0, max: 100, default: 0 },
-      securePayPrice: { type: Number, min: 0, default: 0 },
-      officePayPrice: { type: Number, min: 0, default: 0 },
-      handoverDepositPrice: { type: Number, min: 0, default: 0 },
-    },
-    // Category-specific handover checklist template. Admins can define fields
-    // needed before collection, after return, or both. The reservation handover
-    // UI can render these fields dynamically per category.
-    handoverFormFields: [
-      {
-        label: { type: String, trim: true, required: true },
-        fieldType: {
-          type: String,
-          enum: ["input", "file"],
-          default: "input",
-        },
-        inputType: {
-          type: String,
-          enum: ["text", "number", "date", "textarea"],
-          default: "text",
-        },
-        requiredBefore: { type: Boolean, default: false },
-        requiredAfter: { type: Boolean, default: false },
-        helpText: { type: String, trim: true },
-      },
-    ],
     fuel: {
       type: String,
       enum: ["gas", "diesel", "electric", "hybrid"],
@@ -96,7 +63,7 @@ const categorySchema = new mongoose.Schema(
 );
 
 // Delete cached model to ensure schema updates are applied
-if (mongoose.models.Category) {
+if (mongoose.models?.Category) {
   delete mongoose.models.Category;
 }
 

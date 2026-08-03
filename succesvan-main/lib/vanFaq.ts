@@ -1,3 +1,6 @@
+import type { CategoryDetail } from "@/lib/category-detail";
+import { buildCategoryPricingSummary } from "@/lib/category-detail";
+
 type VanFaqItem = {
     question: string;
     answer: string;
@@ -28,7 +31,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Short Wheel Base van hire cost?",
             answer:
-                "Short Wheel Base van hire starts from £78 per day for 1 to 6 days, with a 7-day hire rate from £60 per day. Prices may depend on availability, hire duration and booking conditions.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -56,7 +59,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Medium Wheel Base van hire cost?",
             answer:
-                "Medium Wheel Base van hire starts from £96 per day for 1 to 6 days, with a 7-day hire rate from £78 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -84,7 +87,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Long Wheel Base van rental cost?",
             answer:
-                "Long Wheel Base van hire starts from £102 per day for 1 to 6 days, with a 7-day hire rate from £72 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -112,7 +115,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Extra Long Wheel Base van hire cost?",
             answer:
-                "Extra Long Wheel Base van hire starts from £115 per day for 1 to 6 days, with a 7-day hire rate from £108 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -140,7 +143,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Luton van with tail lift hire cost?",
             answer:
-                "Luton van with tail lift hire starts from £132 per day for 1 to 6 days, with a 7-day hire rate from £100 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -168,7 +171,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Crew Cab van hire cost?",
             answer:
-                "Crew Cab van hire starts from £108 per day for 1 to 6 days, with a 7-day hire rate from £84 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -196,7 +199,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Flat Bed Pickup van hire cost?",
             answer:
-                "Flat Bed Pickup van hire starts from £120 per day for 1 to 6 days, with a 7-day hire rate from £108 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -224,7 +227,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Fridge van hire cost?",
             answer:
-                "Fridge van hire starts from £150 per day for 1 to 6 days, with a 7-day hire rate from £120 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -252,7 +255,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does Tipper van hire cost?",
             answer:
-                "Tipper van hire starts from £144 per day for 1 to 6 days, with a 7-day hire rate from £120 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -280,7 +283,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does 8 Seater Tourneo hire cost?",
             answer:
-                "8 Seater Tourneo hire starts from £150 per day for 1 to 6 days, with a 7-day hire rate from £120 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -308,7 +311,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does 9 Seater Tourneo hire cost?",
             answer:
-                "9 Seater Tourneo hire starts from £180 per day for 1 to 6 days, with a 7-day hire rate from £144 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -336,7 +339,7 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does 14 Seater Minibus hire cost?",
             answer:
-                "14 Seater Minibus hire starts from £180 per day for 1 to 6 days, with a 7-day hire rate from £150 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 
@@ -364,11 +367,24 @@ export const VAN_DETAIL_FAQS: Record<string, VanFaqItem[]> = {
         {
             question: "How much does 17 Seater Minibus hire cost?",
             answer:
-                "17 Seater Minibus hire starts from £198 per day for 1 to 6 days, with a 7-day hire rate from £180 per day.",
+                "Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.",
         },
     ],
 };
 
+export function getVanDetailFaqs(category: CategoryDetail): VanFaqItem[] | null {
+    const faqs = VAN_DETAIL_FAQS[category.name];
+    if (!faqs) return null;
+
+    return faqs.map((faq) => {
+        if (!faq.question.toLowerCase().startsWith("how much")) return faq;
+
+        return {
+            ...faq,
+            answer: buildCategoryPricingSummary(category),
+        };
+    });
+}
 
 export function buildVanFaqSchema(faqs: VanFaqItem[]) {
     return {

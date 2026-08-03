@@ -32,9 +32,9 @@ import {
   type Category as BookingCategory,
 } from "@/components/global/vanListingBackup";
 import { categoryNameToSlug } from "@/lib/category-slug";
-import type { CategoryDetail } from "@/lib/category-utils";
+import type { CategoryDetail } from "@/lib/category-detail";
 import { getVanSeoContent, type VanSeoBlock } from "@/lib/vanSeo";
-import { VAN_DETAIL_FAQS } from "@/lib/vanFaq";
+import { getVanDetailFaqs } from "@/lib/vanFaq";
 import FAQComponent from "@/components/static/fAQSection";
 
 interface VanDetailPageProps {
@@ -49,11 +49,60 @@ const gearLabel = (gear: string) =>
 /*  "Loading space Length on the ground [in]" into grouped cards       */
 /* ------------------------------------------------------------------ */
 
-const SPEC_GROUPS: { prefix: string; icon: React.ReactNode }[] = [
-  { prefix: "Loading space", icon: <FiPackage /> },
-  { prefix: "Vehicle measurements", icon: <FiMaximize2 /> },
-  { prefix: "Capacity", icon: <FiTruck /> },
-];
+const SPEC_TABLES = [
+  {
+    id: "dimensions",
+    title: "Dimensions",
+    description: "Overall exterior measurements and vehicle size.",
+    icon: <FiMaximize2 />,
+    match: [
+      "external",
+      "overall",
+      "vehicle measurement",
+      "vehicle measurements",
+      "length",
+      "width with mirrors",
+      "width without mirrors",
+      "height",
+      "wheelbase",
+    ],
+  },
+  {
+    id: "load-access",
+    title: "Load & Access",
+    description: "Cargo, luggage, internal space and door entry details.",
+    icon: <FiPackage />,
+    match: [
+      "cargo",
+      "load",
+      "loading space",
+      "luggage",
+      "internal",
+      "side door",
+      "rear door",
+      "wheelarches",
+      "between wheel arches",
+      "between wheelarches",
+      "entry",
+    ],
+  },
+  {
+    id: "capacity",
+    title: "Capacity & Requirements",
+    description: "Payload, operating weight, turning circle and licence notes.",
+    icon: <FiTruck />,
+    match: [
+      "capacity",
+      "payload",
+      "weight",
+      "gross",
+      "turning",
+      "licence",
+      "license",
+      "operating",
+    ],
+  },
+] as const;
 
 interface SpecRow {
   label: string;
@@ -61,31 +110,46 @@ interface SpecRow {
   unit?: string;
 }
 
+interface SpecTable {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  rows: SpecRow[];
+}
+
+const cleanSpecLabel = (label: string) =>
+  label
+    .replace(/\s+/g, " ")
+    .replace(/\s*:\s*$/, "")
+    .trim();
+
 function parseSpec(
   key: string,
   value: string,
-): { group: string; row: SpecRow } {
-  let group = "General";
-  let label = key;
+): { tableId: string; row: SpecRow } {
+  const normalizedKey = cleanSpecLabel(key);
+  const lowerKey = normalizedKey.toLowerCase();
+  const table =
+    SPEC_TABLES.find((table) =>
+      table.match.some((term) => lowerKey.includes(term)),
+    ) || SPEC_TABLES[0];
 
-  for (const g of SPEC_GROUPS) {
-    if (key.toLowerCase().startsWith(g.prefix.toLowerCase() + " ")) {
-      group = g.prefix;
-      label = key.slice(g.prefix.length).trim();
-      break;
-    }
-  }
+  let label = normalizedKey
+    .replace(/^vehicle measurements?\s+/i, "")
+    .replace(/^loading space\s+/i, "")
+    .replace(/^cargo space\s+/i, "Cargo ")
+    .replace(/^capacity\s+/i, "");
 
   // Pull "[in]" / "[lb]" style units out of the label
   const unitMatch = label.match(/\[([^\]]+)\]\s*$/);
   const unit = unitMatch ? unitMatch[1] : undefined;
   if (unitMatch) label = label.replace(/\[([^\]]+)\]\s*$/, "").trim();
 
-  return { group, row: { label, value, unit } };
-}
-
-function groupIcon(group: string): React.ReactNode {
-  return SPEC_GROUPS.find((g) => g.prefix === group)?.icon ?? <FiInfo />;
+  return {
+    tableId: table.id,
+    row: { label: cleanSpecLabel(label), value: value.trim(), unit },
+  };
 }
 
 /* ================================================================== */
@@ -132,24 +196,68 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
   /* ---------- Grouped specifications ---------- */
 
   const specGroups = useMemo(() => {
-    const map = new Map<string, SpecRow[]>();
+    const rowsByTable = new Map<string, SpecRow[]>(
+      SPEC_TABLES.map((table) => [table.id, []]),
+    );
+
     (category.properties || []).forEach((p) => {
-      const { group, row } = parseSpec(p.key, p.value);
-      if (!map.has(group)) map.set(group, []);
-      map.get(group)!.push(row);
+      if (!p.key?.trim() || !p.value?.trim()) return;
+      const { tableId, row } = parseSpec(p.key, p.value);
+      rowsByTable.get(tableId)?.push(row);
     });
-    return Array.from(map.entries()); // [group, rows][]
+
+    return SPEC_TABLES.map((table) => ({
+      id: table.id,
+      title: table.title,
+      description: table.description,
+      icon: table.icon,
+      rows: rowsByTable.get(table.id) || [],
+    })).filter((table) => table.rows.length > 0) satisfies SpecTable[];
   }, [category.properties]);
+
+  const specOverview = useMemo(
+    () => [
+      {
+        label: "Seats",
+        value: String(category.seats),
+        icon: <FiUsers />,
+      },
+      {
+        label: "Doors",
+        value: String(category.doors),
+        icon: <GiCarDoor />,
+      },
+      {
+        label: "Fuel",
+        value: category.fuel,
+        icon: <BsFuelPump />,
+      },
+      {
+        label: "Gearbox",
+        value: category.gear.availableTypes.map(gearLabel).join(" / "),
+        icon: <FiSettings />,
+      },
+      {
+        label: "Licence",
+        value: category.requiredLicense,
+        icon: <FiShield />,
+      },
+    ],
+    [
+      category.doors,
+      category.fuel,
+      category.gear.availableTypes,
+      category.requiredLicense,
+      category.seats,
+    ],
+  );
 
   const bookingVan = category as unknown as BookingCategory;
   const openBooking = () => setShowBooking(true);
 
-  const seoBlocks = useMemo(
-    () => getVanSeoContent(category.name),
-    [category.name],
-  );
+  const seoBlocks = useMemo(() => getVanSeoContent(category), [category]);
 
-  const faqs = VAN_DETAIL_FAQS[category.name];
+  const faqs = useMemo(() => getVanDetailFaqs(category), [category]);
 
   const sections = [
     (seoBlocks || category.description) && {
@@ -177,7 +285,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
   ].filter(Boolean) as { id: string; label: string; icon: React.ReactNode }[];
 
   return (
-    <main className="min-h-screen bg-[#0f172b]">
+    <main className="min-h-screen overflow-x-hidden bg-[#0f172b]">
       {/* Local keyframes for the CTA shine — disabled for reduced motion */}
       <style>{`
         @keyframes vdp-shine {
@@ -198,8 +306,8 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       `}</style>
 
       {/* ============================ Hero ============================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-40 md:pt-40 pb-10 md:pb-14">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-10">
+      <section className="mx-auto max-w-7xl px-4 pb-12 pt-28 sm:px-6 sm:pb-14 sm:pt-32 lg:px-8 lg:pb-16 lg:pt-36">
+        <div className="grid grid-cols-1 items-start gap-7 lg:grid-cols-5 lg:gap-10 xl:gap-12">
           {/* ---------- Gallery / video ---------- */}
           <div className="lg:col-span-3">
             <MediaGallery
@@ -211,7 +319,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
             />
 
             {/* Key spec stat cards */}
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 md:gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-5">
               <StatCard
                 icon={<FiUsers />}
                 label="Seats"
@@ -243,8 +351,8 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
 
           {/* ---------- Buy box ---------- */}
           <div className="lg:col-span-2">
-            <div className="lg:sticky lg:top-28 bg-white/5 border border-white/10 backdrop-blur-sm rounded-3xl p-6 md:p-8">
-              <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-5 backdrop-blur-sm sm:p-6 lg:sticky lg:top-28 lg:p-7">
+              <h1 className="text-3xl font-black leading-tight text-white md:text-4xl">
                 {category.name}
               </h1>
               {category.expert && (
@@ -254,11 +362,11 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
               )}
 
               {/* Price block */}
-              <div className="border-t border-white/10 mt-6 pt-6">
+              <div className="mt-6 border-t border-white/10 pt-5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
                   From
                 </p>
-                <div className="flex items-baseline gap-3 flex-wrap">
+                <div className="flex flex-wrap items-baseline gap-3">
                   <span className="text-4xl md:text-5xl font-black text-[#37cf6f]">
                     £{fromPrice}
                   </span>
@@ -270,7 +378,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-3">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {maxSavingsPct > 0 && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#37cf6f]/15 text-[#37cf6f] text-xs font-bold">
                       <FiTrendingDown className="w-3.5 h-3.5" />
@@ -289,7 +397,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
                 {tiers.length > 0 && (
                   <a
                     href="#pricing"
-                    className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-[#fe9a00] transition-colors mt-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fe9a00] rounded"
+                    className="mt-4 inline-flex items-center gap-1 rounded text-xs text-gray-400 transition-colors hover:text-[#fe9a00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fe9a00]"
                   >
                     <FiInfo className="w-3.5 h-3.5" />
                     Price varies by rental length — see full pricing
@@ -301,13 +409,13 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
               <BookButton
                 id={`gtm-van-detail-book-${categorySlug}`}
                 onClick={openBooking}
-                className="mt-6 w-full py-4 text-lg"
+                className="mt-6 w-full py-4 text-base sm:text-lg"
               >
                 Book Now — from £{fromPrice}/day
               </BookButton>
 
               {/* Reassurance — real facts pulled from the data */}
-              <ul className="mt-5 space-y-2.5">
+              <ul className="mt-5 space-y-3">
                 <Reassurance icon={<FiClock />}>
                   Free cancellation up to 48 hours before pickup
                 </Reassurance>
@@ -333,17 +441,17 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
 
       {/* ============================ Section nav ============================ */}
       {sections.length > 1 && (
-        <div className="sticky top-16 md:top-20 z-30 bg-[#0f172b]/90 backdrop-blur-md border-y border-white/10">
+        <div className="sticky top-16 z-30 border-y border-white/10 bg-[#0f172b]/92 shadow-lg shadow-black/10 backdrop-blur-md md:top-20">
           <nav
             aria-label="Page sections"
             className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
           >
-            <div className="flex gap-1 overflow-x-auto py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-1.5 overflow-x-auto py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sections.map((s) => (
                 <a
                   key={s.id}
                   href={`#${s.id}`}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-gray-400 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fe9a00]"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-gray-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fe9a00]"
                 >
                   <span className="text-[#fe9a00]" aria-hidden>
                     {s.icon}
@@ -360,10 +468,10 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {(seoBlocks || category.description) && (
         <section
           id="overview"
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 md:pt-16 pb-6 md:pb-8 scroll-mt-36"
+          className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 md:py-12 lg:px-8 lg:py-14"
         >
           <SectionHeading icon={<FiFileText />}>Overview</SectionHeading>
-          <div className="max-w-3xl">
+          <div className="max-w-4xl">
             {seoBlocks ? (
               <VanSeoContent blocks={seoBlocks} />
             ) : (
@@ -377,10 +485,10 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {category.purpose && (
         <section
           id="ideal-for"
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 scroll-mt-36"
+          className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 md:py-12 lg:px-8 lg:py-14"
         >
           <SectionHeading icon={<FiTarget />}>Ideal For</SectionHeading>
-          <div className="max-w-3xl">
+          <div className="max-w-4xl">
             <ExpandableText text={category.purpose} collapsedHeight={160} />
           </div>
         </section>
@@ -390,7 +498,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {specGroups.length > 0 && (
         <section
           id="specs"
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 scroll-mt-36"
+          className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 md:py-12 lg:px-8 lg:py-14"
         >
           <SectionHeading
             icon={<FiBox />}
@@ -399,40 +507,99 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
             Specifications
           </SectionHeading>
 
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {specGroups.map(([group, rows]) => (
-              <div
-                key={group}
-                className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden"
-              >
-                <div className="flex items-center gap-2.5 px-5 py-3.5 bg-white/5 border-b border-white/10">
-                  <span className="text-[#fe9a00]" aria-hidden>
-                    {groupIcon(group)}
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.035] p-3 sm:grid-cols-3 lg:grid-cols-5">
+              {specOverview.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.06] bg-[#0f172b]/70 px-3 py-3.5"
+                >
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00]/12 text-[#fe9a00]"
+                    aria-hidden
+                  >
+                    {item.icon}
                   </span>
-                  <h3 className="text-white font-bold text-sm uppercase tracking-wide">
-                    {group}
-                  </h3>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                      {item.label}
+                    </p>
+                    <p className="truncate text-sm font-bold capitalize text-white">
+                      {item.value}
+                    </p>
+                  </div>
                 </div>
-                <dl className="divide-y divide-white/5">
-                  {rows.map((row, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between gap-4 px-5 py-3"
-                    >
-                      <dt className="text-gray-400 text-sm">{row.label}</dt>
-                      <dd className="text-white font-semibold text-right whitespace-nowrap">
-                        {row.value}
-                        {row.unit && (
-                          <span className="text-gray-500 font-normal text-sm ml-1">
-                            {row.unit}
-                          </span>
-                        )}
-                      </dd>
+              ))}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3 xl:gap-5">
+              {specGroups.map((table) => (
+                <div
+                  key={table.id}
+                  className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] shadow-lg shadow-black/5"
+                >
+                  <div className="border-b border-white/10 bg-white/[0.04] px-4 py-[18px]">
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00]/12 text-[#fe9a00] ring-1 ring-[#fe9a00]/20"
+                        aria-hidden
+                      >
+                        {table.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black uppercase tracking-wide text-white">
+                          {table.title}
+                        </h3>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                          {table.description}
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                </dl>
-              </div>
-            ))}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[320px] text-left">
+                      <thead>
+                        <tr className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-gray-500">
+                          <th scope="col" className="px-4 py-3 font-bold">
+                            Detail
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-right font-bold"
+                          >
+                            Measurement
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.055]">
+                        {table.rows.map((row, i) => (
+                          <tr
+                            key={`${table.id}-${row.label}-${i}`}
+                            className="transition-colors hover:bg-white/[0.025]"
+                          >
+                            <th
+                              scope="row"
+                              className="w-[48%] px-4 py-3.5 text-xs font-medium leading-snug text-gray-400"
+                            >
+                              {row.label}
+                            </th>
+                            <td className="px-4 py-3.5 text-right text-xs font-bold leading-snug text-white sm:text-sm">
+                              <span className="break-words">{row.value}</span>
+                              {row.unit && (
+                                <span className="ml-1 text-xs font-normal text-gray-500">
+                                  {row.unit}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -441,7 +608,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {tiers.length > 0 && (
         <section
           id="pricing"
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 scroll-mt-36"
+          className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 md:py-12 lg:px-8 lg:py-14"
         >
           <SectionHeading
             icon={<FiTag />}
@@ -548,7 +715,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {category.rules && category.rules.length > 0 && (
         <section
           id="requirements"
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 scroll-mt-36"
+          className="mx-auto max-w-7xl scroll-mt-32 px-4 py-10 sm:px-6 md:py-12 lg:px-8 lg:py-14"
         >
           <SectionHeading
             icon={<FiShield />}
@@ -579,7 +746,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
 
       {/* ============================ FAQ ============================ */}
       {faqs && faqs.length > 0 && (
-        <div id="faq" className="scroll-mt-24">
+        <div id="faq" className="scroll-mt-32">
           <FAQComponent
             title="Frequently Asked Questions"
             subtitle={`Everything you need to know about hiring the ${category.name}`}
@@ -589,8 +756,8 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       )}
 
       {/* ============================ Bottom CTA band ============================ */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16 md:pb-20">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#fe9a00]/15 to-transparent border border-[#fe9a00]/25 rounded-3xl p-8 md:p-12 text-center">
+      <section className="mx-auto max-w-7xl px-4 pb-20 pt-8 sm:px-6 md:pb-24 md:pt-10 lg:px-8">
+        <div className="relative overflow-hidden rounded-2xl border border-[#fe9a00]/25 bg-gradient-to-br from-[#fe9a00]/15 to-transparent p-6 text-center sm:p-8 md:p-10">
           <h2 className="text-2xl md:text-3xl font-black text-white mb-2">
             Ready to hire the {category.name}?
           </h2>
@@ -617,7 +784,7 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
           </p>
         </div>
         <BookButton onClick={openBooking} className="flex-1 py-2">
-          Book  
+          Book
         </BookButton>
       </div>
       <div className="lg:hidden h-24" aria-hidden />
@@ -653,7 +820,7 @@ function MediaGallery({
   const [mode, setMode] = useState<"image" | "video">("image");
 
   return (
-    <div className="relative w-full aspect-4/3 sm:aspect-16/10 rounded-3xl overflow-hidden bg-white/5 border border-white/10">
+    <div className="relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 sm:aspect-16/10">
       {mode === "video" && video ? (
         <MiniPlayer src={video} onClose={() => setMode("image")} />
       ) : (
@@ -714,7 +881,7 @@ const fmt = (s: number) => {
 function MiniPlayer({ src, onClose }: { src: string; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(true);
-   const [progress, setProgress] = useState(0); // 0..1
+  const [progress, setProgress] = useState(0); // 0..1
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);
 
@@ -943,18 +1110,18 @@ function VanSeoContent({ blocks }: { blocks: VanSeoBlock[] }) {
       {blocks.map((block, index) => {
         if (block.type === "h2") {
           return (
-            <p
+            <h3
               key={index}
-              className="text-lg md:text-xl font-bold text-white leading-snug"
+              className="text-lg font-bold leading-snug text-white md:text-xl"
             >
               {block.text}
-            </p>
+            </h3>
           );
         }
 
         if (block.type === "p") {
           return (
-            <p key={index} className="text-gray-300 leading-relaxed">
+            <p key={index} className="max-w-3xl leading-relaxed text-gray-300">
               {block.text}
             </p>
           );
@@ -962,23 +1129,23 @@ function VanSeoContent({ blocks }: { blocks: VanSeoBlock[] }) {
 
         if (block.type === "h3") {
           return (
-            <div key={index} className="flex items-center gap-2.5 pt-2">
+            <div key={index} className="flex items-center gap-2.5 pt-3">
               <span
                 className="w-8 h-8 rounded-lg bg-[#fe9a00]/15 border border-[#fe9a00]/25 flex items-center justify-center text-[#fe9a00] text-sm shrink-0"
                 aria-hidden
               >
                 {seoHeadingIcon(block.text || "")}
               </span>
-              <h3 className="text-white font-bold text-base md:text-lg">
+              <h4 className="text-base font-bold text-white md:text-lg">
                 {block.text}
-              </h3>
+              </h4>
             </div>
           );
         }
 
         if (block.type === "list") {
           return (
-            <div key={index} className="grid sm:grid-cols-2 gap-2.5">
+            <div key={index} className="grid gap-3 sm:grid-cols-2">
               {(block.items || []).map((item, i) => (
                 <div
                   key={i}
@@ -1052,15 +1219,15 @@ function StatCard({
 }) {
   return (
     <div
-      className={`flex flex-col items-center justify-center text-center gap-1 bg-white/5 border border-white/10 rounded-2xl px-2 py-3.5 ${className}`}
+      className={`flex min-h-[94px] flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.045] px-2 py-3 text-center ${className}`}
     >
-      <span className="text-[#fe9a00] text-lg" aria-hidden>
+      <span className="text-lg text-[#fe9a00]" aria-hidden>
         {icon}
       </span>
-      <span className="text-white font-bold text-sm leading-tight capitalize">
+      <span className="line-clamp-2 text-xs font-bold capitalize leading-tight text-white">
         {value}
       </span>
-      <span className="text-[11px] uppercase tracking-wider text-gray-500">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
         {label}
       </span>
     </div>
@@ -1075,8 +1242,8 @@ function Reassurance({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-start gap-2.5 text-sm text-gray-400">
-      <span className="text-[#37cf6f] mt-0.5 shrink-0" aria-hidden>
+    <li className="flex items-start gap-2.5 text-sm leading-relaxed text-gray-400">
+      <span className="mt-0.5 shrink-0 text-[#37cf6f]" aria-hidden>
         {icon}
       </span>
       {children}
@@ -1094,26 +1261,28 @@ function SectionHeading({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6">
+    <div className="mb-7 md:mb-8">
       <div className="flex items-center gap-3">
         {icon && (
           <span
-            className="w-10 h-10 rounded-xl bg-[#fe9a00]/15 border border-[#fe9a00]/25 flex items-center justify-center text-[#fe9a00] text-lg shrink-0"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/15 text-lg text-[#fe9a00]"
             aria-hidden
           >
             {icon}
           </span>
         )}
-        <h2 className="text-2xl md:text-3xl font-black text-white">
+        <h2 className="text-2xl font-black leading-tight text-white md:text-3xl">
           {children}
         </h2>
         <span
-          className="hidden sm:block flex-1 h-px bg-gradient-to-r from-white/15 to-transparent"
+          className="hidden h-px flex-1 bg-gradient-to-r from-white/15 to-transparent sm:block"
           aria-hidden
         />
       </div>
       {subtitle && (
-        <p className="text-gray-500 text-sm mt-2 sm:ml-[52px]">{subtitle}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-500 sm:ml-[52px]">
+          {subtitle}
+        </p>
       )}
     </div>
   );

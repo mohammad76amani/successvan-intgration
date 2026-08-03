@@ -1,5 +1,8 @@
+import type { CategoryDetail } from "@/lib/category-detail";
+import { buildCategoryPricingSummary } from "@/lib/category-detail";
+
 export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
-    "Short Wheel Base": `
+  "Short Wheel Base": `
 <section>
   <h2>Short Wheel Base Van Hire in London</h2>
   <p>
@@ -21,12 +24,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Short Wheel Base Van Rental Prices</h3>
   <p>
-    Hire starts from £78 per day for 1 to 6 days, with a 7-day hire rate from £60 per day. This makes it a cost-effective option for local van hire in London when you only need a van for a short period. Customers collect the vehicle and drive it themselves, giving full control over timing, route and loading.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Medium Wheel Base": `
+  "Medium Wheel Base": `
 <section>
   <h2>Medium Wheel Base Van Hire in London</h2>
   <p>
@@ -48,12 +51,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Medium Wheel Base Van Rental Prices</h3>
   <p>
-    Prices start from £96 per day for 1 to 6 days, with a 7-day hire rate from £78 per day. This makes the Medium Wheel Base van a strong option for affordable van hire in London when a Short Wheel Base van may be too small. It is a self-drive rental, so the customer collects the van, loads it and drives it according to their own schedule.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Long Wheel Base": `
+  "Long Wheel Base": `
 <section>
   <h2>Long Wheel Base Van Hire in London</h2>
   <p>
@@ -75,12 +78,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Long Wheel Base Van Rental Prices</h3>
   <p>
-    Daily hire starts from £102 per day for 1 to 6 days, with a 7-day hire rate from £72 per day. This makes it a practical option for longer jobs, business use and planned moves. Customers collect the van and drive it themselves, making this a flexible self-drive van hire solution for London and surrounding areas.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Extra Long Wheel Base": `
+  "Extra Long Wheel Base": `
 <section>
   <h2>Extra Long Wheel Base Van Hire in London</h2>
   <p>
@@ -102,12 +105,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Extra Long Wheel Base Van Rental Prices</h3>
   <p>
-    Hire starts from £115 per day for 1 to 6 days, with a 7-day hire rate from £108 per day. This self-drive van is useful for customers who want a large loading area while keeping the process simple: collect the van, load your goods and complete the journey at your own pace.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Luton With Tail-Lift": `
+  "Luton With Tail-Lift": `
 <section>
   <h2>Luton Van With Tail Lift Hire in London</h2>
   <p>
@@ -129,12 +132,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Luton Van Rental Prices</h3>
   <p>
-    Prices start from £132 per day for 1 to 6 days, with a 7-day hire rate from £100 per day. This makes the Luton van a popular choice for customers searching for moving van hire in London, furniture van hire or self-drive Luton van rental. The customer collects and drives the vehicle, giving flexible control over loading times and moving plans.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "CrewCab Van": `
+  "CrewCab Van": `
 <section>
   <h2>Crew Cab Van Hire in London</h2>
   <p>
@@ -156,12 +159,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Crew Cab Van Rental Prices</h3>
   <p>
-    Hire starts from £108 per day for 1 to 6 days, with a 7-day hire rate from £84 per day. This self-drive Crew Cab van gives customers the flexibility to manage team travel, tools and job schedules without booking separate vehicles.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Flat Bed Pickup Van": `
+  "Flat Bed Pickup Van": `
 <section>
   <h2>Flat Bed Pickup Van Hire in London</h2>
   <p>
@@ -183,12 +186,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Flat Bed Pickup Rental Prices</h3>
   <p>
-    Hire starts from £120 per day for 1 to 6 days, with a 7-day hire rate from £108 per day. This self-drive flatbed vehicle is ideal for customers who need loading freedom, strong payload capacity and a practical hire option for work across London.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Fridge Van": `
+  "Fridge Van": `
 <section>
   <h2>Fridge Van Hire in London</h2>
   <p>
@@ -210,12 +213,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Fridge Van Rental Prices</h3>
   <p>
-    Hire starts from £150 per day for 1 to 6 days, with a 7-day hire rate from £120 per day. This self-drive fridge van is a practical choice for London businesses, caterers, food suppliers and event operators needing reliable refrigerated vehicle hire.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "Tipper Van": `
+  "Tipper Van": `
 <section>
   <h2>Tipper Van Hire in London</h2>
   <p>
@@ -237,12 +240,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>Tipper Van Rental Prices</h3>
   <p>
-    Hire starts from £144 per day for 1 to 6 days, with a 7-day hire rate from £120 per day. This makes the Tipper van a useful option for customers searching for tipper hire in London, construction van hire, landscaping vehicle rental or self-drive site vehicle hire. Customers collect and operate the vehicle themselves, giving flexibility over timing, loading and unloading.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "8 Seater Tourneo": `
+  "8 Seater Tourneo": `
 <section>
   <h2>8 Seater Tourneo Hire in London</h2>
   <p>
@@ -264,12 +267,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>8 Seater Tourneo Rental Prices</h3>
   <p>
-    Hire starts from £150 per day for 1 to 6 days, with a 7-day hire rate from £120 per day. This makes it a useful choice for customers searching for 8 seater hire in London, self-drive people carrier hire, family vehicle rental or group car hire in North West London.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "9 Seater Tourneo": `
+  "9 Seater Tourneo": `
 <section>
   <h2>9 Seater Tourneo Hire in London</h2>
   <p>
@@ -291,12 +294,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>9 Seater Tourneo Rental Prices</h3>
   <p>
-    Hire starts from £180 per day for 1 to 6 days, with a 7-day hire rate from £144 per day. This vehicle is hired on a self-drive basis, so there is no supplied driver. Customers collect the vehicle, manage their own route and return it after the hire period.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "14 Seater Minibus": `
+  "14 Seater Minibus": `
 <section>
   <h2>14 Seater Minibus Hire in London</h2>
   <p>
@@ -318,12 +321,12 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>14 Seater Minibus Rental Prices</h3>
   <p>
-    Hire starts from £180 per day for 1 to 6 days, with a 7-day hire rate from £150 per day. This is a self-drive minibus rental, not a chauffeur or passenger transport service. The customer collects, drives and returns the minibus according to the agreed hire terms.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `,
 
-    "17 Seater Minibus": `
+  "17 Seater Minibus": `
 <section>
   <h2>17 Seater Minibus Hire in London</h2>
   <p>
@@ -345,7 +348,7 @@ export const VAN_DETAIL_SEO_HTML: Record<string, string> = {
 
   <h3>17 Seater Minibus Rental Prices</h3>
   <p>
-    Hire starts from £198 per day for 1 to 6 days, with a 7-day hire rate from £180 per day. This vehicle should be presented clearly as self-drive minibus hire only. Customers must check licence eligibility, insurance requirements and hire conditions before confirming the booking.
+    Current hire prices are loaded from the live booking data for this vehicle. Prices may depend on availability, hire duration and booking conditions.
   </p>
 </section>
 `
@@ -415,18 +418,58 @@ function parseVanSeoHtml(html: string): VanSeoBlock[] {
 
 const parsedSeoCache = new Map<string, VanSeoBlock[]>();
 
+function cloneBlocks(blocks: VanSeoBlock[]): VanSeoBlock[] {
+  return blocks.map((block) => ({
+    ...block,
+    items: block.items?.map((item) => ({ ...item })),
+  }));
+}
+
+function injectDynamicPricing(
+  blocks: VanSeoBlock[],
+  category: CategoryDetail,
+): VanSeoBlock[] {
+  const next = cloneBlocks(blocks);
+
+  for (let i = 0; i < next.length - 1; i++) {
+    const current = next[i];
+    const following = next[i + 1];
+
+    if (
+      current.type === "h3" &&
+      current.text?.toLowerCase().includes("price") &&
+      following.type === "p"
+    ) {
+      following.text = buildCategoryPricingSummary(category);
+      break;
+    }
+  }
+
+  return next;
+}
+
 /**
- * Returns the structured SEO content for a van by exact category name,
+ * Returns the structured SEO content for a van by exact category name/category,
  * or null if no hand-authored entry exists for it.
  */
-export function getVanSeoContent(name: string): VanSeoBlock[] | null {
+export function getVanSeoContent(
+  categoryOrName: CategoryDetail | string,
+): VanSeoBlock[] | null {
+  const name =
+    typeof categoryOrName === "string" ? categoryOrName : categoryOrName.name;
   const html = VAN_DETAIL_SEO_HTML[name];
   if (!html) return null;
 
   const cached = parsedSeoCache.get(name);
-  if (cached) return cached;
+  if (cached) {
+    return typeof categoryOrName === "string"
+      ? cached
+      : injectDynamicPricing(cached, categoryOrName);
+  }
 
   const blocks = parseVanSeoHtml(html);
   parsedSeoCache.set(name, blocks);
-  return blocks;
+  return typeof categoryOrName === "string"
+    ? blocks
+    : injectDynamicPricing(blocks, categoryOrName);
 }

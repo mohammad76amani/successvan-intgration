@@ -8,8 +8,13 @@ import {
   fetchCategoryBySlug,
   generateCategoryProductSchema,
   generateCategoryBreadcrumbSchema,
+  generateCategoryRentalServiceSchema,
+  buildCategoryKeywords,
+  buildCategorySeoDescription,
+  buildCategoryFromPriceLabel,
+  getCategoryTypeName,
 } from "@/lib/category-utils";
-import { VAN_DETAIL_FAQS, buildVanFaqSchema } from "@/lib/vanFaq";
+import { buildVanFaqSchema, getVanDetailFaqs } from "@/lib/vanFaq";
 import VanDetailPage from "@/components/global/VanDetailPage";
 
 interface Props {
@@ -45,27 +50,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     process.env.NEXT_PUBLIC_SITE_URL || "https://successvanhire.co.uk";
   const categorySlug = categoryNameToSlug(category.name);
   const canonicalUrl = `${siteUrl}/categories/${categorySlug}`;
-  const description = (
-    category.description ||
-    category.purpose ||
-    `Hire the ${category.name} from Success Van Hire in London. Competitive daily, weekly and monthly rates.`
-  )
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 155);
+  const description = buildCategorySeoDescription(category);
+  const priceLabel = buildCategoryFromPriceLabel(category);
+  const typeName = getCategoryTypeName(category) || "Vehicle";
+  const title = `${category.name} Hire London ${priceLabel} | Success Van Hire`;
 
   return {
-    title: `${category.name} Hire London | Success Van Hire`,
+    title,
     description,
     alternates: {
       canonical: canonicalUrl,
     },
-    keywords: [
-      "van hire london",
-      `${category.name} hire`,
-      `${category.name} rental`,
-      "van rental london",
-    ],
+    keywords: buildCategoryKeywords(category),
+    category: `${typeName} hire`,
     publisher: "Success Van Hire",
     robots: {
       index: true,
@@ -80,22 +77,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     openGraph: {
       type: "website",
-      title: `${category.name} Hire London | Success Van Hire`,
+      title,
       description,
       url: canonicalUrl,
       siteName: "Success Van Hire",
+      locale: "en_GB",
       images: [
         {
           url: category.image,
           width: 1200,
           height: 630,
-          alt: category.name,
+          alt: `${category.name} hire in London from Success Van Hire`,
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: `${category.name} Hire London | Success Van Hire`,
+      title,
       description,
       images: [category.image],
     },
@@ -114,6 +112,10 @@ export default async function CategoryDetailPage({ params }: Props) {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL || "https://successvanhire.co.uk";
   const productSchema = generateCategoryProductSchema(category, siteUrl);
+  const rentalServiceSchema = generateCategoryRentalServiceSchema(
+    category,
+    siteUrl,
+  );
   const categorySlug = categoryNameToSlug(category.name);
   const breadcrumbSchema = generateCategoryBreadcrumbSchema(
     siteUrl,
@@ -121,7 +123,7 @@ export default async function CategoryDetailPage({ params }: Props) {
     categorySlug,
   );
   const organizationSchema = generateOrganizationSchema(siteUrl);
-  const faqs = VAN_DETAIL_FAQS[category.name];
+  const faqs = getVanDetailFaqs(category);
   const faqSchema = faqs && faqs.length > 0 ? buildVanFaqSchema(faqs) : null;
 
   return (
@@ -130,6 +132,14 @@ export default async function CategoryDetailPage({ params }: Props) {
         id="category-product-schema"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+        strategy="afterInteractive"
+      />
+      <Script
+        id="category-rental-service-schema"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(rentalServiceSchema),
+        }}
         strategy="afterInteractive"
       />
       <Script
