@@ -12,11 +12,7 @@ export type { PublicJourneyStep };
 export type ReservationMainStatus = ReservationStatus;
 
 export type JourneyStepState =
-  | "completed"
-  | "current"
-  | "upcoming"
-  | "blocked"
-  | "failed";
+  "completed" | "current" | "upcoming" | "blocked" | "failed";
 
 export interface ReservationJourneyStep {
   key: PublicJourneyStep;
@@ -71,6 +67,7 @@ export interface ReservationJourneyViewModel {
     paidAt?: string;
     dueAt?: string;
     receiptUrl?: string;
+    failureReason?: string;
   };
   contract?: {
     status: ContractPanelStatus;

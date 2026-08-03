@@ -10,6 +10,7 @@ import {
   FiCalendar,
   FiClock,
   FiClipboard,
+  FiChevronDown,
   FiExternalLink,
   FiHome,
   FiMapPin,
@@ -135,14 +136,14 @@ function DateMeta({
   );
 }
 
-const money = (value: unknown) => {
-  const amount = Number(value);
-  return `£${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
-};
-
 const textOrDash = (value: unknown) => {
   if (value === null || value === undefined || value === "") return "-";
   return String(value);
+};
+
+const money = (value: unknown) => {
+  const amount = Number(value);
+  return `£${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
 };
 
 function ReservationMeta({
@@ -228,36 +229,39 @@ export default function ReservationJourneyPage({
   const [signBusy, setSignBusy] = useState(false);
   const [licence, setLicence] = useState(getLicenceStateFromStorage);
 
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const userRaw = localStorage.getItem("user");
-      const userId = userRaw ? JSON.parse(userRaw)?._id : null;
-      if (!userId) {
-        router.replace("/login");
-        return;
-      }
+  const fetchData = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const userRaw = localStorage.getItem("user");
+        const userId = userRaw ? JSON.parse(userRaw)?._id : null;
+        if (!userId) {
+          router.replace("/login");
+          return;
+        }
 
-      const res = await fetch(
-        `/api/customer/reservations/${reservationId}/journey`,
-        { headers: authHeaders(), signal },
-      );
-      const json = await res.json();
-      if (signal?.aborted) return;
-      const data: Reservation | undefined = json.data?.reservation;
-      if (!json.success || !data) {
+        const res = await fetch(
+          `/api/customer/reservations/${reservationId}/journey`,
+          { headers: authHeaders(), signal },
+        );
+        const json = await res.json();
+        if (signal?.aborted) return;
+        const data: Reservation | undefined = json.data?.reservation;
+        if (!json.success || !data) {
+          setNotFound(true);
+          return;
+        }
+        setReservation(data);
+        setContract(json.data.contract || null);
+      } catch (error) {
+        if (signal?.aborted || (error as Error).name === "AbortError") return;
+        console.log("Failed to load reservation:", error);
         setNotFound(true);
-        return;
+      } finally {
+        if (!signal?.aborted) setLoading(false);
       }
-      setReservation(data);
-      setContract(json.data.contract || null);
-    } catch (error) {
-      if (signal?.aborted || (error as Error).name === "AbortError") return;
-      console.log("Failed to load reservation:", error);
-      setNotFound(true);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [reservationId, router]);
+    },
+    [reservationId, router],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -417,28 +421,19 @@ export default function ReservationJourneyPage({
     .filter(Boolean)
     .join(" ");
   const vehicle = reservation.vehicle as
-    | (Partial<Pick<Vehicle, "title">> & { name?: string })
-    | undefined;
+    (Partial<Pick<Vehicle, "title">> & { name?: string }) | undefined;
   const category = reservation.category as
-    | Partial<Pick<Category, "name">>
-    | undefined;
-  const vehicleLabel =
-    vehicle?.title || vehicle?.name || journey.vehicleName;
+    Partial<Pick<Category, "name">> | undefined;
+  const vehicleLabel = vehicle?.title || vehicle?.name || journey.vehicleName;
   const rentalDays = getRentalDays(reservation);
-  const addOnBreakdown = (reservation.addOns || [])
-    .map((item) => ({
-      label:
-        typeof item.addOn === "object"
-          ? `${item.addOn?.name || "Add-on"}${Number(item.quantity) > 1 ? ` × ${item.quantity}` : ""}`
-          : "Add-on",
-      amount: getAddOnAmount(item, rentalDays),
-    }))
-    .filter((item) => item.amount !== null) as Array<{
-    label: string;
-    amount: number;
-  }>;
+  const addOnBreakdown = (reservation.addOns || []).map((item) => ({
+    label:
+      typeof item.addOn === "object" ? item.addOn?.name || "Add-on" : "Add-on",
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    amount: getAddOnAmount(item, rentalDays),
+  }));
   const addOnsTotal = addOnBreakdown.reduce(
-    (sum, item) => sum + item.amount,
+    (sum, item) => sum + (item.amount ?? 0),
     0,
   );
   const pickupExtension = Number(reservation.pickupExtensionPrice) || 0;
@@ -448,9 +443,17 @@ export default function ReservationJourneyPage({
     reservation.deposit?.option === "full"
       ? Number(reservation.deposit.discountPercent) || 0
       : 0;
+  const depositDiscountAmount =
+    reservation.deposit?.option === "full"
+      ? Number(reservation.deposit.discountAmount) || 0
+      : 0;
   const rentalBalance = Math.max(
     0,
-    finalTotal - addOnsTotal - pickupExtension - returnExtension,
+    finalTotal +
+      depositDiscountAmount -
+      addOnsTotal -
+      pickupExtension -
+      returnExtension,
   );
 
   const journeyContent = (
@@ -509,8 +512,10 @@ export default function ReservationJourneyPage({
               </div>
               {journey.collection?.location && (
                 <p className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-400">
-                  <FiMapPin className="text-[#fe9a00]" />
-                  {journey.collection.location}
+                  <FiMapPin className="shrink-0 text-[#fe9a00]" />
+                  <span className="break-words">
+                    {journey.collection.location}
+                  </span>
                 </p>
               )}
             </div>
@@ -528,115 +533,169 @@ export default function ReservationJourneyPage({
               <RefundCountdown expectedBy={journey.refund.expectedBy} />
             )}
 
-          <div className="grid border-t border-white/[0.08] lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <div className="grid px-4 py-3 sm:grid-cols-2 sm:gap-x-5 lg:grid-cols-3 lg:border-r lg:border-white/[0.08] lg:px-5">
-              <ReservationMeta
-                label="Customer"
-                value={textOrDash(customerName)}
-              />
-              <ReservationMeta
-                label="Phone"
-                value={textOrDash(reservation.user?.phoneData?.phoneNumber)}
-              />
-              <ReservationMeta
-                label="Email"
-                value={textOrDash(reservation.user?.emaildata?.emailAddress)}
-              />
-              <ReservationMeta
-                label="Office"
-                value={textOrDash(reservation.office?.name)}
-              />
-              <ReservationMeta
-                label="Category"
-                value={textOrDash(category?.name)}
-              />
-              <ReservationMeta
-                label="Vehicle"
-                value={textOrDash(vehicleLabel)}
-              />
-              <ReservationMeta
-                label="Gear"
-                value={textOrDash(reservation.selectedGear)}
-              />
-              <ReservationMeta
-                label="Driver age"
-                value={
-                  reservation.driverAge ? `${reservation.driverAge} years` : "-"
-                }
-              />
-              <ReservationMeta
-                label="Booking type"
-                value={textOrDash(reservation.reservationType)}
-              />
-              {reservation.messege && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <ReservationMeta
-                    label="Customer notes"
-                    value={reservation.messege}
-                  />
-                </div>
-              )}
-            </div>
+          <div className="border-t border-white/[0.08]">
+            <button
+              type="button"
+              onClick={() => handleToggle("summary")}
+              aria-expanded={openSection === "summary"}
+              aria-controls="reservation-price-details"
+              className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.035] sm:px-5"
+            >
+              <span className="min-w-0">
+                <span className="block text-xs font-black uppercase tracking-wide text-slate-300 transition-colors group-hover:text-white">
+                  Reservation &amp; price details
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Booking information and full price breakdown
+                </span>
+              </span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-400 transition-colors group-hover:border-[#fe9a00]/30 group-hover:text-[#fe9a00]">
+                <FiChevronDown
+                  className={`transition-transform duration-300 ease-out motion-reduce:transition-none ${openSection === "summary" ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
 
-            <div className="border-t border-white/[0.08] px-4 py-4 lg:border-t-0 lg:px-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-black uppercase tracking-wide text-slate-400">
-                  Price calculation
-                </p>
-                {reservation.discountCode && (
-                  <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">
-                    Code: {reservation.discountCode}
-                  </span>
-                )}
+            <div
+              id="summary"
+              className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${
+                openSection === "summary"
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div id="reservation-price-details" className="overflow-hidden">
+                <div className="grid border-t border-white/[0.08] lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+                  <div className="grid px-4 py-3 sm:grid-cols-2 sm:gap-x-5 lg:grid-cols-3 lg:border-r lg:border-white/[0.08] lg:px-5">
+                    <ReservationMeta
+                      label="Customer"
+                      value={textOrDash(customerName)}
+                    />
+                    <ReservationMeta
+                      label="Phone"
+                      value={textOrDash(
+                        reservation.user?.phoneData?.phoneNumber,
+                      )}
+                    />
+                    <ReservationMeta
+                      label="Email"
+                      value={textOrDash(
+                        reservation.user?.emaildata?.emailAddress,
+                      )}
+                    />
+                    <ReservationMeta
+                      label="Office"
+                      value={textOrDash(reservation.office?.name)}
+                    />
+                    <ReservationMeta
+                      label="Category"
+                      value={textOrDash(category?.name)}
+                    />
+                    <ReservationMeta
+                      label="Vehicle"
+                      value={textOrDash(vehicleLabel)}
+                    />
+                    <ReservationMeta
+                      label="Gear"
+                      value={textOrDash(reservation.selectedGear)}
+                    />
+                    <ReservationMeta
+                      label="Driver age"
+                      value={
+                        reservation.driverAge
+                          ? `${reservation.driverAge} years`
+                          : "-"
+                      }
+                    />
+                    <ReservationMeta
+                      label="Booking type"
+                      value={textOrDash(reservation.reservationType)}
+                    />
+                    {reservation.messege && (
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <ReservationMeta
+                          label="Customer notes"
+                          value={reservation.messege}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-white/[0.08] px-4 py-4 lg:border-t-0 lg:px-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                        Price calculation
+                      </p>
+                      {reservation.discountCode && (
+                        <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">
+                          Code: {reservation.discountCode}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 space-y-1.5 text-xs">
+                      <div className="flex justify-between gap-4 text-slate-300">
+                        <span>Rental balance</span>
+                        <span className="font-semibold text-white">
+                          {money(rentalBalance)}
+                        </span>
+                      </div>
+                      {addOnBreakdown.map((item, index) => (
+                        <div
+                          key={`${item.label}-${index}`}
+                          className="flex justify-between gap-4 text-slate-400"
+                        >
+                          <span className="min-w-0 break-words">
+                            {item.label} × {item.quantity}
+                          </span>
+                          <span className="shrink-0">
+                            {item.amount === null
+                              ? "Price unavailable"
+                              : money(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between gap-4 text-slate-300">
+                        <span>Add-ons total</span>
+                        <span>{money(addOnsTotal)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4 text-slate-400">
+                        <span>Pickup extension</span>
+                        <span>{money(pickupExtension)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4 text-slate-400">
+                        <span>Return extension</span>
+                        <span>{money(returnExtension)}</span>
+                      </div>
+                      {depositDiscountPercent > 0 && (
+                        <div className="flex justify-between gap-4 text-emerald-300">
+                          <span>
+                            Full-payment discount ({depositDiscountPercent}%)
+                          </span>
+                          <span>-{money(depositDiscountAmount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between gap-4 border-t border-white/[0.08] pt-2 text-sm font-black text-white">
+                        <span>Final total</span>
+                        <span className="text-[#fe9a00]">
+                          {reservation.perInvoice && !reservation.totalPrice
+                            ? "Per Invoice"
+                            : money(finalTotal)}
+                        </span>
+                      </div>
+                    </div>
+                    {journey.mainStatus === "pending" && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditOpen(true)}
+                        className="mt-3 inline-flex items-center gap-2 text-xs font-black text-[#fe9a00] transition-colors hover:text-[#e68a00]"
+                      >
+                        Edit booking
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="mt-2 space-y-1.5 text-xs">
-                <div className="flex justify-between gap-4 text-slate-300">
-                  <span>Rental balance</span>
-                  <span className="font-semibold text-white">
-                    {money(rentalBalance)}
-                  </span>
-                </div>
-                {addOnBreakdown.map((item, index) => (
-                  <div
-                    key={`${item.label}-${index}`}
-                    className="flex justify-between gap-4 text-slate-400"
-                  >
-                    <span>{item.label}</span>
-                    <span className="shrink-0">{money(item.amount)}</span>
-                  </div>
-                ))}
-                {addOnBreakdown.length > 0 && (
-                  <div className="flex justify-between gap-4 text-slate-300">
-                    <span>Add-ons total</span>
-                    <span>{money(addOnsTotal)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between gap-4 text-slate-400">
-                  <span>Pickup extension</span>
-                  <span>{money(pickupExtension)}</span>
-                </div>
-                <div className="flex justify-between gap-4 text-slate-400">
-                  <span>Return extension</span>
-                  <span>{money(returnExtension)}</span>
-                </div>
-                {depositDiscountPercent > 0 && (
-                  <div className="flex justify-between gap-4 text-emerald-300">
-                    <span>Full-deposit discount</span>
-                    <span>{depositDiscountPercent}% applied</span>
-                  </div>
-                )}
-                <div className="flex justify-between gap-4 border-t border-white/[0.08] pt-2 text-sm font-black text-white">
-                  <span>Final total</span>
-                  <span className="text-[#fe9a00]">{money(finalTotal)}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => openAndScroll("summary")}
-                className="mt-3 text-xs font-black text-[#fe9a00] hover:text-[#e68a00]"
-              >
-                View booking details
-              </button>
             </div>
           </div>
         </section>
@@ -671,8 +730,6 @@ export default function ReservationJourneyPage({
           journey={journey}
           contract={contract}
           openSection={openSection}
-          onToggle={handleToggle}
-          onEditBooking={() => setIsEditOpen(true)}
           onSignContract={handleSignContract}
           onDownloadContract={handleDownloadContract}
           onDepositUpdated={fetchData}

@@ -14,6 +14,7 @@ import {
   FiPrinter,
   FiDownload,
   FiAlertTriangle,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import DynamicTableView from "./DynamicTableView";
@@ -154,7 +155,10 @@ const ADMIN_FLOW_STEPS = [
 ] as const;
 
 const statusFlowIndex = (status?: string) =>
-  Math.max(0, ADMIN_FLOW_STEPS.findIndex((step) => step === status));
+  Math.max(
+    0,
+    ADMIN_FLOW_STEPS.findIndex((step) => step === status),
+  );
 
 function ReservationStepManagerModal({
   reservation,
@@ -209,6 +213,7 @@ function ReservationStepManagerModal({
   const [actionContract, setActionContract] =
     useState<SafeContractSummary | null>(null);
   const [contractLoading, setContractLoading] = useState(false);
+  const [contractDocumentBusy, setContractDocumentBusy] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(
     null,
   );
@@ -233,8 +238,11 @@ function ReservationStepManagerModal({
           signal: controller.signal,
         });
         const payload = await res.json();
-        if (!payload.success) throw new Error(payload.error || "Request failed");
-        setActionContract(Array.isArray(payload.data) ? payload.data[0] || null : null);
+        if (!payload.success)
+          throw new Error(payload.error || "Request failed");
+        setActionContract(
+          Array.isArray(payload.data) ? payload.data[0] || null : null,
+        );
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           setActionContract(null);
@@ -336,98 +344,437 @@ function ReservationStepManagerModal({
       "_blank",
     );
   };
+  const fetchSignedContractDocuments = async () => {
+    if (!actionContract) return;
+    setContractDocumentBusy(true);
+    try {
+      const response = await fetch(
+        `/api/admin/contracts/${actionContract._id}/retry-documents`,
+        {
+          method: "POST",
+          headers: clientAuthHeaders(true),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || "Could not fetch signed contract");
+      }
+      setActionContract(payload.data as SafeContractSummary);
+      showToast.success("Signed contract documents are ready");
+    } catch (error) {
+      showToast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not fetch signed contract",
+      );
+    } finally {
+      setContractDocumentBusy(false);
+    }
+  };
 
   return (
     <>
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1224]/95 shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#0b1224]/95 p-5 backdrop-blur">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#fe9a00]">
-              Admin step manager
-            </p>
-            <h2 className="mt-1 text-2xl font-black text-white">
-              {reservation.reservationCode || reservation._id}
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">
-              {reservation.user?.name || "Customer"} ·{" "}
-              {reservation.category?.name || "Reservation"}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-xl p-2 text-gray-300 transition hover:bg-white/10 hover:text-white"
-          >
-            <FiX className="text-xl" />
-          </button>
-        </div>
-
-        <div className="space-y-5 p-5">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm text-gray-400">Current status</p>
-                <span
-                  className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${statusBadgeClasses(reservation.status)}`}
-                >
-                  {statusLabel(reservation.status, true)}
-                </span>
-              </div>
-              <button
-                onClick={() => setIsReservationDetailsOpen(true)}
-                className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
-              >
-                View reservation details
-              </button>
+        <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1224]/95 shadow-2xl">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#0b1224]/95 p-5 backdrop-blur">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#fe9a00]">
+                Admin step manager
+              </p>
+              <h2 className="mt-1 text-2xl font-black text-white">
+                {reservation.reservationCode || reservation._id}
+              </h2>
+              <p className="mt-1 text-sm text-gray-400">
+                {reservation.user?.name || "Customer"} ·{" "}
+                {reservation.category?.name || "Reservation"}
+              </p>
             </div>
+            <button
+              onClick={onClose}
+              className="rounded-xl p-2 text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              <FiX className="text-xl" />
+            </button>
+          </div>
 
-            <div className="mt-5 grid gap-2 md:grid-cols-5">
-              {ADMIN_FLOW_STEPS.map((step, index) => {
-                const state =
-                  index < currentIndex
-                    ? "done"
-                    : index === currentIndex
-                      ? "current"
-                      : "upcoming";
-                return (
-                  <div
-                    key={step}
-                    className={`rounded-xl border p-3 ${
-                      state === "done"
-                        ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
-                        : state === "current"
-                          ? "border-[#fe9a00]/40 bg-[#fe9a00]/15 text-[#fe9a00]"
-                          : "border-white/10 bg-white/[0.03] text-gray-500"
-                    }`}
+          <div className="space-y-5 p-5">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-gray-400">Current status</p>
+                  <span
+                    className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${statusBadgeClasses(reservation.status)}`}
                   >
-                    <p className="text-[10px] font-bold uppercase tracking-wide">
-                      Step {index + 1}
+                    {statusLabel(reservation.status, true)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsReservationDetailsOpen(true)}
+                  className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                >
+                  View reservation details
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-2 md:grid-cols-5">
+                {ADMIN_FLOW_STEPS.map((step, index) => {
+                  const state =
+                    index < currentIndex
+                      ? "done"
+                      : index === currentIndex
+                        ? "current"
+                        : "upcoming";
+                  return (
+                    <div
+                      key={step}
+                      className={`rounded-xl border p-3 ${
+                        state === "done"
+                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                          : state === "current"
+                            ? "border-[#fe9a00]/40 bg-[#fe9a00]/15 text-[#fe9a00]"
+                            : "border-white/10 bg-white/[0.03] text-gray-500"
+                      }`}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wide">
+                        Step {index + 1}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold">
+                        {statusLabel(step, true)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {(contractLoading || actionContract) && (
+                <div className="mt-3 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-white">
+                      Contract document
                     </p>
-                    <p className="mt-1 text-xs font-semibold">
-                      {statusLabel(step, true)}
+                    <p className="mt-1 text-xs text-gray-400">
+                      {contractLoading
+                        ? "Checking contract document..."
+                        : `Contract ${actionContract?.contractNumber || ""} is available for this reservation.`}
                     </p>
                   </div>
-                );
-              })}
+                  {actionContract && (
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      {actionContract.files.signed && (
+                        <button
+                          type="button"
+                          onClick={() => downloadActionContract("signed")}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25"
+                        >
+                          <FiEye />
+                          View signed contract
+                        </button>
+                      )}
+                      {actionContract.files.source && (
+                        <button
+                          type="button"
+                          onClick={() => downloadActionContract("source")}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                        >
+                          <FiDownload />
+                          Unsigned contract
+                        </button>
+                      )}
+                      {actionContract.files.certificate && (
+                        <button
+                          type="button"
+                          onClick={() => downloadActionContract("certificate")}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                        >
+                          <FiDownload />
+                          Certificate
+                        </button>
+                      )}
+                      {actionContract.status === "completed" &&
+                        !actionContract.files.signed && (
+                          <button
+                            type="button"
+                            disabled={contractDocumentBusy}
+                            onClick={fetchSignedContractDocuments}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <FiRefreshCw
+                              className={
+                                contractDocumentBusy ? "animate-spin" : ""
+                              }
+                            />
+                            {contractDocumentBusy
+                              ? "Fetching signed contract"
+                              : "Fetch signed contract"}
+                          </button>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {(contractLoading || actionContract) && (
-              <div className="mt-3 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-bold text-white">
-                    Contract document
+            {reservation.status === "pending" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <h3 className="text-lg font-bold text-white">
+                    Review booking
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-400">
+                    Confirm the reservation when the details are OK. The
+                    customer will then continue to the deposit step.
                   </p>
-                  <p className="mt-1 text-xs text-gray-400">
-                    {contractLoading
-                      ? "Checking contract document..."
-                      : `Contract ${actionContract?.contractNumber || ""} is available for this reservation.`}
-                  </p>
+                  <button
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      onStatusChange(reservation, "deposit_pending")
+                    }
+                    className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Confirming..." : "Confirm booking"}
+                  </button>
                 </div>
+
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
+                  <h3 className="text-lg font-bold text-red-100">
+                    Cancel reservation
+                  </h3>
+                  <textarea
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                    rows={3}
+                    placeholder="Reason shown in admin record"
+                    className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-red-300 focus:outline-none"
+                  />
+                  <button
+                    disabled={isSubmitting || !cancelReason.trim()}
+                    onClick={() =>
+                      onStatusChange(reservation, "canceled", {
+                        cancelReason: cancelReason.trim(),
+                      })
+                    }
+                    className="mt-3 w-full rounded-xl bg-red-500/20 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+                  >
+                    Cancel with reason
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(reservation.status === "confirmed" ||
+              reservation.status === "deposit_pending") && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">
+                      Deposit step
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-400">
+                      Customer option:{" "}
+                      <span className="font-semibold text-white">
+                        {depositOption}
+                      </span>
+                      {deposit?.amount !== undefined
+                        ? ` · £${deposit.amount}`
+                        : ""}
+                    </p>
+                  </div>
+                  <DepositVerificationBadge reservation={reservation} />
+                </div>
+
+                {deposit?.receiptUrl && (
+                  <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3">
+                    <div className="flex items-center gap-3">
+                      {isImageFileUrl(deposit.receiptUrl) ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReceiptPreviewUrl(deposit.receiptUrl!)
+                          }
+                          className="group relative h-20 w-24 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-black/30"
+                          aria-label="Preview uploaded receipt"
+                        >
+                          <img
+                            src={deposit.receiptUrl}
+                            alt="Uploaded deposit receipt"
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                          />
+                          <span className="absolute inset-x-0 bottom-0 bg-black/70 py-1 text-center text-[10px] font-bold text-white">
+                            View receipt
+                          </span>
+                        </button>
+                      ) : (
+                        <a
+                          href={deposit.receiptUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex h-20 w-24 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/30 px-2 text-center text-xs font-bold text-[#fe9a00]"
+                        >
+                          View receipt file
+                        </a>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#fe9a00]">
+                          Receipt awaiting review
+                        </p>
+                        {deposit.receiptUploadedAt && (
+                          <p className="mt-1 text-xs text-gray-400">
+                            Uploaded{" "}
+                            {new Date(deposit.receiptUploadedAt).toLocaleString(
+                              "en-GB",
+                            )}
+                          </p>
+                        )}
+                        {deposit.transactionRef && (
+                          <p className="mt-1 truncate text-xs text-gray-400">
+                            Ref: {deposit.transactionRef}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {deposit?.status === "pending" && deposit.receiptUrl ? (
+                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                    <input
+                      value={depositTransactionRef}
+                      onChange={(event) =>
+                        setDepositTransactionRef(event.target.value)
+                      }
+                      placeholder="Transaction reference (optional)"
+                      className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                    />
+                    <textarea
+                      value={depositFailureReason}
+                      onChange={(event) =>
+                        setDepositFailureReason(event.target.value)
+                      }
+                      rows={2}
+                      placeholder="Refuse reason (required when refusing)"
+                      className="w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                    />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        disabled={depositBusy}
+                        onClick={() => onVerifyDeposit(reservation, "reject")}
+                        className="rounded-xl bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+                      >
+                        Refuse deposit
+                      </button>
+                      <button
+                        disabled={depositBusy}
+                        onClick={() => onVerifyDeposit(reservation, "approve")}
+                        className="rounded-xl bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                      >
+                        Accept deposit
+                      </button>
+                    </div>
+                  </div>
+                ) : !deposit?.receiptUrl ? (
+                  <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+                    Waiting for the customer to choose a deposit option and
+                    upload payment receipt. If they choose office pay, continue
+                    from vehicle assignment when they arrive.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {canAssignVehicle &&
+              (reservation.status === "deposit_paid" ||
+                reservation.status === "deposit_pending" ||
+                reservation.status === "confirmed") && (
+                <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+                  <h3 className="text-lg font-bold text-white">
+                    Assign vehicle & create contract
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-300">
+                    Assigning the van will create the contract automatically and
+                    move the customer to the signing step.
+                  </p>
+                  {savedPriceAdjustment && (
+                    <div
+                      className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
+                        savedAdjustmentStatus === "payment_due"
+                          ? "border-[#fe9a00]/30 bg-[#fe9a00]/10"
+                          : "border-emerald-400/25 bg-emerald-400/10"
+                      }`}
+                    >
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                          Saved payment reconciliation
+                        </p>
+                        <p
+                          className={`mt-0.5 text-xs font-semibold ${
+                            savedAdjustmentStatus === "payment_due"
+                              ? "text-orange-200"
+                              : "text-emerald-200"
+                          }`}
+                        >
+                          {savedAdjustmentStatus === "payment_due"
+                            ? "Additional payment due"
+                            : savedAdjustmentStatus === "credit_due"
+                              ? "Customer credit"
+                              : "Payment balanced"}
+                        </p>
+                      </div>
+                      <p
+                        className={`font-black tabular-nums ${
+                          savedAdjustmentStatus === "payment_due"
+                            ? "text-[#fe9a00]"
+                            : "text-emerald-300"
+                        }`}
+                      >
+                        £{savedAdjustmentAmount.toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                  <div className="mt-4 space-y-3">
+                    <CustomSelect
+                      options={vehicles}
+                      value={selectedVehicle}
+                      onChange={setSelectedVehicle}
+                      placeholder={
+                        loadingVehicles
+                          ? "Loading vehicles..."
+                          : "Select vehicle"
+                      }
+                      disabled={isSubmitting}
+                    />
+                    {!loadingVehicles && vehicles.length === 0 && (
+                      <p className="text-xs text-yellow-300">
+                        No vehicles found for this category.
+                      </p>
+                    )}
+                    <button
+                      disabled={isSubmitting || !selectedVehicle}
+                      onClick={() => onAssignVehicle(reservation)}
+                      className="w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                    >
+                      {isSubmitting
+                        ? "Assigning vehicle & creating contract..."
+                        : "Assign vehicle & generate contract"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            {reservation.status === "contract_pending" && (
+              <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+                <h3 className="text-lg font-bold text-white">
+                  Waiting for contract signature
+                </h3>
+                <p className="mt-1 text-sm text-gray-300">
+                  The contract has been generated. The customer needs to sign it
+                  in DocuSign. When DocuSign confirms completion, the status
+                  will update to signed.
+                </p>
                 {actionContract?.files.source && (
                   <button
                     type="button"
                     onClick={() => downloadActionContract("source")}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
                   >
                     <FiDownload />
                     Download contract
@@ -435,291 +782,29 @@ function ReservationStepManagerModal({
                 )}
               </div>
             )}
-          </div>
 
-          {reservation.status === "pending" && (
-            <div className="grid gap-4 md:grid-cols-2">
+            {laterStep && !showOperationsPanel && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <h3 className="text-lg font-bold text-white">
-                  Review booking
+                  Next admin step
                 </h3>
-                <p className="mt-1 text-sm text-gray-400">
-                  Confirm the reservation when the details are OK. The customer
-                  will then continue to the deposit step.
-                </p>
+                <p className="mt-1 text-sm text-gray-400">{laterStep.note}</p>
                 <button
                   disabled={isSubmitting}
-                  onClick={() =>
-                    onStatusChange(reservation, "deposit_pending")
-                  }
+                  onClick={() => onStatusChange(reservation, laterStep.next)}
                   className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
                 >
-                  {isSubmitting ? "Confirming..." : "Confirm booking"}
+                  {laterStep.label}
                 </button>
-              </div>
-
-              <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
-                <h3 className="text-lg font-bold text-red-100">
-                  Cancel reservation
-                </h3>
-                <textarea
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  rows={3}
-                  placeholder="Reason shown in admin record"
-                  className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-red-300 focus:outline-none"
-                />
-                <button
-                  disabled={isSubmitting || !cancelReason.trim()}
-                  onClick={() =>
-                    onStatusChange(reservation, "canceled", {
-                      cancelReason: cancelReason.trim(),
-                    })
-                  }
-                  className="mt-3 w-full rounded-xl bg-red-500/20 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
-                >
-                  Cancel with reason
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(reservation.status === "confirmed" ||
-            reservation.status === "deposit_pending") && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-bold text-white">
-                    Deposit step
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-400">
-                    Customer option:{" "}
-                    <span className="font-semibold text-white">
-                      {depositOption}
-                    </span>
-                    {deposit?.amount !== undefined
-                      ? ` · £${deposit.amount}`
-                      : ""}
-                  </p>
-                </div>
-                <DepositVerificationBadge reservation={reservation} />
-              </div>
-
-              {deposit?.receiptUrl && (
-                <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3">
-                  <div className="flex items-center gap-3">
-                    {isImageFileUrl(deposit.receiptUrl) ? (
-                      <button
-                        type="button"
-                        onClick={() => setReceiptPreviewUrl(deposit.receiptUrl!)}
-                        className="group relative h-20 w-24 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-black/30"
-                        aria-label="Preview uploaded receipt"
-                      >
-                        <img
-                          src={deposit.receiptUrl}
-                          alt="Uploaded deposit receipt"
-                          className="h-full w-full object-cover transition group-hover:scale-105"
-                        />
-                        <span className="absolute inset-x-0 bottom-0 bg-black/70 py-1 text-center text-[10px] font-bold text-white">
-                          View receipt
-                        </span>
-                      </button>
-                    ) : (
-                      <a
-                        href={deposit.receiptUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex h-20 w-24 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-black/30 px-2 text-center text-xs font-bold text-[#fe9a00]"
-                      >
-                        View receipt file
-                      </a>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#fe9a00]">
-                        Receipt awaiting review
-                      </p>
-                      {deposit.receiptUploadedAt && (
-                        <p className="mt-1 text-xs text-gray-400">
-                          Uploaded{" "}
-                          {new Date(deposit.receiptUploadedAt).toLocaleString("en-GB")}
-                        </p>
-                      )}
-                      {deposit.transactionRef && (
-                        <p className="mt-1 truncate text-xs text-gray-400">
-                          Ref: {deposit.transactionRef}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {deposit?.status === "pending" && deposit.receiptUrl ? (
-                <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
-                  <input
-                    value={depositTransactionRef}
-                    onChange={(event) =>
-                      setDepositTransactionRef(event.target.value)
-                    }
-                    placeholder="Transaction reference (optional)"
-                    className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
-                  />
-                  <textarea
-                    value={depositFailureReason}
-                    onChange={(event) =>
-                      setDepositFailureReason(event.target.value)
-                    }
-                    rows={2}
-                    placeholder="Refuse reason (required when refusing)"
-                    className="w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
-                  />
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <button
-                      disabled={depositBusy}
-                      onClick={() => onVerifyDeposit(reservation, "reject")}
-                      className="rounded-xl bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
-                    >
-                      Refuse deposit
-                    </button>
-                    <button
-                      disabled={depositBusy}
-                      onClick={() => onVerifyDeposit(reservation, "approve")}
-                      className="rounded-xl bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
-                    >
-                      Accept deposit
-                    </button>
-                  </div>
-                </div>
-              ) : !deposit?.receiptUrl ? (
-                <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
-                  Waiting for the customer to choose a deposit option and upload
-                  payment receipt. If they choose office pay, continue from
-                  vehicle assignment when they arrive.
-                </p>
-              ) : null}
-            </div>
-          )}
-
-          {canAssignVehicle &&
-            (reservation.status === "deposit_paid" ||
-              reservation.status === "deposit_pending" ||
-              reservation.status === "confirmed") && (
-              <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
-                <h3 className="text-lg font-bold text-white">
-                  Assign vehicle & create contract
-                </h3>
-                <p className="mt-1 text-sm text-gray-300">
-                  Assigning the van will create the contract automatically and
-                  move the customer to the signing step.
-                </p>
-                {savedPriceAdjustment && (
-                  <div
-                    className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
-                      savedAdjustmentStatus === "payment_due"
-                        ? "border-[#fe9a00]/30 bg-[#fe9a00]/10"
-                        : "border-emerald-400/25 bg-emerald-400/10"
-                    }`}
-                  >
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                        Saved payment reconciliation
-                      </p>
-                      <p
-                        className={`mt-0.5 text-xs font-semibold ${
-                          savedAdjustmentStatus === "payment_due"
-                            ? "text-orange-200"
-                            : "text-emerald-200"
-                        }`}
-                      >
-                        {savedAdjustmentStatus === "payment_due"
-                          ? "Additional payment due"
-                          : savedAdjustmentStatus === "credit_due"
-                            ? "Customer credit"
-                            : "Payment balanced"}
-                      </p>
-                    </div>
-                    <p
-                      className={`font-black tabular-nums ${
-                        savedAdjustmentStatus === "payment_due"
-                          ? "text-[#fe9a00]"
-                          : "text-emerald-300"
-                      }`}
-                    >
-                      £{savedAdjustmentAmount.toFixed(2)}
-                    </p>
-                  </div>
-                )}
-                <div className="mt-4 space-y-3">
-                  <CustomSelect
-                    options={vehicles}
-                    value={selectedVehicle}
-                    onChange={setSelectedVehicle}
-                    placeholder={
-                      loadingVehicles ? "Loading vehicles..." : "Select vehicle"
-                    }
-                    disabled={isSubmitting}
-                  />
-                  {!loadingVehicles && vehicles.length === 0 && (
-                    <p className="text-xs text-yellow-300">
-                      No vehicles found for this category.
-                    </p>
-                  )}
-                  <button
-                    disabled={isSubmitting || !selectedVehicle}
-                    onClick={() => onAssignVehicle(reservation)}
-                    className="w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
-                  >
-                    {isSubmitting
-                      ? "Assigning vehicle & creating contract..."
-                      : "Assign vehicle & generate contract"}
-                  </button>
-                </div>
               </div>
             )}
 
-          {reservation.status === "contract_pending" && (
-            <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
-              <h3 className="text-lg font-bold text-white">
-                Waiting for contract signature
-              </h3>
-              <p className="mt-1 text-sm text-gray-300">
-                The contract has been generated. The customer needs to sign it
-                in DocuSign. When DocuSign confirms completion, the status will
-                update to signed.
-              </p>
-              {actionContract?.files.source && (
-                <button
-                  type="button"
-                  onClick={() => downloadActionContract("source")}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
-                >
-                  <FiDownload />
-                  Download contract
-                </button>
-              )}
-            </div>
-          )}
-
-          {laterStep && !showOperationsPanel && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <h3 className="text-lg font-bold text-white">Next admin step</h3>
-              <p className="mt-1 text-sm text-gray-400">{laterStep.note}</p>
-              <button
-                disabled={isSubmitting}
-                onClick={() => onStatusChange(reservation, laterStep.next)}
-                className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
-              >
-                {laterStep.label}
-              </button>
-            </div>
-          )}
-
-          <ReservationOperationsPanel
-            reservation={reservation}
-            onUpdated={onReservationUpdated}
-          />
+            <ReservationOperationsPanel
+              reservation={reservation}
+              onUpdated={onReservationUpdated}
+            />
+          </div>
         </div>
-      </div>
       </div>
 
       <ReservationDetailsModal
@@ -1174,9 +1259,9 @@ export default function ReservationsManagement() {
 
   const requiresFreshContract = Boolean(
     selectedReservation?.vehicle &&
-      ["contract_pending", "contract_signed", "ready_for_collection"].includes(
-        selectedReservation.status,
-      ),
+    ["contract_pending", "contract_signed", "ready_for_collection"].includes(
+      selectedReservation.status,
+    ),
   );
 
   const proposedBaseTotal = editPerInvoice
@@ -1560,18 +1645,15 @@ export default function ReservationsManagement() {
 
     setDepositBusy(true);
     try {
-      const res = await fetch(
-        `/api/reservations/${reservation._id}/deposit`,
-        {
-          method: "PATCH",
-          headers: clientAuthHeaders(true),
-          body: JSON.stringify({
-            action,
-            transactionRef: depositTransactionRef,
-            failureReason: depositFailureReason,
-          }),
-        },
-      );
+      const res = await fetch(`/api/reservations/${reservation._id}/deposit`, {
+        method: "PATCH",
+        headers: clientAuthHeaders(true),
+        body: JSON.stringify({
+          action,
+          transactionRef: depositTransactionRef,
+          failureReason: depositFailureReason,
+        }),
+      });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Verification failed");
 
@@ -1654,7 +1736,10 @@ export default function ReservationsManagement() {
       const vehicleRes = await fetch(`/api/vehicles/${newVehicle}`, {
         method: "PATCH",
         headers: clientAuthHeaders(true),
-        body: JSON.stringify({ available: false }),
+        body: JSON.stringify({
+          available: false,
+          reservation: reservation._id,
+        }),
       });
       const vehicleData = await vehicleRes.json();
       if (!vehicleData.success)
@@ -1780,7 +1865,7 @@ export default function ReservationsManagement() {
             type: "select",
             options: categories,
           },
-       
+
           {
             key: "isManualPrice",
             label: "Manual Price",
@@ -1982,7 +2067,7 @@ export default function ReservationsManagement() {
             },
           },
           { key: "driverAge", label: "Driver Age" },
-          
+
           {
             key: "status",
             label: "Status",
@@ -2552,8 +2637,7 @@ export default function ReservationsManagement() {
                                     ],
                                     normalStart:
                                       pickupWindow?.startTime || "00:00",
-                                    normalEnd:
-                                      pickupWindow?.endTime || "23:59",
+                                    normalEnd: pickupWindow?.endTime || "23:59",
                                     price: workingDay.pickupExtension.flatPrice,
                                   }
                                 : undefined;
@@ -2646,8 +2730,7 @@ export default function ReservationsManagement() {
                                     ],
                                     normalStart:
                                       returnWindow?.startTime || "00:00",
-                                    normalEnd:
-                                      returnWindow?.endTime || "23:59",
+                                    normalEnd: returnWindow?.endTime || "23:59",
                                     price: workingDay.returnExtension.flatPrice,
                                   }
                                 : undefined;
@@ -2977,10 +3060,9 @@ export default function ReservationsManagement() {
                             </p>
                             <p className="mt-1 text-xs leading-5 text-slate-300">
                               Saving returns this booking to Assign Vehicle. The
-                              current vehicle stays preselected, but the previous
-                              agreement will no longer be used. Confirm the
-                              assigned vehicle to generate and send a fresh
-                              contract.
+                              previous vehicle will be unlinked and made
+                              available again. Select a vehicle before
+                              generating and sending the fresh contract.
                             </p>
                           </div>
                         </div>
@@ -2993,7 +3075,9 @@ export default function ReservationsManagement() {
                                   Full payment adjustment
                                 </p>
                                 <p className="mt-1 text-xs text-slate-400">
-                                  Includes the saved {fullPaymentPreview.discountPercent}% full-payment discount.
+                                  Includes the saved{" "}
+                                  {fullPaymentPreview.discountPercent}%
+                                  full-payment discount.
                                 </p>
                               </div>
                               <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-300">
@@ -3002,15 +3086,23 @@ export default function ReservationsManagement() {
                             </div>
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
-                                <p className="text-xs text-slate-400">Previously paid</p>
+                                <p className="text-xs text-slate-400">
+                                  Previously paid
+                                </p>
                                 <p className="mt-0.5 font-bold tabular-nums text-white">
-                                  £{fullPaymentPreview.previouslyPaid.toFixed(2)}
+                                  £
+                                  {fullPaymentPreview.previouslyPaid.toFixed(2)}
                                 </p>
                               </div>
                               <div className="text-right">
-                                <p className="text-xs text-slate-400">Revised booking total</p>
+                                <p className="text-xs text-slate-400">
+                                  Revised booking total
+                                </p>
                                 <p className="mt-0.5 font-bold tabular-nums text-white">
-                                  £{fullPaymentPreview.revisedBookingTotal.toFixed(2)}
+                                  £
+                                  {fullPaymentPreview.revisedBookingTotal.toFixed(
+                                    2,
+                                  )}
                                 </p>
                               </div>
                             </div>
@@ -3021,20 +3113,36 @@ export default function ReservationsManagement() {
                                   : "border-emerald-400/25 bg-emerald-400/10"
                               }`}
                             >
-                              <span className={fullPaymentPreview.state === "payment_due" ? "text-xs font-semibold text-orange-200" : "text-xs font-semibold text-emerald-200"}>
+                              <span
+                                className={
+                                  fullPaymentPreview.state === "payment_due"
+                                    ? "text-xs font-semibold text-orange-200"
+                                    : "text-xs font-semibold text-emerald-200"
+                                }
+                              >
                                 {fullPaymentPreview.state === "payment_due"
                                   ? "Additional payment due"
                                   : fullPaymentPreview.state === "credit_due"
                                     ? "Customer credit"
                                     : "Payment balanced"}
                               </span>
-                              <span className={fullPaymentPreview.state === "payment_due" ? "font-black tabular-nums text-[#fe9a00]" : "font-black tabular-nums text-emerald-300"}>
-                                £{Math.abs(fullPaymentPreview.difference).toFixed(2)}
+                              <span
+                                className={
+                                  fullPaymentPreview.state === "payment_due"
+                                    ? "font-black tabular-nums text-[#fe9a00]"
+                                    : "font-black tabular-nums text-emerald-300"
+                                }
+                              >
+                                £
+                                {Math.abs(
+                                  fullPaymentPreview.difference,
+                                ).toFixed(2)}
                               </span>
                             </div>
                             <p className="mt-2 text-[11px] leading-4 text-slate-500">
-                              Preview only. The backend performs the authoritative
-                              payment calculation when this update is saved.
+                              Preview only. The backend performs the
+                              authoritative payment calculation when this update
+                              is saved.
                             </p>
                           </div>
                         )}
@@ -3126,7 +3234,10 @@ export default function ReservationsManagement() {
                             {
                               method: "PATCH",
                               headers: clientAuthHeaders(true),
-                              body: JSON.stringify({ available: false }),
+                              body: JSON.stringify({
+                                available: false,
+                                reservation: selectedReservation._id,
+                              }),
                             },
                           );
                           const vehicleData = await vehicleRes.json();
@@ -3179,7 +3290,9 @@ export default function ReservationsManagement() {
                       <p className="text-gray-400 text-xs">Option</p>
                       <p className="text-white font-semibold">
                         {selectedReservation.deposit.option
-                          ? DEPOSIT_OPTION_LABELS[selectedReservation.deposit.option]
+                          ? DEPOSIT_OPTION_LABELS[
+                              selectedReservation.deposit.option
+                            ]
                           : "-"}
                       </p>
                     </div>

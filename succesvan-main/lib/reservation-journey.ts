@@ -173,6 +173,18 @@ const buildNextAction = (
       };
     case "confirmed":
     case "deposit_pending":
+      if (reservation.deposit?.status === "failed") {
+        return {
+          type: "pay_deposit",
+          title: "Payment receipt rejected",
+          description: `Reason: ${
+            reservation.deposit.failureReason ||
+            "The uploaded receipt could not be verified."
+          } Upload a new receipt for review.`,
+          buttonLabel: "Upload New Receipt",
+          href: "#deposit",
+        };
+      }
       if (officeDepositSelected) {
         return {
           type: "none",
@@ -337,6 +349,7 @@ export function buildReservationJourney(
           ? formatDateTimeInLondon(deposit.dueAt)
           : undefined,
         receiptUrl: deposit?.receiptUrl,
+        failureReason: deposit?.failureReason,
       };
     })(),
     contract: {

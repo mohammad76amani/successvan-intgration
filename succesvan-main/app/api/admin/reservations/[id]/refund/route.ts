@@ -24,13 +24,147 @@ export async function POST(
     }
     const { id } = await params;
     const body = await req.json();
-    if (!["review", "approve", "complete"].includes(body.action)) {
+    if (
+      !["review", "approve", "complete", "add_deduction"].includes(body.action)
+    ) {
       return errorResponse("Invalid refund action", 400);
     }
 
     await connect();
     const existing = await Reservation.findById(id);
     if (!existing) return errorResponse("Reservation not found", 404);
+
+    if (body.action === "add_deduction") {
+      if (!["deposit_review", "refund_processing"].includes(existing.status)) {
+        return errorResponse(
+          "Traffic deductions can only be added during deposit review or refund processing",
+          409,
+        );
+      }
+
+      const amount = money(body.amount);
+      const ticketReference = String(body.ticketReference || "")
+        .trim()
+        .toUpperCase();
+      const reason = String(body.reason || "").trim();
+      const vehicleNumber = String(body.vehicleNumber || "")
+        .trim()
+        .toUpperCase();
+      const violationDate = String(body.violationDate || "").trim();
+      const violationDay = parseStorageDate(violationDate);
+      if (amount <= 0)
+        return errorResponse("A positive amount is required", 400);
+      if (ticketReference.length < 3 || ticketReference.length > 80) {
+        return errorResponse(
+          "A valid ticket or PCN reference is required",
+          400,
+        );
+      }
+      if (!reason) return errorResponse("A reason is required", 400);
+      if (!violationDay) {
+        return errorResponse("A valid violation date is required", 400);
+      }
+
+      const violationStart = new Date(
+        createLondonDateTime(violationDay, "00:00"),
+      );
+      const violationEnd = new Date(
+        createLondonDateTime(violationDay, "23:59"),
+      );
+      if (
+        new Date(existing.startDate) > violationEnd ||
+        new Date(existing.endDate) < violationStart
+      ) {
+        return errorResponse(
+          "The violation date is outside this reservation's rental period",
+          409,
+        );
+      }
+
+      let reservationVehicleNumber = String(
+        existing.vehicleSnapshot?.number || "",
+      ).trim();
+      if (!reservationVehicleNumber && existing.vehicle) {
+        const linkedVehicle = await Vehicle.findById(existing.vehicle)
+          .select("number")
+          .lean<{ number?: string }>();
+        reservationVehicleNumber = String(linkedVehicle?.number || "").trim();
+      }
+      const normalizeRegistration = (value: string) =>
+        value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (
+        !reservationVehicleNumber ||
+        normalizeRegistration(reservationVehicleNumber) !==
+          normalizeRegistration(vehicleNumber)
+      ) {
+        return errorResponse(
+          "The vehicle registration does not match this reservation",
+          409,
+        );
+      }
+
+      const savedReason = `Traffic violation · ${vehicleNumber} · ${violationDate} · Ticket ${ticketReference} · ${reason}`;
+      if (savedReason.length > 300) {
+        return errorResponse("The deduction reason is too long", 400);
+      }
+
+      const additionalCharges = [
+        ...(existing.refund?.additionalCharges || []).map(
+          (charge: { amount?: unknown; reason?: unknown }) => ({
+            amount: money(charge.amount),
+            reason: String(charge.reason || "").trim(),
+          }),
+        ),
+      ];
+      const normalizeTicketText = (value: string) =>
+        value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const normalizedTicketReference = normalizeTicketText(ticketReference);
+      const duplicate = additionalCharges.some(
+        (charge: { reason: string }) =>
+          charge.reason.toLowerCase().startsWith("traffic violation") &&
+          normalizeTicketText(charge.reason).includes(
+            normalizedTicketReference,
+          ),
+      );
+      if (duplicate) {
+        return errorResponse(
+          "This traffic deduction has already been added",
+          409,
+        );
+      }
+      additionalCharges.push({ amount, reason: savedReason });
+
+      const savedCharges = (existing.refund?.charges?.toObject?.() ||
+        existing.refund?.charges ||
+        {}) as Record<string, unknown>;
+      const fixedDeductions = Object.values(savedCharges).reduce<number>(
+        (total, charge) => total + money(charge),
+        0,
+      );
+      const deductionsTotal = additionalCharges.reduce(
+        (total: number, charge: { amount: number }) => total + charge.amount,
+        fixedDeductions,
+      );
+      const depositPaid = money(
+        existing.refund?.depositPaid ?? existing.deposit?.amount,
+      );
+
+      existing.set("refund.depositPaid", depositPaid);
+      existing.set("refund.additionalCharges", additionalCharges);
+      existing.set("refund.deductionsTotal", deductionsTotal);
+      existing.set(
+        "refund.refundAmount",
+        Math.max(0, depositPaid - deductionsTotal),
+      );
+      existing.statusHistory.push({
+        status: existing.status,
+        changedAt: new Date(),
+        source: "admin",
+        note: `${savedReason} (£${amount.toFixed(2)})`,
+      });
+      existing.markModified("refund.additionalCharges");
+      return successResponse(await existing.save());
+    }
 
     const charges = {
       fuel: money(body.charges?.fuel),
@@ -44,7 +178,10 @@ export async function POST(
       ? body.additionalCharges
       : [];
     if (submittedAdditionalCharges.length > 50) {
-      return errorResponse("A maximum of 50 additional deductions is allowed", 400);
+      return errorResponse(
+        "A maximum of 50 additional deductions is allowed",
+        400,
+      );
     }
     const additionalCharges = submittedAdditionalCharges.map(
       (item: { amount?: unknown; reason?: unknown }) => ({
@@ -71,7 +208,9 @@ export async function POST(
       (total: number, charge: { amount: number }) => total + charge.amount,
       fixedDeductions,
     );
-    const depositPaid = money(existing.refund?.depositPaid ?? existing.deposit?.amount);
+    const depositPaid = money(
+      existing.refund?.depositPaid ?? existing.deposit?.amount,
+    );
     const refundAmount = Math.max(0, depositPaid - deductionsTotal);
     const now = new Date();
     const status =
@@ -110,10 +249,7 @@ export async function POST(
     existing.set("refund.deductionsTotal", deductionsTotal);
     existing.set("refund.refundAmount", refundAmount);
     existing.set("refund.status", status);
-    existing.set(
-      "refund.chargeReason",
-      String(body.chargeReason || "").trim(),
-    );
+    existing.set("refund.chargeReason", String(body.chargeReason || "").trim());
     existing.set("refund.otherChargeReason", "");
     existing.set(
       "refund.evidence",
@@ -142,6 +278,14 @@ export async function POST(
     const reservation = await existing.save();
 
     if (body.action === "approve") {
+      const linkedVehicleId =
+        existing.vehicle || existing.vehicleSnapshot?.vehicleId;
+      if (linkedVehicleId) {
+        await Vehicle.findByIdAndUpdate(linkedVehicleId, {
+          $set: { available: true },
+          $unset: { reservation: 1 },
+        });
+      }
       await scheduleRefundDueOwnerNotifications(id);
     } else if (body.action === "complete") {
       const linkedVehicleId =

@@ -91,6 +91,11 @@
   width: 100%;
 }
 
+#svh-datepicker-portal,
+.svh-traffic-violation-datepicker-popper {
+  position: relative;
+  z-index: 9999 !important;
+}
 
 .svh-datepicker-calendar .svh-range-middle,
 .svh-datepicker-calendar .react-datepicker__day--in-range,

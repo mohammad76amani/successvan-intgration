@@ -6,10 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendSMS } from "@/lib/sms";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
-import {
-  DEPOSIT_OPTIONS,
-  type DepositOption,
-} from "@/lib/reservation-status";
+import { DEPOSIT_OPTIONS, type DepositOption } from "@/lib/reservation-status";
 
 // Customer chooses how to cover the deposit and (for bank transfers)
 // uploads the payment slip. The admin verifies the payment and moves the
@@ -97,10 +94,12 @@ export async function POST(
       method: option === "office" ? "office" : "bank_transfer",
       receiptUrl,
       receiptUploadedAt: receiptUrl ? new Date() : undefined,
+      failureReason: undefined,
+      verifiedAt: undefined,
+      verifiedBy: undefined,
       // "pending" = waiting for admin verification of the transfer.
       status: receiptUrl ? "pending" : "not_paid",
-      discountPercent:
-        option === "full" ? discountPercent : 0,
+      discountPercent: option === "full" ? discountPercent : 0,
     };
 
     // Full payment settles the complete booking at the discounted price. If a
@@ -108,7 +107,10 @@ export async function POST(
     // the original booking total instead of retaining or reapplying a discount.
     reservation.totalPrice = option === "full" ? amount : originalAmount;
 
-    if (receiptUrl && ["confirmed", "deposit_pending"].includes(reservation.status)) {
+    if (
+      receiptUrl &&
+      ["confirmed", "deposit_pending"].includes(reservation.status)
+    ) {
       reservation.status = "deposit_pending";
       reservation.statusHistory = [
         ...(reservation.statusHistory || []),

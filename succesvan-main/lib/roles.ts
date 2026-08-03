@@ -3,6 +3,7 @@ export const ADMIN_DASHBOARD_TAB_IDS = [
   "vehicles",
   "holidays",
   "reserves",
+  "traffic-violations",
   "reservation-history",
   "contracts",
   "tickets",
@@ -16,7 +17,7 @@ export function canAccessDashboard(role?: string | null) {
   const normalizedRole = normalizeRole(role);
   return Boolean(
     normalizedRole &&
-      (DASHBOARD_ACCESS_ROLES as readonly string[]).includes(normalizedRole),
+    (DASHBOARD_ACCESS_ROLES as readonly string[]).includes(normalizedRole),
   );
 }
 

@@ -4,7 +4,6 @@ import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
-import Vehicle from "@/model/vehicle";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -111,14 +110,6 @@ export async function POST(
       },
       { new: true, runValidators: true },
     );
-    const linkedVehicleId =
-      existing.vehicle || existing.vehicleSnapshot?.vehicleId;
-    if (linkedVehicleId) {
-      await Vehicle.findByIdAndUpdate(linkedVehicleId, {
-        $set: { available: true },
-        $unset: { reservation: 1 },
-      });
-    }
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

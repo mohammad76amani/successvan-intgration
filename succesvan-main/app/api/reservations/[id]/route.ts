@@ -87,8 +87,10 @@ export async function PATCH(
         { actorId: auth.userId, source: "admin" },
       );
 
-      // Keep the vehicle linked and return the workflow to the assignment
-      // action. Re-confirming that vehicle generates a fresh agreement.
+      // Return the workflow to assignment and unlink the old vehicle. It is
+      // released below so the admin must explicitly choose a vehicle for the
+      // replacement agreement.
+      body.vehicle = null;
       body.status =
         oldReservation.deposit?.option === "office"
           ? "deposit_pending"
@@ -315,12 +317,17 @@ export async function PATCH(
 
     if (!reservation) return errorResponse("Reservation not found", 404);
 
-    if (
-      requestedStatus &&
-      ["completed", "canceled", "expired"].includes(requestedStatus) &&
-      oldReservation.vehicle
-    ) {
-      await Vehicle.findByIdAndUpdate(oldReservation.vehicle, {
+    const shouldReleaseVehicle =
+      isAssignedPreHandoverAdminEdit ||
+      Boolean(adminAssignedVehicle && oldReservation.vehicle) ||
+      Boolean(
+        requestedStatus &&
+          ["completed", "canceled", "expired"].includes(requestedStatus),
+      );
+    const linkedVehicleId =
+      oldReservation.vehicle || oldReservation.vehicleSnapshot?.vehicleId;
+    if (shouldReleaseVehicle && linkedVehicleId) {
+      await Vehicle.findByIdAndUpdate(linkedVehicleId, {
         $set: { available: true },
         $unset: { reservation: 1 },
       });
@@ -443,6 +450,19 @@ export async function PATCH(
           .populate("addOns.addOn");
 
         if (latestReservation) {
+          const assignedVehicleId =
+            typeof latestReservation.vehicle === "object" &&
+            latestReservation.vehicle?._id
+              ? latestReservation.vehicle._id
+              : latestReservation.vehicle;
+          if (assignedVehicleId) {
+            await Vehicle.findByIdAndUpdate(assignedVehicleId, {
+              $set: {
+                available: false,
+                reservation: latestReservation._id,
+              },
+            });
+          }
           latestReservation.status = "contract_pending";
           latestReservation.statusHistory.push({
             status: "contract_pending",

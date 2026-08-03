@@ -59,7 +59,7 @@ function normalizePrivateKey(raw: string) {
 export function getServerEnv(): ServerEnv {
   return {
     CONTRACT_STORAGE_PROVIDER:
-      readEnv("CONTRACT_STORAGE_PROVIDER") === "s3" ? "s3" : "local",
+      readEnv("CONTRACT_STORAGE_PROVIDER") === "local" ? "local" : "s3",
     CONTRACT_LOCAL_STORAGE_DIR:
       readEnv("CONTRACT_LOCAL_STORAGE_DIR") || "private/contracts",
     S3_BUCKET: readEnv("S3_BUCKET"),
