@@ -3,6 +3,7 @@ import Ticket from "@/model/ticket";
 import connect from "@/lib/data";
 import jwt from "jsonwebtoken";
 import { canAccessDashboard } from "@/lib/roles";
+import { withLastReservations } from "@/lib/ticketLastReservation";
 
 type TokenPayload = {
   userId: string;
@@ -29,7 +30,10 @@ export async function GET(
     const userId = decoded.userId;
     const userRole = decoded.role;
 
-    const ticket = await Ticket.findById(id).populate("userId", "name lastName email");
+    const ticket = await Ticket.findById(id).populate(
+      "userId",
+      "name lastName email emaildata phoneData",
+    );
 
     if (!ticket) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -41,6 +45,13 @@ export async function GET(
       ticket.userId._id.toString() !== userId
     ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    if (canAccessDashboard(userRole)) {
+      const [ticketWithReservation] = await withLastReservations([
+        ticket.toObject(),
+      ]);
+      return NextResponse.json({ success: true, data: ticketWithReservation });
     }
 
     return NextResponse.json({ success: true, data: ticket });
@@ -98,7 +109,17 @@ export async function PATCH(
     ticket.updatedAt = new Date();
     await ticket.save();
 
-    const updatedTicket = await Ticket.findById(id).populate("userId", "name lastName email");
+    const updatedTicket = await Ticket.findById(id).populate(
+      "userId",
+      "name lastName email emaildata phoneData",
+    );
+
+    if (canAccessDashboard(userRole) && updatedTicket) {
+      const [ticketWithReservation] = await withLastReservations([
+        updatedTicket.toObject(),
+      ]);
+      return NextResponse.json({ success: true, data: ticketWithReservation });
+    }
 
     return NextResponse.json({ success: true, data: updatedTicket });
   } catch (error) {

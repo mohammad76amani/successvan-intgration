@@ -5,21 +5,21 @@ import {
   FiMessageSquare,
   FiX,
   FiSend,
-  FiClock,
-  FiUser,
   FiMail,
+  FiPhone,
   FiAlertCircle,
   FiCheckCircle,
   FiLoader,
   FiInbox,
   FiFilter,
-  FiChevronRight,
   FiSearch,
   FiArchive,
   FiChevronDown,
   FiRefreshCw,
   FiCalendar,
   FiCheck,
+  FiTruck,
+  FiHash,
 } from "react-icons/fi";
 import { HiOutlineTicket } from "react-icons/hi";
 import { showToast } from "@/lib/toast";
@@ -31,6 +31,38 @@ interface Message {
   timestamp: string;
 }
 
+interface TicketReservation {
+  _id: string;
+  reservationCode?: string;
+  office?: {
+    _id?: string;
+    name?: string;
+    address?: string;
+  } | null;
+  category?: {
+    _id?: string;
+    name?: string;
+  } | null;
+  vehicle?: {
+    _id?: string;
+    title?: string;
+    number?: string;
+    keyNumber?: string;
+  } | null;
+  startDate: string;
+  endDate: string;
+  startDateDisplay?: string;
+  endDateDisplay?: string;
+  pickupTime?: string;
+  returnTime?: string;
+  totalPrice?: number;
+  status: string;
+  selectedGear?: string;
+  reservationType?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 interface Ticket {
   _id: string;
   userId: {
@@ -38,11 +70,18 @@ interface Ticket {
     name: string;
     lastName: string;
     email: string;
+    emaildata?: {
+      emailAddress?: string;
+    };
+    phoneData?: {
+      phoneNumber?: string;
+    };
   };
   subject: string;
   status: string;
   priority: string;
   messages: Message[];
+  lastReservation?: TicketReservation | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -171,6 +210,96 @@ const timeAgo = (dateString: string) => {
 };
 
 // ─── Compact Ticket Card (Grid-friendly) ─────────────────────────
+const formatCurrency = (value: unknown) => {
+  const amount = Number(value);
+  return `GBP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+};
+
+const formatReservationDateTime = (
+  reservation: TicketReservation,
+  type: "pickup" | "return",
+) => {
+  const displayDate =
+    type === "pickup"
+      ? reservation.startDateDisplay
+      : reservation.endDateDisplay;
+  const displayTime =
+    type === "pickup" ? reservation.pickupTime : reservation.returnTime;
+
+  if (displayDate && displayTime) return `${displayDate} ${displayTime}`;
+
+  const dateValue =
+    type === "pickup" ? reservation.startDate : reservation.endDate;
+  if (!dateValue) return "-";
+
+  return new Date(dateValue).toLocaleString("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getReservationStatusClass = (status: string) => {
+  switch (status) {
+    case "pending":
+      return "bg-yellow-500/15 text-yellow-300 border-yellow-500/20";
+    case "confirmed":
+      return "bg-blue-500/15 text-blue-300 border-blue-500/20";
+    case "delivered":
+      return "bg-purple-500/15 text-purple-300 border-purple-500/20";
+    case "completed":
+      return "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
+    case "canceled":
+      return "bg-red-500/15 text-red-300 border-red-500/20";
+    default:
+      return "bg-slate-500/15 text-slate-300 border-slate-500/20";
+  }
+};
+
+const getReservationCode = (reservation: TicketReservation) =>
+  reservation.reservationCode || reservation._id;
+
+const getReservationStatusLabel = (status: string) =>
+  status === "delivered" ? "collected" : status;
+
+const getUserEmail = (ticket: Ticket) =>
+  ticket.userId?.emaildata?.emailAddress || ticket.userId?.email || "";
+
+const getUserPhone = (ticket: Ticket) =>
+  ticket.userId?.phoneData?.phoneNumber || "";
+
+const getCustomerName = (ticket: Ticket) =>
+  `${ticket.userId?.name || ""} ${ticket.userId?.lastName || ""}`.trim() ||
+  "Customer";
+
+const getCustomerInitials = (ticket: Ticket) =>
+  `${ticket.userId?.name?.[0] || ""}${ticket.userId?.lastName?.[0] || ""}`
+    .trim()
+    .toUpperCase() || "C";
+
+const formatMessageTimestamp = (dateString: string) =>
+  new Date(dateString).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const getVehicleLabel = (reservation?: TicketReservation | null) => {
+  if (!reservation?.vehicle) return "-";
+  const title = reservation.vehicle.title || "Vehicle";
+  const number = reservation.vehicle.number
+    ? ` (${reservation.vehicle.number})`
+    : "";
+  const keyNumber = reservation.vehicle.keyNumber
+    ? ` - Key ${reservation.vehicle.keyNumber}`
+    : "";
+  return `${title}${number}${keyNumber}`;
+};
+
 function TicketCard({
   ticket,
   onView,
@@ -188,104 +317,156 @@ function TicketCard({
     ticket.messages.length > 0
       ? ticket.messages[ticket.messages.length - 1]
       : null;
+  const lastReservation = ticket.lastReservation;
 
   return (
     <div
-      className={`group relative flex flex-col rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-black/20 cursor-pointer ${
+      className={`group relative flex min-h-[280px] flex-col overflow-hidden rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/25 cursor-pointer ${
         isClosed
-          ? "bg-white/2 border border-white/5 hover:border-white/10 opacity-70 hover:opacity-100"
-          : "bg-[#111827] border border-white/5 hover:border-white/15"
+          ? "bg-white/[0.025] border border-white/[0.06] hover:border-white/12 opacity-75 hover:opacity-100"
+          : "bg-[#111827] border border-white/[0.08] hover:border-[#fe9a00]/25"
       }`}
       onClick={() => onView(ticket)}
     >
-      {/* Priority top accent */}
       <div
-        className={`h-0.5 rounded-t-xl ${priorityConfig.bg} ${
+        className={`h-1 ${priorityConfig.bg} ${
           priorityConfig.pulse ? "animate-pulse" : ""
         }`}
       />
 
-      <div className="flex flex-col flex-1 p-4">
-        {/* Row 1: Badges */}
-        <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.text} border`}
-            >
-              {statusConfig.icon}
-              {statusConfig.label}
-            </span>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${priorityConfig.bg} ${priorityConfig.border} ${priorityConfig.text} border`}
-            >
-              {priorityConfig.label}
-            </span>
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00]/12 text-xs font-bold text-[#fe9a00] ring-1 ring-[#fe9a00]/20">
+              {getCustomerInitials(ticket)}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white/80">
+                {getCustomerName(ticket)}
+              </p>
+              <p className="truncate text-[11px] text-white/32">
+                {getUserEmail(ticket) || getUserPhone(ticket) || "No contact"}
+              </p>
+            </div>
           </div>
-          <span className="text-[10px] text-white/25 shrink-0">
-            updated : {timeAgo(ticket.updatedAt)}
+          <span className="shrink-0 rounded-md bg-white/[0.035] px-2 py-1 text-[10px] text-white/35">
+            {timeAgo(ticket.updatedAt)}
           </span>
         </div>
 
-        {/* Row 2: Subject */}
         <h3
-          className={`text-sm font-semibold mb-2 line-clamp-2 leading-snug ${
+          className={`mb-3 min-h-[40px] text-[15px] font-semibold leading-snug line-clamp-2 ${
             isClosed
-              ? "text-white/40"
+              ? "text-white/45"
               : "text-white group-hover:text-[#fe9a00] transition-colors"
           }`}
         >
           {ticket.subject}
         </h3>
 
-        {/* Row 3: User */}
-        <div className="flex items-center gap-1.5 mb-2.5">
-          <FiUser className="w-3 h-3 text-[#fe9a00]/60 shrink-0" />
-          <span className="text-white/45 text-xs truncate">
-            {ticket?.userId?.name} {ticket?.userId?.lastName}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium ${statusConfig.bg} ${statusConfig.border} ${statusConfig.text} border`}
+          >
+            {statusConfig.icon}
+            {statusConfig.label}
+          </span>
+          <span
+            className={`inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium ${priorityConfig.bg} ${priorityConfig.border} ${priorityConfig.text} border`}
+          >
+            {priorityConfig.label}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.035] px-2 py-1 text-[10px] text-white/35">
+            <FiMessageSquare className="h-3 w-3" />
+            {ticket.messages.length}
           </span>
         </div>
 
-        {/* Row 4: Last message preview */}
         {lastMessage && (
-          <div className="p-2.5 rounded-lg bg-white/3 border border-white/4 mb-3">
-            <p className="text-white/35 text-xs line-clamp-2 leading-relaxed">
+          <div className="mb-3 border-l-2 border-white/10 pl-3">
+            <p className="line-clamp-2 text-xs leading-relaxed text-white/42">
               {lastMessage.content}
+            </p>
+            <p className="mt-1 text-[10px] text-white/22">
+              {formatMessageTimestamp(lastMessage.timestamp)}
             </p>
           </div>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        <div className="mt-auto space-y-3">
+          <div className="border-t border-white/[0.06] pt-3">
+            {lastReservation ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-white/70">
+                    <FiTruck className="h-3.5 w-3.5 shrink-0 text-[#fe9a00]/70" />
+                    <span className="truncate">
+                      {lastReservation.category?.name || "Reservation"}
+                    </span>
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-medium capitalize ${getReservationStatusClass(
+                      lastReservation.status,
+                    )}`}
+                  >
+                    {getReservationStatusLabel(lastReservation.status)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="min-w-0">
+                    <p className="text-white/25">Pickup</p>
+                    <p className="truncate text-white/52">
+                      {formatReservationDateTime(lastReservation, "pickup")}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white/25">Return</p>
+                    <p className="truncate text-white/52">
+                      {formatReservationDateTime(lastReservation, "return")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[10px] text-white/30">
+                  <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                    <FiHash className="h-3 w-3 shrink-0" />
+                    {getReservationCode(lastReservation)}
+                  </span>
+                  <span className="shrink-0">
+                    {formatCurrency(lastReservation.totalPrice)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-[11px] text-white/28">
+                <FiCalendar className="h-3.5 w-3.5 shrink-0" />
+                <span>No previous reservation</span>
+              </div>
+            )}
+          </div>
 
-        {/* Row 5: Meta + Actions */}
-        <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-white/4">
-          <div className="flex items-center gap-2 text-[10px] text-white/25">
-            <span className="flex items-center gap-1">
-              <FiMessageSquare className="w-2.5 h-2.5" />
-              {ticket.messages.length}
-            </span>
-            <span className="flex items-center gap-1">
-              <FiCalendar className="w-2.5 h-2.5" />
+          <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
+            <span className="flex items-center gap-1 text-[10px] text-white/28">
+              <FiCalendar className="h-3 w-3" />
               {new Date(ticket.createdAt).toLocaleDateString("en-GB", {
                 day: "numeric",
                 month: "short",
               })}
             </span>
-          </div>
 
-          <div className="min-w-25" onClick={(e) => e.stopPropagation()}>
-            <CustomSelect
-              value={ticket.status}
-              onChange={(value) => onStatusChange(ticket._id, value)}
-              options={[
-                { _id: "open", name: "Open" },
-                { _id: "in-progress", name: "In Progress" },
-                { _id: "resolved", name: "Resolved" },
-                { _id: "closed", name: "Closed" },
-              ]}
-              placeholder="Status"
-              compact
-            />
+            <div className="min-w-28" onClick={(e) => e.stopPropagation()}>
+              <CustomSelect
+                value={ticket.status}
+                onChange={(value) => onStatusChange(ticket._id, value)}
+                options={[
+                  { _id: "open", name: "Open" },
+                  { _id: "in-progress", name: "In Progress" },
+                  { _id: "resolved", name: "Resolved" },
+                  { _id: "closed", name: "Closed" },
+                ]}
+                placeholder="Status"
+                compact
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -305,8 +486,8 @@ export default function TicketsManagement() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortField, setSortField] = useState<SortField>("updatedAt");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [sortField] = useState<SortField>("updatedAt");
+  const [sortOrder] = useState<SortOrder>("desc");
   const [showClosedSection, setShowClosedSection] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -426,6 +607,8 @@ export default function TicketsManagement() {
         ticket?.userId?.name?.toLowerCase().includes(q) ||
         ticket?.userId?.lastName?.toLowerCase().includes(q) ||
         ticket?.userId?.email?.toLowerCase().includes(q) ||
+        ticket?.userId?.emaildata?.emailAddress?.toLowerCase().includes(q) ||
+        ticket?.lastReservation?.reservationCode?.toLowerCase().includes(q) ||
         ticket._id.toLowerCase().includes(q)
       );
     });
@@ -742,24 +925,29 @@ export default function TicketsManagement() {
             className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999]"
             onClick={() => setIsDetailOpen(false)}
           />
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-0 sm:p-4">
-            <div className="relative flex flex-col w-full h-full sm:max-w-3xl sm:max-h-[90vh] sm:h-auto sm:min-h-[70vh] sm:rounded-2xl overflow-hidden bg-[#111827] border-0 sm:border border-white/10 shadow-2xl">
-              {/* Header */}
-              <div className="shrink-0 p-4 sm:p-5 border-b border-white/5">
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-0 lg:p-4">
+            <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0f172b] shadow-2xl lg:max-h-[92vh] lg:max-w-6xl lg:rounded-lg lg:border lg:border-white/10">
+              <div className="shrink-0 border-b border-white/[0.06] bg-[#111827] px-4 py-3 sm:px-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5 mb-2">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#fe9a00] to-orange-600 flex items-center justify-center shrink-0">
-                        <HiOutlineTicket className="w-4 h-4 text-white" />
+                  <div className="min-w-0">
+                    <div className="mb-2 flex items-center gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00] text-white shadow-lg shadow-[#fe9a00]/20">
+                        <HiOutlineTicket className="h-4 w-4" />
                       </div>
-                      <h3 className="text-base sm:text-lg font-bold text-white truncate">
-                        {selectedTicket.subject}
-                      </h3>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-bold text-white sm:text-lg">
+                          {selectedTicket.subject}
+                        </h3>
+                        <p className="text-[11px] text-white/32">
+                          Updated {timeAgo(selectedTicket.updatedAt)} ·{" "}
+                          {selectedTicket.messages.length} messages
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium ${
                           getStatusConfig(selectedTicket.status).bg
                         } ${getStatusConfig(selectedTicket.status).border} ${
                           getStatusConfig(selectedTicket.status).text
@@ -769,7 +957,7 @@ export default function TicketsManagement() {
                         {getStatusConfig(selectedTicket.status).label}
                       </span>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        className={`inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium ${
                           getPriorityConfig(selectedTicket.priority).bg
                         } ${
                           getPriorityConfig(selectedTicket.priority).border
@@ -779,150 +967,308 @@ export default function TicketsManagement() {
                       >
                         {getPriorityConfig(selectedTicket.priority).label}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/[0.03] text-white/40 text-[10px]">
-                        <FiUser className="w-2.5 h-2.5" />
-                        {selectedTicket?.userId?.name}{" "}
-                        {selectedTicket?.userId?.lastName}
-                      </span>
                     </div>
                   </div>
 
                   <button
                     onClick={() => setIsDetailOpen(false)}
-                    className="shrink-0 w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-all hover:rotate-90"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-white/55 transition-all hover:bg-white/[0.1] hover:text-white"
+                    aria-label="Close ticket"
                   >
-                    <FiX className="w-4 h-4" />
+                    <FiX className="h-4 w-4" />
                   </button>
-                </div>
-
-                {/* Quick status */}
-                <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-white/[0.04]">
-                  <span className="text-[10px] text-white/30 font-medium uppercase tracking-wider mr-1">
-                    Status:
-                  </span>
-                  {["open", "in-progress", "resolved", "closed"].map(
-                    (status) => {
-                      const config = getStatusConfig(status);
-                      const isActive = selectedTicket.status === status;
-                      return (
-                        <button
-                          key={status}
-                          onClick={() =>
-                            handleStatusChange(selectedTicket._id, status)
-                          }
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all ${
-                            isActive
-                              ? `${config.bg} ${config.border} ${config.text}`
-                              : "bg-transparent border-white/[0.04] text-white/20 hover:text-white/40 hover:border-white/10"
-                          }`}
-                        >
-                          {config.icon}
-                          {config.label}
-                        </button>
-                      );
-                    },
-                  )}
                 </div>
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
-                {selectedTicket.messages.length === 0 && (
-                  <div className="text-center py-10">
-                    <FiMessageSquare className="w-7 h-7 text-white/10 mx-auto mb-2" />
-                    <p className="text-white/25 text-sm">No messages yet</p>
+              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+                <aside className="max-h-[36vh] overflow-y-auto border-b border-white/[0.06] bg-[#111827] p-4 lg:max-h-none lg:border-b-0 lg:border-r lg:border-white/[0.06]">
+                  <div className="mb-5">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                      Ticket status
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["open", "in-progress", "resolved", "closed"].map(
+                        (status) => {
+                          const config = getStatusConfig(status);
+                          const isActive = selectedTicket.status === status;
+                          return (
+                            <button
+                              key={status}
+                              onClick={() =>
+                                handleStatusChange(selectedTicket._id, status)
+                              }
+                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition-all ${
+                                isActive
+                                  ? `${config.bg} ${config.border} ${config.text}`
+                                  : "border-white/[0.06] bg-white/[0.025] text-white/28 hover:border-white/15 hover:text-white/55"
+                              }`}
+                            >
+                              {config.icon}
+                              {config.label}
+                            </button>
+                          );
+                        },
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {selectedTicket.messages.map((message, index) => {
-                  const isUser = message.sender === selectedTicket?.userId?._id;
-                  return (
-                    <div
-                      key={index}
-                      className={`flex ${
-                        isUser ? "justify-start" : "justify-end"
-                      }`}
-                    >
-                      <div className="relative max-w-[85%] sm:max-w-[75%]">
-                        <div
-                          className={`p-3 sm:p-3.5 rounded-2xl ${
-                            isUser
-                              ? "bg-white/[0.04] border border-white/[0.06] rounded-bl-sm"
-                              : "bg-gradient-to-br from-[#fe9a00] to-orange-600 rounded-br-sm shadow-lg shadow-[#fe9a00]/15"
-                          }`}
+                  <div className="border-t border-white/[0.06] pt-4">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00]/12 text-sm font-bold text-[#fe9a00] ring-1 ring-[#fe9a00]/20">
+                        {getCustomerInitials(selectedTicket)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white/80">
+                          {getCustomerName(selectedTicket)}
+                        </p>
+                        <p className="text-[11px] text-white/28">
+                          Customer profile
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <p className="flex min-w-0 items-center gap-2 text-white/42">
+                        <FiMail className="h-3.5 w-3.5 shrink-0 text-white/25" />
+                        <span className="truncate">
+                          {getUserEmail(selectedTicket) || "No email"}
+                        </span>
+                      </p>
+                      <p className="flex min-w-0 items-center gap-2 text-white/42">
+                        <FiPhone className="h-3.5 w-3.5 shrink-0 text-white/25" />
+                        <span className="truncate">
+                          {getUserPhone(selectedTicket) || "No phone"}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 border-t border-white/[0.06] pt-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#fe9a00]/80">
+                        Last reservation
+                      </p>
+                      {selectedTicket.lastReservation && (
+                        <span
+                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-medium capitalize ${getReservationStatusClass(
+                            selectedTicket.lastReservation.status,
+                          )}`}
                         >
-                          <div
-                            className={`text-[10px] font-semibold mb-1 ${
-                              isUser ? "text-[#fe9a00]/70" : "text-white/70"
-                            }`}
-                          >
-                            {isUser ? "Customer" : "Support Team"}
-                          </div>
-                          <p
-                            className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                              isUser ? "text-white/70" : "text-white"
-                            }`}
-                          >
-                            {message.content}
+                          {getReservationStatusLabel(
+                            selectedTicket.lastReservation.status,
+                          )}
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedTicket.lastReservation ? (
+                      <div className="space-y-3">
+                        <div>
+                          <p className="truncate text-sm font-semibold text-white/78">
+                            {selectedTicket.lastReservation.category?.name ||
+                              "Reservation"}
                           </p>
-                          <div
-                            className={`flex items-center gap-1 mt-1.5 text-[9px] ${
-                              isUser ? "text-white/25" : "text-white/45"
-                            }`}
-                          >
-                            <FiClock className="w-2 h-2" />
-                            {new Date(message.timestamp).toLocaleString()}
+                          <p className="mt-1 flex items-center gap-1 text-[11px] text-white/32">
+                            <FiHash className="h-3 w-3" />
+                            {getReservationCode(selectedTicket.lastReservation)}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                          <div className="min-w-0">
+                            <p className="text-white/25">Office</p>
+                            <p className="truncate text-white/55">
+                              {selectedTicket.lastReservation.office?.name ||
+                                "-"}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-white/25">Gear</p>
+                            <p className="truncate capitalize text-white/55">
+                              {selectedTicket.lastReservation.selectedGear ||
+                                "-"}
+                            </p>
+                          </div>
+                          <div className="col-span-2 min-w-0">
+                            <p className="text-white/25">Vehicle</p>
+                            <p className="truncate text-white/55">
+                              {getVehicleLabel(selectedTicket.lastReservation)}
+                            </p>
+                          </div>
+                          <div className="col-span-2 min-w-0">
+                            <p className="text-white/25">Pickup</p>
+                            <p className="truncate text-white/55">
+                              {formatReservationDateTime(
+                                selectedTicket.lastReservation,
+                                "pickup",
+                              )}
+                            </p>
+                          </div>
+                          <div className="col-span-2 min-w-0">
+                            <p className="text-white/25">Return</p>
+                            <p className="truncate text-white/55">
+                              {formatReservationDateTime(
+                                selectedTicket.lastReservation,
+                                "return",
+                              )}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-white/25">Total</p>
+                            <p className="truncate text-white/55">
+                              {formatCurrency(
+                                selectedTicket.lastReservation.totalPrice,
+                              )}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-white/25">Type</p>
+                            <p className="truncate text-white/55">
+                              {selectedTicket.lastReservation.reservationType ||
+                                "-"}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs text-white/30">
+                        <FiCalendar className="h-3.5 w-3.5 shrink-0" />
+                        <span>No previous reservation for this user</span>
+                      </div>
+                    )}
+                  </div>
+                </aside>
 
-              {/* Reply */}
-              <div className="shrink-0 p-4 sm:p-5 border-t border-white/5">
-                {selectedTicket.status === "closed" ? (
-                  <div className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/25 text-sm">
-                    <FiArchive className="w-3.5 h-3.5" />
-                    Ticket closed. Reopen to reply.
-                  </div>
-                ) : (
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      ref={textareaRef}
-                      value={replyMessage}
-                      onChange={(e) => setReplyMessage(e.target.value)}
-                      placeholder="Type your reply..."
-                      rows={1}
-                      className="flex-1 px-4 py-3 bg-white/[0.03] border border-white/5 rounded-xl text-white text-sm placeholder-white/20 focus:outline-none focus:border-[#fe9a00]/40 resize-none transition-all"
-                      style={{ minHeight: "48px", maxHeight: "110px" }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendReply();
-                        }
-                      }}
-                      onInput={(e) => {
-                        const t = e.target as HTMLTextAreaElement;
-                        t.style.height = "48px";
-                        t.style.height = `${Math.min(t.scrollHeight, 110)}px`;
-                      }}
-                    />
-                    <button
-                      onClick={handleSendReply}
-                      disabled={!replyMessage.trim() || isSubmitting}
-                      className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-r from-[#fe9a00] to-orange-600 text-white shadow-lg shadow-[#fe9a00]/20 hover:shadow-[#fe9a00]/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-35 disabled:hover:scale-100 flex items-center justify-center"
-                    >
-                      {isSubmitting ? (
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
-                      ) : (
-                        <FiSend className="w-4 h-4" />
+                <section className="flex min-h-0 flex-col bg-[#0b1220]">
+                  <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3 sm:px-5">
+                    <div>
+                      <p className="text-sm font-semibold text-white/75">
+                        Conversation
+                      </p>
+                      <p className="text-[11px] text-white/30">
+                        {selectedTicket.messages.length} messages in this ticket
+                      </p>
+                    </div>
+                    <span className="hidden rounded-md bg-white/[0.035] px-2 py-1 text-[10px] text-white/32 sm:inline-flex">
+                      Created{" "}
+                      {new Date(selectedTicket.createdAt).toLocaleDateString(
+                        "en-GB",
+                        {
+                          day: "2-digit",
+                          month: "short",
+                          year: "2-digit",
+                        },
                       )}
-                    </button>
+                    </span>
                   </div>
-                )}
+
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                    {selectedTicket.messages.length === 0 && (
+                      <div className="flex h-full min-h-[280px] flex-col items-center justify-center text-center">
+                        <FiMessageSquare className="mb-3 h-8 w-8 text-white/12" />
+                        <p className="text-sm text-white/30">No messages yet</p>
+                      </div>
+                    )}
+
+                    <div className="space-y-5">
+                      {selectedTicket.messages.map((message, index) => {
+                        const isUser =
+                          message.sender === selectedTicket?.userId?._id;
+                        return (
+                          <div
+                            key={index}
+                            className={`flex gap-2.5 ${
+                              isUser ? "justify-start" : "justify-end"
+                            }`}
+                          >
+                            {isUser && (
+                              <div className="mt-6 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.045] text-[10px] font-bold text-[#fe9a00] ring-1 ring-white/[0.06]">
+                                {getCustomerInitials(selectedTicket)}
+                              </div>
+                            )}
+                            <div
+                              className={`max-w-[min(78%,680px)] ${
+                                isUser ? "items-start" : "items-end"
+                              } flex flex-col`}
+                            >
+                              <div
+                                className={`mb-1 flex items-center gap-1.5 text-[10px] font-medium ${
+                                  isUser ? "text-[#fe9a00]/75" : "text-white/45"
+                                }`}
+                              >
+                                <span>
+                                  {isUser ? "Customer" : "Support team"}
+                                </span>
+                                <span className="text-white/18">·</span>
+                                <span className="text-white/28">
+                                  {formatMessageTimestamp(message.timestamp)}
+                                </span>
+                              </div>
+                              <div
+                                className={`rounded-lg px-4 py-3 text-sm leading-relaxed shadow-lg ${
+                                  isUser
+                                    ? "border border-white/[0.08] bg-[#111827] text-white/72"
+                                    : "bg-[#fe9a00] text-white shadow-[#fe9a00]/15"
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap break-words">
+                                  {message.content}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <div className="shrink-0 border-t border-white/[0.06] bg-[#111827] p-3 sm:p-4">
+                    {selectedTicket.status === "closed" ? (
+                      <div className="flex items-center justify-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.025] px-4 py-3 text-sm text-white/30">
+                        <FiArchive className="h-3.5 w-3.5" />
+                        Ticket closed. Reopen to reply.
+                      </div>
+                    ) : (
+                      <div className="flex items-end gap-2">
+                        <textarea
+                          ref={textareaRef}
+                          value={replyMessage}
+                          onChange={(e) => setReplyMessage(e.target.value)}
+                          placeholder="Write a clear reply to the customer..."
+                          rows={2}
+                          className="min-h-[60px] flex-1 resize-none rounded-lg border border-white/[0.08] bg-[#0b1220] px-4 py-3 text-sm text-white placeholder-white/22 transition-all focus:border-[#fe9a00]/45 focus:outline-none"
+                          style={{ maxHeight: "150px" }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendReply();
+                            }
+                          }}
+                          onInput={(e) => {
+                            const t = e.target as HTMLTextAreaElement;
+                            t.style.height = "60px";
+                            t.style.height = `${Math.min(
+                              t.scrollHeight,
+                              150,
+                            )}px`;
+                          }}
+                        />
+                        <button
+                          onClick={handleSendReply}
+                          disabled={!replyMessage.trim() || isSubmitting}
+                          className="flex h-[60px] w-12 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00] text-white shadow-lg shadow-[#fe9a00]/20 transition-all hover:bg-orange-500 active:scale-95 disabled:opacity-35"
+                          aria-label="Send reply"
+                        >
+                          {isSubmitting ? (
+                            <span className="inline-block h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                          ) : (
+                            <FiSend className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </section>
               </div>
             </div>
           </div>
@@ -954,7 +1300,7 @@ function CustomSelect({
   compact = false,
 }: CustomSelectProps) {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = typeof document !== "undefined";
   const [position, setPosition] = useState({
     top: 0,
     left: 0,
@@ -965,10 +1311,6 @@ function CustomSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const selectedOption = options.find((opt) => opt._id === value);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
