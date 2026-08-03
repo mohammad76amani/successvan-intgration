@@ -45,9 +45,9 @@ const RemovalFinalCTA = dynamic(
 );
 export const metadata: Metadata = {
   metadataBase: new URL("https://successvanhire.co.uk"),
-  title: "Removal Van Hire London | Moving Vans from £78/Day",
+  title: "Removal Van Hire London | Moving Vans from £132/Day",
   description:
-    "Book removal van hire in London from £78/day. Self-drive moving vans for house moves, flat moves, furniture transport, storage runs and office relocations.",
+    "Book removal van hire in London from £132/day. Self-drive moving vans for house moves, flat moves, furniture transport, storage runs and office relocations.",
 
   robots: {
     index: true,
@@ -98,7 +98,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Removal Van Hire London | Self-Drive Moving Vans",
     description:
-      "Book affordable self-drive removal vans in London for house moves, flat moves and furniture transport from £78/day.",
+      "Book affordable self-drive removal vans in London for house moves, flat moves and furniture transport from £132/day.",
     images: [
       "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/crew+cab+van+removal+van+hire.webp",
     ],
