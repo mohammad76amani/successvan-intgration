@@ -9,7 +9,6 @@ import {
   VanTypesSection,
 } from "@/components/pillar/VanHireLondonPillar";
 import { vanHireLondonFAQSchema, vanHireLondonSchema } from "@/lib/schema";
-import VanListingHome from "@/components/global/vanListingBackup";
 
 // Dynamic imports برای کامپوننت‌های below-the-fold
 const AllVanListing = dynamic(
@@ -59,27 +58,22 @@ const FinalCTASection = dynamic(
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://successvanhire.co.uk"),
-  title: "Van Hire London | Self-Drive Van Rental & Clear Prices",
+  title: "Van Hire London | Self-Drive Van Rental | Success Van Hire",
   description:
-    "Book van hire in London with Success Van Hire. Self-drive van rental, clear van hire prices, small vans, Transit vans, large vans and Luton vans available across Greater London.",
+    "Book van hire in London with Success Van Hire. Compare small, Transit, large and Luton vans for moves, deliveries and business use with clear self-drive booking.",
   robots: { index: true, follow: true },
   keywords: [
     "van hire london",
+    "london van hire",
     "van rental london",
+    "van rental in london",
     "hire a van london",
-    "rent a van london",
-    "van hire prices london",
-    "van hire cost",
-    "transit van hire london",
-    "luton van hire london",
-    "small van hire london",
-    "large van hire london",
-    "same day van hire london",
+    "self-drive van hire london",
   ],
   openGraph: {
-    title: "Van Hire London | Self-Drive Van Rental & Clear Prices",
+    title: "Van Hire London | Self-Drive Van Rental | Success Van Hire",
     description:
-      "Self-drive van hire in London with clear pricing, flexible booking and vans for moving, business and delivery jobs.",
+      "Self-drive van hire in London with small, Transit, large and Luton vans for moving, furniture pickup, business deliveries and short-term transport.",
     url: "https://successvanhire.co.uk/van-hire-london",
     type: "website",
     images: [
@@ -97,9 +91,9 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Van Hire London | Self-Drive Van Rental & Clear Prices",
+    title: "Van Hire London | Self-Drive Van Rental | Success Van Hire",
     description:
-      "Self-drive van hire in London with clear pricing, flexible booking and vans for moving, business and delivery jobs.",
+      "Compare self-drive vans in London and book online with Success Van Hire.",
     images: [
       "https://svh-bucket-s3.s3.eu-west-2.amazonaws.com/images/van-hire-london.jpg",
     ],
@@ -128,10 +122,10 @@ export default function VanHireLondonPage() {
       />
 
       <VanHireLondonHero />
-      <VanListingHome />
+      <AllVanListing />
+
       <WhyChooseSection />
       <VanTypesSection />
-      <AllVanListing />
       <CoverageAreasSection />
       <UseCasesSection />
       <BookingStepsSection />

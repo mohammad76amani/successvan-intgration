@@ -4,6 +4,7 @@ import { useState, Suspense, useEffect } from "react";
 import dynamic from "next/dynamic";
 import ReservationHero from "@/components/static/ReservationHero";
 import VanListingHome from "@/components/global/vanListingBackup";
+import type { FAQItem } from "@/components/static/fAQSection";
 
 // Dynamically import below-the-fold components
 const HeroSlider = dynamic(() => import("@/components/static/HeroSlider"), {
@@ -42,166 +43,122 @@ const ReservationModal = dynamic(
   { ssr: false },
 );
 
-const FAQ_DATA = [
+const FAQ_DATA: FAQItem[] = [
   {
-    question: "What types of vans are available for van hire in London?",
+    question: "What does Success Van Hire offer?",
     answer:
-      "Success Van Hire offers a wide range of vans for van hire in London, including Small Vans for light deliveries, Medium Vans for flexible everyday use, Large Vans for house moves and business transport, and Luton Vans for bigger moves with maximum loading capacity and tail lift options.",
+      "Success Van Hire provides self-drive vans and minibuses for personal, moving, group travel and business transport needs. The fleet includes small, medium, large and Luton-style van options, plus minibuses for larger passenger groups.",
     category: "Vehicles",
   },
   {
-    question: "How long has Success Van Hire provided van rental in London?",
+    question: "How long has Success Van Hire been operating?",
     answer:
-      "Success Van Hire has been a trusted London van rental specialist for over 15 years, supporting customers with short-term and long-term self-drive van hire for personal, moving and business needs.",
+      "The project describes Success Van Hire as a London rental specialist with over 15 years of experience supporting short-term and long-term self-drive customers.",
     category: "About Us",
   },
   {
-    question: "What driving licences do I need to rent a van in London?",
+    question: "What driving licences do you accept?",
     answer:
-      "To rent a van in London with us, you need a full valid UK or EU driving licence. We make the licence verification process quick and simple so you can get on the road faster.",
+      "You need a full valid UK or EU driving licence. The team can help with the licence verification process before collection.",
     category: "Requirements",
   },
   {
-    question: "Are your vans suitable for eco-friendly van hire in London?",
+    question: "Are the vehicles suitable for London driving?",
     answer:
-      "Yes, our modern van hire fleet meets EU6 emission standards. We aim to provide reliable and more environmentally responsible van rental in London with clean, well-maintained vehicles.",
+      "The fleet is described in the project as modern, clean and well maintained, with EU6 emission standards referenced across the site.",
     category: "Vehicles",
   },
   {
-    question: "Is insurance included with your self-drive van hire?",
+    question: "Is insurance included with self-drive rental?",
     answer:
-      "Yes, our self-drive van hire includes comprehensive insurance coverage for peace of mind. Your rental reservation is secure, and our team will explain the insurance options clearly before you drive away.",
+      "The site states that self-drive rental includes insurance cover. The team will explain the booking, documents and any relevant terms before you drive away.",
     category: "Booking",
   },
   {
-    question: "How does your van hire pricing work?",
+    question: "How does pricing work?",
     answer:
-      "We provide clear and competitive van hire London pricing with options for different budgets. Our rates are transparent, with no hidden charges, so you know what you are paying for before confirming your booking.",
+      "Pricing depends on the vehicle, dates and hire duration. Success Van Hire presents costs during the booking process so customers can review the details before confirming.",
     category: "Pricing",
   },
   {
-    question: "How many vehicles are in your van rental fleet?",
+    question: "How many vehicles are in the fleet?",
     answer:
-      "We have a modern fleet of 50+ vehicles available for van rental in London, including different van sizes and minibuses, all maintained to high safety and reliability standards.",
+      "The site references a modern fleet of 50+ vehicles, including different van sizes and minibuses.",
     category: "About Us",
   },
   {
-    question: "Can I book van hire in London online?",
+    question: "Can I reserve online?",
     answer:
-      "Yes, you can book your van hire in London online anytime. We offer flexible availability, simple booking and support to help you choose the right vehicle for your move, delivery or business trip.",
+      "Yes. You can choose a vehicle, select dates and submit a reservation online, with support available if you need help choosing the right option.",
     category: "Booking",
   },
   {
-    question:
-      "Do you provide van hire for moving, deliveries and business use?",
+    question: "What jobs can the vehicles be used for?",
     answer:
-      "Yes, Success Van Hire provides flexible van rental in London for house moves, student moves, furniture collection, courier work, business deliveries, events and everyday transport needs.",
+      "Customers use Success Van Hire vehicles for house moves, student moves, furniture collection, courier work, business deliveries, events, group travel and everyday transport needs.",
     category: "Services",
   },
   {
-    question: "How can I contact Success Van Hire to rent a van in London?",
+    question: "Where can I compare dedicated London van options?",
     answer:
-      "You can reserve your van online or call Success Van Hire on +44 20 3011 1198. Our team is ready to help you rent a van in London, choose the right vehicle and complete your booking.",
+      "For transactional booking details, vehicle comparisons and local service information, visit the dedicated van hire in London page or call Success Van Hire on +44 20 3011 1198.",
     category: "Contact",
   },
-] as const;
+];
 
-const SEO_CONTENT = `<h2>Van Hire London – Self-Drive Van &amp; Minibus Hire in North West London</h2>
+const SEO_CONTENT = `<h2>About Success Van Hire</h2>
 <p>
-  Looking for reliable <strong>van hire in London</strong>? Success Van Hire makes it simple to
-  rent a van in London for moving home, business deliveries, student moves,
-  furniture collection, airport transport and group travel. Based in North West London,
-  we provide clean, well-maintained vans and minibuses with flexible self-drive hire
-  options designed around your schedule.
+  Success Van Hire is a London van rental company helping customers find practical
+  self-drive vehicles for moving, business transport, deliveries and group travel.
+  The homepage introduces the company, the fleet and the support available before
+  you choose a dedicated service page or start a reservation.
 </p>
 <p>
-  Whether you need <strong>van rental in London</strong> for one day, a weekend, a longer business
-  contract or a regular transport solution, our local team helps you choose the right
-  vehicle quickly and confidently. Book online in minutes or call us on
-  <strong>+44 20 3011 1198</strong> for friendly support.
+  Our team supports short-term and longer-term rentals with clear booking steps,
+  helpful vehicle guidance and a modern fleet maintained for everyday use. You can
+  book online or call <strong>+44 20 3011 1198</strong> if you want help choosing the right size.
 </p>
 <p>
-  We proudly serve customers across Golders Green, Cricklewood, Brent Cross,
-  Finchley, Mill Hill, Colindale, Edgware, Neasden, Ealing, Hampstead, Watford,
-  Wembley and the wider London area.
+  If you are ready to compare vehicles for a local booking, explore our
+  <a href="/van-hire-london">van hire in London</a> page for the dedicated service
+  details.
 </p>
 
-<h3>Why Choose Success Van Hire for Van Hire in London?</h3>
+<h3>Company Trust Signals</h3>
 <ul>
-  <li><strong>Self-drive freedom</strong> – hire the vehicle, choose your route and drive on your own schedule.</li>
-  <li><strong>Flexible van rental options</strong> – daily, weekend, short-term and longer-term van hire available.</li>
-  <li><strong>Clean, well-maintained fleet</strong> – modern vans and minibuses, regularly serviced and safety checked.</li>
-  <li><strong>Transparent pricing</strong> – clear van hire rates with no hidden surprises when you collect the keys.</li>
-  <li><strong>Easy online booking</strong> – check availability, choose your vehicle and reserve in just a few clicks.</li>
-  <li><strong>Local London support</strong> – real help from a friendly team that knows North West London's roads and traffic.</li>
+  <li><strong>Established local team</strong> - the site describes more than 15 years of rental experience.</li>
+  <li><strong>Modern fleet</strong> - 50+ vehicles are referenced across the project.</li>
+  <li><strong>Self-drive convenience</strong> - choose the vehicle, route and hire period that suit your job.</li>
+  <li><strong>Clear reservations</strong> - review dates, vehicle details and costs before confirming.</li>
+  <li><strong>Helpful support</strong> - call the team if you need advice before booking.</li>
 </ul>
 
-<h3>Self-Drive Van Hire London for Moving, Deliveries &amp; Business Use</h3>
+<h3>Fleet Overview</h3>
 <p>
-  Our <strong>self-drive van hire in London</strong> is ideal for house moves, flat moves,
-  student relocations, furniture collection, DIY projects, event equipment,
-  courier work and everyday business deliveries. From compact vans for busy
-  London streets to larger panel vans with generous load space, we help you choose
-  the right size so you only pay for the capacity you actually need.
+  The fleet includes small vans for lighter loads, medium vans for flexible everyday
+  jobs, large vans for bigger items and Luton vans for house moves or bulky
+  transport. Minibus options are also available for group journeys.
 </p>
 <p>
-  If you want to <strong>rent a van in London</strong> without the stress of complicated booking,
-  Success Van Hire gives you a practical, local and flexible solution. Every van is
-  inspected before collection, with fuel-efficient engines, comfortable seats and
-  practical loading areas to make your journey easier from start to finish.
+  Each vehicle type has different seating, loading and licence considerations, so the
+  booking journey is designed to help customers choose an option that fits the job.
 </p>
 
-<h3>Van Rental in London with a Vehicle for Every Job</h3>
+<h3>Service Overview</h3>
 <p>
-  Different jobs need different vehicles. That is why our London van rental fleet
-  includes small vans for light loads, medium vans for everyday transport, large vans
-  for heavier items and Luton vans for bigger house moves. Whether you are moving
-  boxes, collecting stock, transporting tools or managing business deliveries, our
-  team can guide you toward the most suitable van.
+  Success Van Hire supports personal moves, student relocations, furniture
+  collection, business deliveries, events and longer rental needs. Customers can
+  reserve online or contact the team for guidance.
 </p>
 <p>
-  Success Van Hire is built for customers who need dependable <strong>van hire London</strong>
-  service with simple booking, honest pricing and vehicles ready for real-world use.
-</p>
-
-<h3>Comfortable Minibus Hire London for Groups</h3>
-<p>
-  Need to travel together? Alongside our van hire services, we also offer
-  <strong>self-drive minibus hire in London</strong> for family trips, airport runs, school travel,
-  sports teams, corporate events, weddings and group days out.
-</p>
-<p>
-  Choose from 8-seater, 14-seater and 17-seater minibuses, giving you the flexibility
-  to match your passenger numbers and luggage needs. Comfortable seating, modern
-  safety features and spacious interiors help everyone arrive relaxed and on time.
+  Dedicated pages cover specific services in more detail, including the main London
+  van rental service, minibuses, Luton vans, removal vans, automatic vans and fridge
+  vans.
 </p>
 
-<h3>Simple, Clear &amp; Honest Van Hire Pricing</h3>
+<h3>Locations Served</h3>
 <p>
-  At Success Van Hire, we believe <strong>van hire in London</strong> should be easy to understand.
-  Our prices are clearly displayed during the booking process, with straightforward
-  mileage and insurance options so you can see exactly what you are paying for before
-  confirming your reservation.
-</p>
-<p>
-  No confusing extras, no last-minute surprises – just reliable vans and minibuses
-  at competitive North West London rates.
-</p>
-
-<h3>Van Hire UK – Local London Service with Flexible Rental Options</h3>
-<p>
-  If you are searching for <strong>van hire UK</strong> services with a reliable local London team,
-  Success Van Hire gives you the convenience of a trusted North West London provider
-  with flexible self-drive options for both personal and business use.
-</p>
-<p>
-  We support customers who need short-term van hire, weekend van rental, business van
-  rental and minibus hire, all with a simple booking process and helpful customer care.
-</p>
-
-<h3>Van &amp; Minibus Hire Across North West London</h3>
-<p>
-  We serve customers across a wide area of North West London and nearby locations,
+  The project references service across London and nearby North West London areas,
   including:
 </p>
 <ul>
@@ -211,21 +168,15 @@ const SEO_CONTENT = `<h2>Van Hire London – Self-Drive Van &amp; Minibus Hire i
   <li>Hampstead, Watford &amp; Wembley</li>
 </ul>
 <p>
-  If you live, work or are travelling through any of these areas, Success Van Hire is
-  your convenient local choice for <strong>self-drive van hire London</strong>,
-  <strong>van rental in London</strong> and flexible minibus hire.
+  Coverage information helps customers orient themselves, while the dedicated
+  service pages provide the commercial booking details for each rental need.
 </p>
 
-<h3>Book Your Van Hire London Today</h3>
+<h3>Choose the Next Step</h3>
 <p>
-  Ready to get moving? Book your self-drive van or minibus online with Success Van Hire
-  today. Choose your date, select your vehicle and we will have it prepared and ready
-  for collection.
-</p>
-<p>
-  Whether you need one-day van hire for a quick job, a Luton van for a house move,
-  a long-term van rental for business use or a minibus for group travel, our team is
-  here to help you get on the road quickly and confidently across London.
+  Start with the fleet section if you know the size you need, use the reservation form
+  if you are ready to book, or visit the dedicated London page if you want to compare
+  local self-drive van options in more detail.
 </p>`;
 
 export default function HomeContainer() {
@@ -285,7 +236,7 @@ export default function HomeContainer() {
       <FAQComponent
         title="Frequently Asked Questions"
         subtitle="Find answers to common questions about our van hire services"
-        faqs={FAQ_DATA as unknown as any[]}
+        faqs={FAQ_DATA}
         showSearch={false}
         defaultOpen={0}
         accentColor="#fe9a00"

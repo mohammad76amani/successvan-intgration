@@ -1,4 +1,4 @@
- "use client"
+"use client";
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
@@ -25,16 +25,9 @@ import FAQComponent, { FAQItem } from "@/components/static/fAQSection";
 import { ReadMore } from "../ui/ReadMore";
 
 // ─── Animated Counter Component ─────────────────────────────────────────────
- 
 
 // ─── HERO SECTION ───────────────────────────────────────────────────────────
 export function VanHireLondonHero() {
-  const stats = [
-    { value: 5000, suffix: "+", label: "Happy Customers" },
-    { value: 50, suffix: "+", label: "Vans Available" },
-    { value: 4.9, suffix: "★", label: "Average Rating", isDecimal: true },
-  ];
-
   return (
     <section className="relative min-h-[100svh] md:min-h-screen flex items-center pt-26 md:pt-28 pb-16 overflow-hidden">
       {/* Background - حذف blur های سنگین در موبایل */}
@@ -83,25 +76,22 @@ export function VanHireLondonHero() {
           {/* Content */}
           <div className="order-2 lg:order-1">
             <h1 className="text-4xl md:text-6xl font-extrabold text-white md:mt-12 mb-6 leading-[1.05] tracking-tight">
-              Van Hire London{" "}
+              Van Hire in London{" "}
               <span className="relative inline-block">
                 <span className="relative z-10 bg-linear-to-r from-[#fe9a00] via-amber-400 to-[#fe9a00] bg-clip-text text-transparent">
-                  Self-Drive Van Rental Across Greater London
+                  Self-Drive Rental for Moves and Business
                 </span>
               </span>
             </h1>
 
             <p className="text-sm md:text-base text-slate-300/90 mb-2 leading-relaxed max-w-xl">
-              Looking for reliable van hire in London? Success Van Hire offers
-              flexible self-drive van rental London services for moving house,
-              business deliveries, furniture collection and short-term transport
-              needs. Choose from small vans, Transit vans, large vans and Luton
-              vans, with clear van hire prices and simple online booking.
-              Whether you need to hire a van in London for one day, rent a van
-              for the weekend or reserve a van for regular business use, we make
-              the process quick, transparent and easy. <br/> Vans are available across
-              Greater London, with same-day van hire London options subject to
-              availability. Book online in minutes or call{" "}
+              Book self-drive van hire in London with Success Van Hire for house
+              moves, business deliveries, furniture collection and short-term
+              transport needs. Compare small vans, Transit vans, large vans and
+              Luton vans, then reserve online with clear pricing. Daily, weekend
+              and regular business bookings are available across Greater London,
+              with same-day options subject to availability. Book online in
+              minutes or call{" "}
               <a
                 href="tel:+442030111198"
                 className="text-amber-400 hover:text-blue-300 underline"
@@ -130,8 +120,6 @@ export function VanHireLondonHero() {
                 +44 20 3011 1198
               </a>
             </div>
-
-           
           </div>
         </div>
       </div>
@@ -234,15 +222,16 @@ export function WhyChooseSection() {
           </h2>
           <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
             We deliver reliability, transparent pricing, and exceptional service
-            for every van rental in London. Our fleet covers      <Link
+            for every van rental in London. Our fleet covers{" "}
+            <Link
               href="/self-drive-van-hire-london"
               target="_blank"
- className="text-amber-400 hover:text-blue-300 underline"            >
+              className="text-amber-400 hover:text-blue-300 underline"
+            >
               self-drive van hire
-           
-            </Link> self-drive van hire
-            across North, South, East, West, Central, and Greater London with
-            competitive rates and easy online booking.
+            </Link>{" "}
+            self-drive van hire across North, South, East, West, Central, and
+            Greater London with competitive rates and easy online booking.
           </p>
         </div>
 
@@ -369,7 +358,7 @@ export function VanTypesSection() {
         "Large delivery jobs",
         "Commercial logistics",
       ],
-  examples: "Box van hire, tail lift options, ideal for larger house moves",
+      examples: "Box van hire, tail lift options, ideal for larger house moves",
       color: "from-emerald-500/20 to-green-500/20",
       borderColor: "border-emerald-500/30",
       tagColor: "bg-emerald-500/10 text-emerald-400",
@@ -390,16 +379,15 @@ export function VanTypesSection() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-5">
             Choose the{" "}
             <span className="bg-linear-to-r from-[#fe9a00] to-amber-400 bg-clip-text text-transparent">
-              Right Van Hire
+              Right Van
             </span>{" "}
-            London Option
+            for Your Job
           </h2>
           <p className="text-slate-400 text-lg max-w-2xl mx-auto">
             Choose the right van size for your job and avoid paying for more
-            space than you need. Our van hire London fleet includes small van
-            hire for quick city trips, transit van hire for everyday moves,
-            large van hire for furniture and office jobs, and Luton van hire for
-            bigger house moves.
+            space than you need. Our London fleet includes small vans for quick
+            city trips, Transit-size vans for everyday moves, large vans for
+            furniture and office jobs, and Luton vans for bigger house moves.
           </p>
         </div>
 
@@ -686,9 +674,9 @@ export function CoverageAreasSection() {
                     Greater London Coverage
                   </h3>
                   <p className="text-slate-400 mb-8">
-                    Our van hire London service covers all 32 London boroughs
-                    plus the City of London. Van hire with flexible pickup and
-                    drop-off locations available across Greater London.
+                    Our London van rental service covers all 32 London boroughs
+                    plus the City of London, with flexible pickup and drop-off
+                    locations available across Greater London.
                   </p>
 
                   <div className="grid grid-cols-2 gap-4 text-left">
@@ -725,9 +713,10 @@ export function CoverageAreasSection() {
 export function UseCasesSection() {
   const useCases = [
     {
-title: "Moving House Van Hire London",      icon: FiTruck,
+      title: "Moving House Van Hire",
+      icon: FiTruck,
       description:
-         "Book moving house van hire in London for flat moves, student relocations, furniture transport and storage trips. Choose a medium van, large van or Luton van depending on your home size, load volume and moving distance.",
+        "Book moving house van hire in London for flat moves, student relocations, furniture transport and storage trips. Choose a medium van, large van or Luton van depending on your home size, load volume and moving distance.",
       items: [
         "Flat & house moves",
         "Student accommodation",
@@ -798,7 +787,7 @@ title: "Moving House Van Hire London",      icon: FiTruck,
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-5">
             Perfect for Every Situation –{" "}
             <span className="bg-linear-to-r from-[#fe9a00] to-amber-400 bg-clip-text text-transparent">
-              Moving Van Hire London & More
+              Moves, Deliveries & Business Use
             </span>
           </h2>
         </div>
@@ -892,7 +881,7 @@ export function BookingStepsSection() {
             How It Works
           </span>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-5">
-            Book Van Hire London{" "}
+            Book Your Van{" "}
             <span className="bg-linear-to-r from-[#fe9a00] to-amber-400 bg-clip-text text-transparent">
               in 4 Easy Steps
             </span>
@@ -1013,9 +1002,9 @@ export function FAQSection() {
         "Yes, weekend van hire is available. We recommend booking in advance to guarantee availability, especially during busy periods.",
     },
     {
-      question: "What are your van hire London prices?",
+      question: "What are your London van hire prices?",
       answer:
-        "Van hire London prices depend on the van size, hire duration, date and availability. Small vans usually cost less than large vans or Luton vans. Success Van Hire provides clear pricing before booking, so you can compare your van hire cost and choose the right option.",
+        "London van hire prices depend on the van size, hire duration, date and availability. Small vans usually cost less than large vans or Luton vans. Success Van Hire provides clear pricing before booking, so you can compare your hire cost and choose the right option.",
     },
     {
       question: "Can I rent a Transit van in London?",
@@ -1114,7 +1103,7 @@ export function FinalCTASection() {
               href="/reservation"
               className="group px-10 py-4 bg-linear-to-r from-[#fe9a00] to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-3 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 hover:-translate-y-0.5 text-lg"
             >
-              Book Van Hire London Online
+              Book Your Van Online
               <FiArrowRight
                 size={22}
                 className="group-hover:translate-x-1 transition-transform"

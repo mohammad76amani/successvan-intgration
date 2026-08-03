@@ -21,5 +21,5 @@ export default function AllVanListing() {
 
   if (isLoading) return null;
 
-  return <VanListingHome vans={allVans} showHeader={false} gridCols={3} />;
+  return <VanListingHome vans={allVans} gridCols={3} />;
 }
