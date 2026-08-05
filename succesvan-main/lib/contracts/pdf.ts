@@ -45,9 +45,15 @@ export type ContractPdfReservation = {
   vehicle?: {
     title?: string;
     number?: string | number;
+    brand?: string;
     color?: string;
     colour?: string;
     properties?: Array<{ name?: string; key?: string; value?: string }>;
+  };
+  vehicleSnapshot?: {
+    title?: string;
+    number?: string | number;
+    color?: string;
   };
   addOns?: Array<{
     addOn?: { name?: string; pricingType?: string };
@@ -74,6 +80,7 @@ export type ContractPdfReservation = {
   selectedGear?: string;
   pickupExtensionPrice?: number;
   returnExtensionPrice?: number;
+  handoverDepositAmount?: number;
   discountCode?: string;
   isManualPrice?: boolean;
   manualPricePerDay?: number;
@@ -87,10 +94,6 @@ export type ContractPdfInput = {
   createdAt: Date;
   reservation: ContractPdfReservation;
 };
-
-const signatureAnchor = "/svh_customer_signature/";
-const nameAnchor = "/svh_customer_name/";
-const dateAnchor = "/svh_signed_date/";
 
 function valueOrDash(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
@@ -182,6 +185,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   doc.setCreationDate(input.createdAt);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+  const italicFont = await doc.embedFont(StandardFonts.HelveticaOblique);
   const reservation = input.reservation;
   const name = customerName(reservation) || "Customer";
   const licence = reservation.user?.licenceDetails?.isFrontSide
@@ -264,6 +268,75 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     const size = fitTextSize(value, width - 8, preferredSize);
     text(targetPage, value, x + 4, top + 2, width - 8, { size });
   };
+  const centeredCellText = (
+    targetPage: typeof page,
+    value: unknown,
+    x: number,
+    top: number,
+    width: number,
+    height: number,
+    preferredSize = 7,
+  ) => {
+    cover(targetPage, x + 0.8, top + 0.8, width - 1.6, height - 1.6);
+    const size = fitTextSize(value, width - 8, preferredSize);
+    text(
+      targetPage,
+      value,
+      x + 4,
+      top + Math.max(2, (height - size) / 2 - 0.5),
+      width - 8,
+      { size },
+    );
+  };
+  const drawGrid = (
+    targetPage: typeof page,
+    xPositions: number[],
+    top: number,
+    rowHeights: number[],
+  ) => {
+    const bottom = top + rowHeights.reduce((sum, height) => sum + height, 0);
+    const y = (topPosition: number) => targetPage.getHeight() - topPosition;
+    xPositions.forEach((x) => {
+      targetPage.drawLine({
+        start: { x, y: y(top) },
+        end: { x, y: y(bottom) },
+        thickness: 0.65,
+        color: ink,
+      });
+    });
+    let rowTop = top;
+    [top, ...rowHeights.map((height) => (rowTop += height))].forEach(
+      (lineTop) => {
+        targetPage.drawLine({
+          start: { x: xPositions[0], y: y(lineTop) },
+          end: { x: xPositions[xPositions.length - 1], y: y(lineTop) },
+          thickness: 0.65,
+          color: ink,
+        });
+      },
+    );
+  };
+  const centeredText = (
+    targetPage: typeof page,
+    value: string,
+    top: number,
+    options?: { bold?: boolean; italic?: boolean; size?: number },
+  ) => {
+    const size = options?.size ?? 8;
+    const selectedFont = options?.bold
+      ? boldFont
+      : options?.italic
+        ? italicFont
+        : font;
+    const width = selectedFont.widthOfTextAtSize(value, size);
+    targetPage.drawText(value, {
+      x: Math.max(34, (targetPage.getWidth() - width) / 2),
+      y: topY(targetPage, top, size),
+      size,
+      font: selectedFont,
+      color: ink,
+    });
+  };
   const money = (value: unknown) => `£${Number(value || 0).toFixed(2)}`;
   const durationLabel = [
     `${term.days} day${term.days === 1 ? "" : "s"}`,
@@ -282,6 +355,11 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
         : reservation.deposit?.option === "office"
           ? "Pay at office"
           : "-";
+  const additionalDriverIncluded = (reservation.addOns || []).some((item) =>
+    String(item.addOn?.name || "")
+      .toLowerCase()
+      .includes("additional driver"),
+  );
 
   // Agreement references.
   cellText(page, input.contractNumber, 172.8, 124, 133.2, 10.4);
@@ -291,7 +369,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
 
   // Hirer / driver details.
   cellText(page, name.toUpperCase(), 167.4, 206, 133.2);
-  cellText(page, "-", 433.8, 206, 133.2);
+  cellText(page, "Not provided", 433.8, 206, 133.2);
   cellText(page, licence?.address || address, 167.4, 217, 133.2);
   cellText(page, licence?.postcode || reservation.user?.postalCode, 433.8, 217, 133.2);
   cellText(page, licence?.licenceNumber || licence?.licenseNumber, 167.4, 227.8, 133.2);
@@ -306,30 +384,48 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   cellText(page, contractDate(licence?.dateOfBirth || undefined), 433.8, 238.6, 133.2);
   cellText(page, reservation.user?.emaildata?.emailAddress, 167.4, 249.5, 133.2);
   cellText(page, reservation.user?.phoneData?.phoneNumber, 433.8, 249.5, 133.2);
-  cellText(page, "-", 167.4, 260.4, 133.2);
-  cellText(page, "-", 433.8, 260.4, 133.2);
+  cellText(page, additionalDriverIncluded ? "Included" : "None", 167.4, 260.4, 133.2);
+  cellText(page, additionalDriverIncluded ? "Not provided" : "Not applicable", 433.8, 260.4, 133.2);
 
   // Vehicle details.
-  cellText(page, reservation.vehicle?.number, 167.4, 290.9, 133.2);
   cellText(
     page,
-    vehicleProperty(reservation, ["make"]) || reservation.category?.name,
+    reservation.vehicle?.number || reservation.vehicleSnapshot?.number,
+    167.4,
+    290.9,
+    133.2,
+  );
+  cellText(
+    page,
+    reservation.vehicle?.brand ||
+      vehicleProperty(reservation, ["make", "brand"]) ||
+      "Not provided",
     433.8,
     290.9,
     133.2,
   );
-  cellText(page, reservation.vehicle?.title || reservation.category?.name, 167.4, 301.8, 133.2);
+  cellText(
+    page,
+    reservation.vehicle?.title ||
+      reservation.vehicleSnapshot?.title ||
+      reservation.category?.name,
+    167.4,
+    301.8,
+    133.2,
+  );
   cellText(
     page,
     reservation.vehicle?.color ||
       reservation.vehicle?.colour ||
-      vehicleProperty(reservation, ["colour", "color"]),
+      reservation.vehicleSnapshot?.color ||
+      vehicleProperty(reservation, ["colour", "color"]) ||
+      "Not provided",
     433.8,
     301.8,
     133.2,
   );
   cellText(page, reservation.category?.name, 167.4, 312.6, 133.2);
-  cellText(page, "-", 433.8, 312.6, 133.2);
+  cellText(page, "None", 433.8, 312.6, 133.2);
 
   // Rental term.
   cellText(page, contractDate(reservation.startDate, reservation.startDateDisplay), 167.4, 343.1, 133.2);
@@ -344,41 +440,108 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   cellText(page, money(reservation.deposit?.amount), 433.8, 425.1, 133.2);
   cellText(page, depositPaymentMethod, 167.4, 436.1, 133.2, 21.1);
   cellText(page, extensionTotal > 0 ? money(extensionTotal) : money(0), 167.4, 457.2, 133.2);
-  cellText(page, money(0), 433.8, 457.2, 133.2);
+  cellText(page, money(reservation.handoverDepositAmount), 433.8, 457.2, 133.2);
 
   // Insurance details.
   cellText(page, "Subject to approval", 167.4, 584, 133.2, 10.4);
-  cellText(page, insuranceExcessLabel, 433.8, 584, 133.2, 10.4);
-  cellText(page, "-", 167.4, 594.4, 133.2, 10.2);
-  cellText(page, "-", 433.8, 594.4, 133.2, 10.2);
-  cellText(page, "-", 167.4, 604.6, 133.2, 10.9);
+  cellText(
+    page,
+    insuranceExcessLabel === "-" ? "See applicable policy" : insuranceExcessLabel,
+    433.8,
+    584,
+    133.2,
+    10.4,
+  );
+  cellText(page, "See applicable policy", 167.4, 594.4, 133.2, 10.2);
+  cellText(page, "See applicable policy", 433.8, 594.4, 133.2, 10.2);
+  cellText(page, "See applicable policy", 167.4, 604.6, 133.2, 10.9);
   cellText(page, "See applicable policy", 433.8, 604.6, 133.2, 10.9);
 
-  // Pre-fill the hirer's name in the first acknowledgement table on page 3.
-  cellText(page3, name.toUpperCase(), 167.4, 78.4, 133.2);
+  // Page 3 has ample space, so rebuild both signing blocks with proper room
+  // for DocuSign's handwritten signature stamp instead of one-line rows.
+  cover(page3, 30, 72, 552, 320);
+  const signatureColumns = [34.2, 167.4, 300.6, 433.8, 567];
+  const firstSignatureTop = 76;
+  const firstSignatureRows = [18, 34, 18];
+  drawGrid(page3, signatureColumns, firstSignatureTop, firstSignatureRows);
+  centeredCellText(page3, "Hirer's Full Name:", 34.2, 76, 133.2, 18, 8);
+  centeredCellText(page3, name.toUpperCase(), 167.4, 76, 133.2, 18);
+  centeredCellText(page3, "Date:", 300.6, 76, 133.2, 18, 8);
+  centeredCellText(page3, "Hirer's Signature:", 34.2, 94, 133.2, 34, 8);
+  centeredCellText(page3, "Time:", 300.6, 94, 133.2, 34, 8);
+  centeredCellText(
+    page3,
+    "Recorded in DocuSign audit",
+    433.8,
+    94,
+    133.2,
+    34,
+  );
+  centeredCellText(page3, "Lessor Signature:", 34.2, 128, 133.2, 18, 8);
+  centeredCellText(page3, "Lessor Name:", 300.6, 128, 133.2, 18, 8);
+  centeredCellText(page3, "SUCCESS VAN HIRE", 433.8, 128, 133.2, 18);
 
-  // Invisible DocuSign anchors sit in the final General Declaration table.
-  page3.drawText(signatureAnchor, {
-    x: 171,
-    y: topY(page3, 178, 1),
-    size: 1,
-    font,
-    color: white,
+  text(page3, "9. GENERAL DECLARATION", 39.7, 158, 530, {
+    bold: true,
+    size: 10,
   });
-  page3.drawText(nameAnchor, {
-    x: 437,
-    y: topY(page3, 178, 1),
-    size: 1,
-    font,
-    color: white,
-  });
-  page3.drawText(dateAnchor, {
-    x: 171,
-    y: topY(page3, 189, 1),
-    size: 1,
-    font,
-    color: white,
-  });
+  page3.drawText(
+    "The Hirer confirms that the information supplied in connection with this hire is, to the best of their knowledge, true and complete. The Hirer confirms that they have read and understood this agreement, including the insurance terms, authorised-driver declaration and Liability Statement, and agree to be bound by its terms.",
+    {
+      x: 39.7,
+      y: topY(page3, 176, 9),
+      size: 9,
+      lineHeight: 12,
+      font,
+      color: ink,
+      maxWidth: 527,
+    },
+  );
+
+  const finalSignatureTop = 226;
+  const finalSignatureRows = [38, 18, 24];
+  drawGrid(page3, signatureColumns, finalSignatureTop, finalSignatureRows);
+  centeredCellText(page3, "Hirer Signature:", 34.2, 226, 133.2, 38, 8);
+  centeredCellText(page3, "Print Name:", 300.6, 226, 133.2, 38, 8);
+  centeredCellText(page3, name.toUpperCase(), 433.8, 226, 133.2, 38);
+  centeredCellText(page3, "Date:", 34.2, 264, 133.2, 18, 8);
+  centeredCellText(page3, "Time:", 300.6, 264, 133.2, 18, 8);
+  centeredCellText(
+    page3,
+    "Recorded in DocuSign audit",
+    433.8,
+    264,
+    133.2,
+    18,
+  );
+  centeredCellText(page3, "Lessor Signature:", 34.2, 282, 133.2, 24, 8);
+  centeredCellText(page3, "Print Name:", 300.6, 282, 133.2, 24, 8);
+  centeredCellText(page3, "SUCCESS VAN HIRE", 433.8, 282, 133.2, 24);
+
+  centeredText(
+    page3,
+    "Vehicle & Correspondence Address: Flat 20, Garrison Heights, London, NW7 1RF",
+    322,
+    { bold: true, size: 8 },
+  );
+  centeredText(
+    page3,
+    "Address used for vehicle registration and vehicle-related correspondence.",
+    335,
+    { italic: true, size: 7.5 },
+  );
+  centeredText(
+    page3,
+    "DIBA COOPERATION LTD trading as SUCCESS VAN HIRE",
+    352,
+    { bold: true, size: 9 },
+  );
+  centeredText(
+    page3,
+    "Please retain a copy of this agreement for your records.",
+    367,
+    { size: 8.5 },
+  );
 
   [page, page2, page3].forEach((targetPage, index) => {
     text(targetPage, `${index + 1}/3`, 553, 775, 25, { size: 6 });
@@ -392,9 +555,3 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     mimeType: "application/pdf",
   };
 }
-
-export const contractPdfAnchors = {
-  signatureAnchor,
-  nameAnchor,
-  dateAnchor,
-};

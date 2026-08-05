@@ -2,7 +2,6 @@ import "server-only";
 
 import type { Types } from "mongoose";
 import { getDocuSignApiClient } from "./client";
-import { contractPdfAnchors } from "@/lib/contracts/pdf";
 import { ContractIntegrationError, normalizeDocuSignSdkError } from "./errors";
 import { getDocuSignSdk } from "./sdk";
 
@@ -37,31 +36,52 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     documentId: "1",
   });
 
-  const signHere = fromObject(docusign.SignHere, {
-    anchorString: contractPdfAnchors.signatureAnchor,
-    anchorUnits: "pixels",
-    anchorYOffset: "8",
-    anchorXOffset: "0",
-    scaleValue: "0.45",
+  const positioned = (pageNumber: string, x: string, y: string) => ({
+    documentId: "1",
+    pageNumber,
+    xPosition: x,
+    yPosition: y,
   });
-
-  const fullName = fromObject(docusign.FullName, {
-    anchorString: contractPdfAnchors.nameAnchor,
-    anchorUnits: "pixels",
-    anchorYOffset: "0",
-    anchorXOffset: "0",
-    fontSize: "Size8",
-    width: "150",
-  });
-
-  const dateSigned = fromObject(docusign.DateSigned, {
-    anchorString: contractPdfAnchors.dateAnchor,
-    anchorUnits: "pixels",
-    anchorYOffset: "0",
-    anchorXOffset: "0",
-    fontSize: "Size8",
-    width: "90",
-  });
+  const signHereTabs = [
+    // Authorised-driver declaration on page 2.
+    fromObject(docusign.SignHere, {
+      ...positioned("2", "266", "363"),
+      scaleValue: "0.35",
+    }),
+    // PCN / TfL liability acknowledgement on page 3.
+    fromObject(docusign.SignHere, {
+      ...positioned("3", "170", "98"),
+      scaleValue: "0.3",
+    }),
+    // Final General Declaration signature on page 3.
+    fromObject(docusign.SignHere, {
+      ...positioned("3", "170", "231"),
+      scaleValue: "0.35",
+    }),
+  ];
+  const dateSignedTabs = [
+    fromObject(docusign.DateSigned, {
+      ...positioned("2", "450", "374"),
+      fontSize: "Size7",
+      width: "68",
+    }),
+    fromObject(docusign.DateSigned, {
+      ...positioned("3", "435", "81"),
+      fontSize: "Size7",
+      width: "100",
+    }),
+    fromObject(docusign.DateSigned, {
+      ...positioned("3", "170", "267"),
+      fontSize: "Size7",
+      width: "100",
+    }),
+  ];
+  const initialHereTabs = [
+    fromObject(docusign.InitialHere, {
+      ...positioned("2", "262", "294"),
+      scaleValue: "0.5",
+    }),
+  ];
 
   const signer = fromObject(docusign.Signer, {
     email: input.customerEmail,
@@ -70,9 +90,9 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
     clientUserId: input.signerClientUserId,
     routingOrder: "1",
     tabs: fromObject(docusign.Tabs, {
-      signHereTabs: [signHere],
-      fullNameTabs: [fullName],
-      dateSignedTabs: [dateSigned],
+      signHereTabs,
+      dateSignedTabs,
+      initialHereTabs,
     }),
   });
 

@@ -75,6 +75,7 @@ type DocuSignSdk = {
   Signer: DocusignModelConstructor;
   Recipients: DocusignModelConstructor;
   SignHere: DocusignModelConstructor;
+  InitialHere: DocusignModelConstructor;
   FullName: DocusignModelConstructor;
   DateSigned: DocusignModelConstructor;
   Tabs: DocusignModelConstructor;
