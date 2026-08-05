@@ -206,36 +206,11 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     : "-";
   const page = doc.getPage(0);
   const page2 = doc.getPage(1);
+  const page3 = doc.getPage(2);
   const ink = rgb(0.04, 0.04, 0.04);
   const white = rgb(1, 1, 1);
   const topY = (targetPage: typeof page, top: number, size = 7) =>
     targetPage.getHeight() - top - size;
-  const put = (
-    targetPage: typeof page,
-    value: unknown,
-    x: number,
-    top: number,
-    width = 120,
-    size = 7,
-  ) => {
-    targetPage.drawRectangle({
-      x: x - 7,
-      y: topY(targetPage, top, size) - 5,
-      // The supplied template contains short Excel placeholders (#N/A / "-").
-      // Clear only that placeholder area so neighbouring printed labels remain.
-      width: Math.min(width + 5, 44),
-      height: size + 12,
-      color: white,
-    });
-    targetPage.drawText(valueOrDash(value), {
-      x,
-      y: topY(targetPage, top, size),
-      size,
-      font,
-      color: ink,
-      maxWidth: width - 4,
-    });
-  };
   const cover = (
     targetPage: typeof page,
     x: number,
@@ -268,159 +243,146 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
       maxWidth: width,
     });
   };
+  const fitTextSize = (value: unknown, width: number, preferred = 6.4) => {
+    const label = valueOrDash(value);
+    let size = preferred;
+    while (size > 4.2 && font.widthOfTextAtSize(label, size) > width) {
+      size -= 0.2;
+    }
+    return size;
+  };
+  const cellText = (
+    targetPage: typeof page,
+    value: unknown,
+    x: number,
+    top: number,
+    width: number,
+    height = 10.8,
+    preferredSize = 6.4,
+  ) => {
+    cover(targetPage, x + 0.8, top + 0.8, width - 1.6, height - 1.6);
+    const size = fitTextSize(value, width - 8, preferredSize);
+    text(targetPage, value, x + 4, top + 2, width - 8, { size });
+  };
+  const money = (value: unknown) => `£${Number(value || 0).toFixed(2)}`;
+  const durationLabel = [
+    `${term.days} day${term.days === 1 ? "" : "s"}`,
+    Number(term.hours) > 0 ? `${term.hours} hour${term.hours === 1 ? "" : "s"}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const extensionTotal =
+    Number(reservation.pickupExtensionPrice || 0) +
+    Number(reservation.returnExtensionPrice || 0);
+  const depositPaymentMethod =
+    reservation.deposit?.option === "full"
+      ? "Full deposit - bank transfer"
+      : reservation.deposit?.option === "secure"
+        ? "Safe & secure deposit"
+        : reservation.deposit?.option === "office"
+          ? "Pay at office"
+          : "-";
 
-  cover(page, 320, 147, 220, 27);
-  text(page, "Ref:", 324, 154, 67, { bold: true });
-  text(page, input.contractNumber, 392, 154, 120);
-  text(page, "DATE:", 324, 166, 67, { bold: true });
-  text(page, contractDate(input.createdAt), 392, 166, 90);
+  // Agreement references.
+  cellText(page, input.contractNumber, 172.8, 124, 133.2, 10.4);
+  cellText(page, contractDate(input.createdAt), 439.2, 124, 133.2, 10.4);
+  cellText(page, reservation.reservationCode, 172.8, 134.4, 133.2, 10.2);
+  cellText(page, reservation.office?.name, 439.2, 134.4, 133.2, 10.2);
 
-  // Customer data is intentionally laid out as full-width rows. Licence
-  // names, addresses, emails and document numbers can be long, and the old
-  // multi-column layout allowed them to overlap neighbouring labels.
-  cover(page, 50, 246, 490, 138);
-  text(page, "Hirer Name:", 53, 251, 66, { bold: true });
-  text(page, name.toUpperCase(), 121, 251, 414);
-  text(page, "Address:", 53, 264, 66, { bold: true });
-  text(page, licence?.address || address, 121, 264, 414, { size: 6.5 });
-  text(page, "From (business name):", 53, 277, 112, { bold: true });
-  text(page, reservation.office?.name || "Success Van Hire", 167, 277, 368);
-  text(page, "Driving Licence number:", 53, 290, 112, { bold: true });
-  text(
-    page,
-    licence?.licenceNumber || licence?.licenseNumber,
-    167,
-    290,
-    368,
-    { size: 6.5 },
-  );
-  text(page, "Email:", 53, 303, 66, { bold: true });
-  text(page, reservation.user?.emaildata?.emailAddress, 121, 303, 414, {
-    size: 6.5,
-  });
-  text(page, "Postcode:", 53, 316, 66, { bold: true });
-  text(page, licence?.postcode || reservation.user?.postalCode, 121, 316, 86);
-  text(page, "Country of Issue:", 211, 316, 82, { bold: true });
-  text(page, licence?.issuingCountry || licence?.issuingAuthority, 295, 316, 75);
-  text(page, "Exp Date:", 374, 316, 55, { bold: true });
-  text(
+  // Hirer / driver details.
+  cellText(page, name.toUpperCase(), 167.4, 206, 133.2);
+  cellText(page, "-", 433.8, 206, 133.2);
+  cellText(page, licence?.address || address, 167.4, 217, 133.2);
+  cellText(page, licence?.postcode || reservation.user?.postalCode, 433.8, 217, 133.2);
+  cellText(page, licence?.licenceNumber || licence?.licenseNumber, 167.4, 227.8, 133.2);
+  cellText(page, licence?.issuingCountry || licence?.issuingAuthority, 433.8, 227.8, 133.2);
+  cellText(
     page,
     contractDate(licence?.expiryDate || licence?.expirationDate || undefined),
-    431,
-    316,
-    104,
+    167.4,
+    238.6,
+    133.2,
   );
-  text(page, "Contact Number:", 53, 329, 86, { bold: true });
-  text(page, reservation.user?.phoneData?.phoneNumber, 141, 329, 145);
-  text(page, "DOB:", 292, 329, 42, { bold: true });
-  text(page, contractDate(licence?.dateOfBirth || undefined), 336, 329, 100);
+  cellText(page, contractDate(licence?.dateOfBirth || undefined), 433.8, 238.6, 133.2);
+  cellText(page, reservation.user?.emaildata?.emailAddress, 167.4, 249.5, 133.2);
+  cellText(page, reservation.user?.phoneData?.phoneNumber, 433.8, 249.5, 133.2);
+  cellText(page, "-", 167.4, 260.4, 133.2);
+  cellText(page, "-", 433.8, 260.4, 133.2);
 
-  page.drawText(
-    "The Driver subscribes to use the vehicle supplied by Diba Cooperation LTD for the Rental fee during the Term. Only the authorised driver/drivers named above may drive the Vehicle.",
-    {
-      x: 53,
-      y: topY(page, 343, 6.5),
-      size: 6.5,
-      lineHeight: 8,
-      font,
-      color: ink,
-      maxWidth: 482,
-    },
-  );
-  text(page, "Additional Driver:", 53, 365, 84, { bold: true });
-  text(page, "-", 139, 365, 120);
-  text(
+  // Vehicle details.
+  cellText(page, reservation.vehicle?.number, 167.4, 290.9, 133.2);
+  cellText(
     page,
-    "Only the authorised driver/drivers above can drive the Vehicle during the Subscription",
-    53,
-    377,
-    482,
-    { size: 6.5 },
+    vehicleProperty(reservation, ["make"]) || reservation.category?.name,
+    433.8,
+    290.9,
+    133.2,
   );
-
-  cover(page, 50, 391, 370, 28);
-  text(page, "Register:", 53, 398, 44, { bold: true });
-  text(page, reservation.vehicle?.number, 98, 398, 90);
-  text(page, "Model:", 242, 398, 44, { bold: true });
-  text(page, reservation.vehicle?.title || reservation.category?.name, 287, 398, 120);
-  text(page, "Make:", 53, 411, 44, { bold: true });
-  text(page, vehicleProperty(reservation, ["make"]) || reservation.category?.name, 98, 411, 90);
-  text(page, "Colour:", 242, 411, 44, { bold: true });
-  text(
+  cellText(page, reservation.vehicle?.title || reservation.category?.name, 167.4, 301.8, 133.2);
+  cellText(
     page,
     reservation.vehicle?.color ||
       reservation.vehicle?.colour ||
       vehicleProperty(reservation, ["colour", "color"]),
-    287,
-    411,
-    120,
+    433.8,
+    301.8,
+    133.2,
   );
+  cellText(page, reservation.category?.name, 167.4, 312.6, 133.2);
+  cellText(page, "-", 433.8, 312.6, 133.2);
 
-  cover(page, 58, 430, 310, 16);
-  text(page, "1.", 61, 437, 16, { bold: true });
-  text(page, "RENTAL TERM:", 80, 437, 82, { bold: true });
-  text(page, term.days, 164, 437, 28);
-  text(page, "Day/Days", 204, 437, 72);
-  text(page, term.hours, 287, 437, 28);
-  text(page, "Hours", 326, 437, 42);
+  // Rental term.
+  cellText(page, contractDate(reservation.startDate, reservation.startDateDisplay), 167.4, 343.1, 133.2);
+  cellText(page, reservation.pickupTime || formatDateTime(reservation.startDate), 433.8, 343.1, 133.2);
+  cellText(page, contractDate(reservation.endDate, reservation.endDateDisplay), 167.4, 353.9, 133.2);
+  cellText(page, reservation.returnTime || formatDateTime(reservation.endDate), 433.8, 353.9, 133.2);
+  cellText(page, durationLabel, 167.4, 364.9, 133.2);
+  cellText(page, extensionTotal > 0 ? money(extensionTotal) : "None", 433.8, 364.9, 133.2);
 
-  cover(page, 50, 475, 330, 29);
-  text(page, "Rental Start Date:", 53, 482, 109);
-  text(page, contractDate(reservation.startDate, reservation.startDateDisplay), 164, 482, 80);
-  text(page, "Time:", 242, 482, 44);
-  text(page, reservation.pickupTime || formatDateTime(reservation.startDate), 287, 482, 72);
-  text(page, "Rental End Date:", 53, 495, 109);
-  text(page, contractDate(reservation.endDate, reservation.endDateDisplay), 164, 495, 80);
-  text(page, "Time:", 242, 495, 44);
-  text(page, reservation.returnTime || formatDateTime(reservation.endDate), 287, 495, 72);
-  cover(page, 50, 549, 270, 28);
-  text(page, "Subscription Price:", 53, 556, 109);
-  text(page, `£${Number(reservation.totalPrice || 0).toFixed(2)}`, 164, 556, 76);
-  text(page, "for duration in section 1.", 204, 556, 130);
-  text(page, "Deposit:", 53, 569, 109);
-  text(page, `£${Number(reservation.deposit?.amount || 0).toFixed(2)}`, 164, 569, 76);
+  // Rental fee, deposit and payment details.
+  cellText(page, money(reservation.totalPrice), 167.4, 425.1, 133.2);
+  cellText(page, money(reservation.deposit?.amount), 433.8, 425.1, 133.2);
+  cellText(page, depositPaymentMethod, 167.4, 436.1, 133.2, 21.1);
+  cellText(page, extensionTotal > 0 ? money(extensionTotal) : money(0), 167.4, 457.2, 133.2);
+  cellText(page, money(0), 433.8, 457.2, 133.2);
 
-  cover(page, 50, 613, 270, 41);
-  text(page, "Mileage Allowance Weekly:", 53, 620, 202);
-  text(page, "-", 256, 620, 45);
-  text(page, "Mileage Allowance Daily:", 53, 633, 202);
-  text(page, "-", 256, 633, 45);
-  text(page, "Excess Mileage Charge is:", 53, 646, 202);
-  text(page, "-", 256, 646, 45);
+  // Insurance details.
+  cellText(page, "Subject to approval", 167.4, 584, 133.2, 10.4);
+  cellText(page, insuranceExcessLabel, 433.8, 584, 133.2, 10.4);
+  cellText(page, "-", 167.4, 594.4, 133.2, 10.2);
+  cellText(page, "-", 433.8, 594.4, 133.2, 10.2);
+  cellText(page, "-", 167.4, 604.6, 133.2, 10.9);
+  cellText(page, "See applicable policy", 433.8, 604.6, 133.2, 10.9);
 
-  cover(page, 50, 673, 330, 15);
-  text(page, "Arranged Insurance:", 53, 680, 110);
-  text(page, "Subject to approval", 165, 680, 180, { size: 6.5 });
-  put(page2, insuranceExcessLabel, 164, 76, 80);
+  // Pre-fill the hirer's name in the first acknowledgement table on page 3.
+  cellText(page3, name.toUpperCase(), 167.4, 78.4, 133.2);
 
-  // Invisible DocuSign anchors sit on the existing signature/name lines.
-  page2.drawText(signatureAnchor, {
-    x: 104,
-    y: topY(page2, 253, 1),
+  // Invisible DocuSign anchors sit in the final General Declaration table.
+  page3.drawText(signatureAnchor, {
+    x: 171,
+    y: topY(page3, 178, 1),
     size: 1,
     font,
     color: white,
   });
-  page2.drawText(nameAnchor, {
-    x: 327,
-    y: topY(page2, 253, 1),
+  page3.drawText(nameAnchor, {
+    x: 437,
+    y: topY(page3, 178, 1),
     size: 1,
     font,
     color: white,
   });
-  page2.drawText(dateAnchor, {
-    x: 327,
-    y: topY(page2, 270, 1),
+  page3.drawText(dateAnchor, {
+    x: 171,
+    y: topY(page3, 189, 1),
     size: 1,
     font,
     color: white,
   });
 
-  // Preserve crisp page numbering after the template is rewritten by pdf-lib.
-  cover(page, 520, 805, 32, 18);
-  text(page, "1/2", 528, 812, 22);
-  cover(page2, 520, 805, 32, 18);
-  text(page2, "2/2", 528, 812, 22);
+  [page, page2, page3].forEach((targetPage, index) => {
+    text(targetPage, `${index + 1}/3`, 553, 775, 25, { size: 6 });
+  });
 
   const buffer = Buffer.from(await doc.save());
   return {

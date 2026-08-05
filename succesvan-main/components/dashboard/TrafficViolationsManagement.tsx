@@ -48,16 +48,18 @@ const dateInputValue = (date: Date | null) => {
 
 export default function TrafficViolationsManagement() {
   const [vehicleNumber, setVehicleNumber] = useState("");
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [filterDate, setFilterDate] = useState<Date | null>(null);
   const [results, setResults] = useState<Reservation[]>([]);
   const [searched, setSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
   const [amount, setAmount] = useState("");
+  const [deductionDate, setDeductionDate] = useState<Date | null>(null);
   const [ticketReference, setTicketReference] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
-  const violationDate = dateInputValue(selectedDate);
+  const filterDateValue = dateInputValue(filterDate);
+  const deductionDateValue = dateInputValue(deductionDate);
 
   const loadReservations = useCallback(
     async (
@@ -111,25 +113,29 @@ export default function TrafficViolationsManagement() {
 
   const search = (event: FormEvent) => {
     event.preventDefault();
-    void loadReservations({ vehicleNumber, violationDate });
+    void loadReservations({
+      vehicleNumber,
+      violationDate: filterDateValue,
+    });
   };
 
   const clearFilters = () => {
     setVehicleNumber("");
-    setSelectedDate(null);
+    setFilterDate(null);
     void loadReservations();
   };
 
   const openDeduction = (reservation: Reservation) => {
     setSelected(reservation);
     setAmount("");
+    setDeductionDate(filterDate);
     setTicketReference("");
     setReason("");
   };
 
   const addDeduction = async (event: FormEvent) => {
     event.preventDefault();
-    if (!violationDate) {
+    if (!deductionDateValue) {
       showToast.error("Select the violation date before adding the charge");
       return;
     }
@@ -158,7 +164,7 @@ export default function TrafficViolationsManagement() {
             ticketReference: ticketReference.trim(),
             reason: reason.trim(),
             vehicleNumber: registration(selected),
-            violationDate,
+            violationDate: deductionDateValue,
           }),
         },
       );
@@ -228,8 +234,8 @@ export default function TrafficViolationsManagement() {
           <label className="text-xs font-bold uppercase tracking-wide text-slate-400">
             Violation date
             <DatePicker
-              selected={selectedDate}
-              onChange={(date: Date | null) => setSelectedDate(date)}
+              selected={filterDate}
+              onChange={(date: Date | null) => setFilterDate(date)}
               dateFormat="dd/MM/yyyy"
               placeholderText="Select bill date"
               isClearable
@@ -256,7 +262,7 @@ export default function TrafficViolationsManagement() {
           <button
             type="button"
             onClick={clearFilters}
-            disabled={searching || (!vehicleNumber && !selectedDate)}
+            disabled={searching || (!vehicleNumber && !filterDate)}
             className="inline-flex h-[42px] items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-bold text-slate-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             <FiRefreshCw />
@@ -420,8 +426,10 @@ export default function TrafficViolationsManagement() {
                       Add traffic violation charge
                     </p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
-                      <FiCalendar className="text-[#fe9a00]" /> {violationDate}{" "}
-                      · {registration(reservation)}
+                      <FiCalendar className="text-[#fe9a00]" />
+                      {deductionDateValue ||
+                        "Select the bill date below"} ·{" "}
+                      {registration(reservation)}
                     </p>
                   </div>
                   <button
@@ -433,7 +441,22 @@ export default function TrafficViolationsManagement() {
                     <FiX />
                   </button>
                 </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-[140px_200px_minmax(0,1fr)_auto] lg:items-end">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[150px_170px_190px_minmax(0,1fr)_auto] xl:items-end">
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    Violation date
+                    <DatePicker
+                      selected={deductionDate}
+                      onChange={(date: Date | null) => setDeductionDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="Select bill date"
+                      className={inputClass}
+                      wrapperClassName="svh-date-filter w-full"
+                      calendarClassName="svh-datepicker-calendar"
+                      popperClassName="svh-traffic-violation-datepicker-popper"
+                      portalId="svh-datepicker-portal"
+                      showPopperArrow={false}
+                    />
+                  </label>
                   <label className="text-xs font-bold uppercase tracking-wide text-slate-400">
                     Amount (£)
                     <input

@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
+import User from "@/model/user";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -37,6 +38,14 @@ export async function POST(
     await connect();
     const existing = await Reservation.findById(id);
     if (!existing) return errorResponse("Reservation not found", 404);
+    const staff = await User.findOne({
+      _id: body.staffId,
+      role: { $in: ["admin", "owner"] },
+    }).select("name lastName role");
+    if (!staff) {
+      return errorResponse("Select a valid admin or owner", 400);
+    }
+    const staffName = [staff.name, staff.lastName].filter(Boolean).join(" ");
 
     const now = new Date();
     const depositPaid =
@@ -63,6 +72,7 @@ export async function POST(
               ? body.photos.filter(Boolean)
               : [],
             notes: String(body.notes || "").trim(),
+            staff: { user: staff._id, name: staffName, role: staff.role },
             customFields: Array.isArray(body.customFields)
               ? body.customFields
                   .filter((field: CustomFieldPayload) => field && field.label)

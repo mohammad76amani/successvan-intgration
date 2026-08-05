@@ -7,6 +7,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { showToast } from "@/lib/toast";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import type { Reservation } from "@/types/type";
+import SearchableStaffSelect from "@/components/ui/SearchableStaffSelect";
 
 type CategoryHandoverField = {
   _id?: string;
@@ -161,6 +162,7 @@ export default function ReservationOperationsPanel({
     startFuelLevel: "",
     conditionNotes: "",
     existingDamages: "",
+    staffId: "",
     staffSignature: "",
     keyCount: "1",
     equipment: "",
@@ -174,6 +176,8 @@ export default function ReservationOperationsPanel({
     newDamages: "",
     missingEquipment: "",
     notes: "",
+    staffId: "",
+    staffSignature: "",
     cleaningIssue: false,
   });
   const [afterValues, setAfterValues] = useState<Record<string, string>>({});
@@ -197,45 +201,49 @@ export default function ReservationOperationsPanel({
     AdditionalChargeForm[]
   >(() => additionalChargeRows(activeReservation));
 
-  const loadReservation = useCallback(async (signal?: AbortSignal) => {
-    if (!needsOperationsData) {
-      setLoadingReservation(false);
-      return null;
-    }
-    if (!reservation._id) {
-      setLoadError("Reservation ID is missing");
-      setLoadingReservation(false);
-      return null;
-    }
-
-    setLoadingReservation(true);
-    setLoadError("");
-    try {
-      const response = await fetch(`/api/reservations/${reservation._id}`, {
-        headers: clientAuthHeaders(),
-        cache: "no-store",
-        signal,
-      });
-      const payload = await response.json();
-      if (signal?.aborted) return null;
-      if (!response.ok || !payload.success || !payload.data) {
-        throw new Error(payload.error || "Could not load reservation form");
+  const loadReservation = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!needsOperationsData) {
+        setLoadingReservation(false);
+        return null;
       }
-      const completeReservation = payload.data as Reservation;
-      setLoadedReservation(completeReservation);
-      return completeReservation;
-    } catch (error) {
-      if (signal?.aborted || (error as Error).name === "AbortError") return null;
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Could not load reservation form",
-      );
-      return null;
-    } finally {
-      if (!signal?.aborted) setLoadingReservation(false);
-    }
-  }, [needsOperationsData, reservation._id]);
+      if (!reservation._id) {
+        setLoadError("Reservation ID is missing");
+        setLoadingReservation(false);
+        return null;
+      }
+
+      setLoadingReservation(true);
+      setLoadError("");
+      try {
+        const response = await fetch(`/api/reservations/${reservation._id}`, {
+          headers: clientAuthHeaders(),
+          cache: "no-store",
+          signal,
+        });
+        const payload = await response.json();
+        if (signal?.aborted) return null;
+        if (!response.ok || !payload.success || !payload.data) {
+          throw new Error(payload.error || "Could not load reservation form");
+        }
+        const completeReservation = payload.data as Reservation;
+        setLoadedReservation(completeReservation);
+        return completeReservation;
+      } catch (error) {
+        if (signal?.aborted || (error as Error).name === "AbortError")
+          return null;
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Could not load reservation form",
+        );
+        return null;
+      } finally {
+        if (!signal?.aborted) setLoadingReservation(false);
+      }
+    },
+    [needsOperationsData, reservation._id],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -253,6 +261,7 @@ export default function ReservationOperationsPanel({
       startFuelLevel: "",
       conditionNotes: "",
       existingDamages: "",
+      staffId: "",
       staffSignature: "",
       keyCount: "1",
       equipment: "",
@@ -264,6 +273,8 @@ export default function ReservationOperationsPanel({
       newDamages: "",
       missingEquipment: "",
       notes: "",
+      staffId: "",
+      staffSignature: "",
       cleaningIssue: false,
     });
     void loadReservation(controller.signal);
@@ -281,6 +292,16 @@ export default function ReservationOperationsPanel({
           loadedCategory?.deposit?.handoverDepositPrice ??
           0,
       ),
+      staffId: String(loadedReservation.handover?.staff?.user || ""),
+      staffSignature:
+        loadedReservation.handover?.staff?.name ||
+        loadedReservation.handover?.staffSignature ||
+        "",
+    }));
+    setInspection((current) => ({
+      ...current,
+      staffId: String(loadedReservation.inspection?.staff?.user || ""),
+      staffSignature: loadedReservation.inspection?.staff?.name || "",
     }));
     setRefund({
       fuel: String(loadedReservation.refund?.charges?.fuel ?? 0),
@@ -823,7 +844,7 @@ export default function ReservationOperationsPanel({
       [handover.startMileage, "Starting mileage"],
       [handover.startFuelLevel, "Fuel level"],
       [handover.keyCount, "Key count"],
-      [handover.staffSignature, "Staff signature/name"],
+      [handover.staffId, "Handover staff member"],
       [handover.conditionNotes, "Condition notes"],
       [handover.existingDamages, "Existing damages"],
       [handover.equipment, "Equipment"],
@@ -871,6 +892,7 @@ export default function ReservationOperationsPanel({
       [inspection.newDamages, "New damages"],
       [inspection.missingEquipment, "Missing equipment"],
       [inspection.notes, "Inspection notes"],
+      [inspection.staffId, "Return inspection staff member"],
     ];
     const missing = requiredFields.find(([, value]) => !String(value).trim());
     if (missing) {
@@ -923,8 +945,7 @@ export default function ReservationOperationsPanel({
   const submitRefund = async (action: "review" | "approve" | "complete") => {
     if (
       additionalCharges.some(
-        (charge) =>
-          (Number(charge.amount) || 0) <= 0 || !charge.reason.trim(),
+        (charge) => (Number(charge.amount) || 0) <= 0 || !charge.reason.trim(),
       )
     ) {
       showToast.error("Every additional deduction needs an amount and reason");
@@ -1136,14 +1157,18 @@ export default function ReservationOperationsPanel({
                 />
               </label>
               <label className="text-xs text-gray-400">
-                Staff name / signature
-                <input
-                  className={`${fieldClass} mt-1`}
-                  required
-                  placeholder="Staff name"
-                  value={handover.staffSignature}
-                  onChange={(e) =>
-                    setHandover({ ...handover, staffSignature: e.target.value })
+                Handover completed by
+                <SearchableStaffSelect
+                  value={handover.staffId}
+                  selectedName={handover.staffSignature}
+                  disabled={busy}
+                  onChange={(staff) =>
+                    setHandover({
+                      ...handover,
+                      staffId: staff._id,
+                      staffSignature:
+                        `${staff.name} ${staff.lastName || ""}`.trim(),
+                    })
                   }
                 />
               </label>
@@ -1252,6 +1277,22 @@ export default function ReservationOperationsPanel({
                         setInspection({
                           ...inspection,
                           lateMinutes: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400">
+                    Return inspection completed by
+                    <SearchableStaffSelect
+                      value={inspection.staffId}
+                      selectedName={inspection.staffSignature}
+                      disabled={busy}
+                      onChange={(staff) =>
+                        setInspection({
+                          ...inspection,
+                          staffId: staff._id,
+                          staffSignature:
+                            `${staff.name} ${staff.lastName || ""}`.trim(),
                         })
                       }
                     />

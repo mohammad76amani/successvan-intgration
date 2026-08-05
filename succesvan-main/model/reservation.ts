@@ -155,6 +155,11 @@ const reservationSchema = new mongoose.Schema(
       photos: [{ type: String, trim: true }],
       customerSignature: { type: String },
       staffSignature: { type: String },
+      staff: {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        name: { type: String, trim: true },
+        role: { type: String, enum: ["admin", "owner"] },
+      },
       keyCount: { type: Number, min: 0 },
       equipment: [{ type: String, trim: true }],
       customFields: [
@@ -181,6 +186,11 @@ const reservationSchema = new mongoose.Schema(
       missingEquipment: [{ type: String, trim: true }],
       photos: [{ type: String, trim: true }],
       notes: { type: String, trim: true },
+      staff: {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        name: { type: String, trim: true },
+        role: { type: String, enum: ["admin", "owner"] },
+      },
       customFields: [
         {
           templateFieldId: { type: String, trim: true },

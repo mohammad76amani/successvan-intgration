@@ -327,6 +327,11 @@ export interface Reservation {
     photos?: string[];
     customerSignature?: string;
     staffSignature?: string;
+    staff?: {
+      user?: string;
+      name?: string;
+      role?: "admin" | "owner";
+    };
     keyCount?: number;
     equipment?: string[];
     customFields?: {
@@ -351,6 +356,11 @@ export interface Reservation {
     missingEquipment?: string[];
     photos?: string[];
     notes?: string;
+    staff?: {
+      user?: string;
+      name?: string;
+      role?: "admin" | "owner";
+    };
     customFields?: {
       templateFieldId?: string;
       label?: string;

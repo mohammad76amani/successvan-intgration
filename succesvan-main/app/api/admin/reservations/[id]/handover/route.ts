@@ -5,6 +5,7 @@ import { canAccessDashboard } from "@/lib/roles";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
 import Vehicle from "@/model/vehicle";
+import User from "@/model/user";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -39,6 +40,14 @@ export async function POST(
     const existing = await Reservation.findById(id);
     if (!existing) return errorResponse("Reservation not found", 404);
     if (!existing.vehicle) return errorResponse("Assign a vehicle first", 409);
+    const staff = await User.findOne({
+      _id: body.staffId,
+      role: { $in: ["admin", "owner"] },
+    }).select("name lastName role");
+    if (!staff) {
+      return errorResponse("Select a valid admin or owner", 400);
+    }
+    const staffName = [staff.name, staff.lastName].filter(Boolean).join(" ");
 
     const now = new Date();
     const handoverDepositAmount = Math.max(
@@ -59,7 +68,8 @@ export async function POST(
             existingDamages: Array.isArray(body.existingDamages)
               ? body.existingDamages.filter(Boolean)
               : [],
-            staffSignature: String(body.staffSignature || "").trim(),
+            staffSignature: staffName,
+            staff: { user: staff._id, name: staffName, role: staff.role },
             keyCount: Math.max(0, Number(body.keyCount) || 0),
             equipment: Array.isArray(body.equipment)
               ? body.equipment.filter(Boolean)

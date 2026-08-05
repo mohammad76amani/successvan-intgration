@@ -38,6 +38,12 @@ export async function GET(req: NextRequest) {
     const username = searchParams.get("username");
     const email = searchParams.get("email");
     const phone = searchParams.get("phone");
+    const roles = (searchParams.get("roles") || "")
+      .split(",")
+      .map((role) => role.trim())
+      .filter((role): role is (typeof roleOptions)[number] =>
+        roleOptions.includes(role as (typeof roleOptions)[number]),
+      );
     const createdAtStart = searchParams.get("createdAtStart");
     const createdAtEnd = searchParams.get("createdAtEnd");
 
@@ -50,6 +56,10 @@ export async function GET(req: NextRequest) {
 
     const query: Record<string, unknown> = {};
     const andConditions: Record<string, unknown>[] = [];
+
+    if (roles.length > 0) {
+      andConditions.push({ role: { $in: roles } });
+    }
 
     if (search) {
       const escapedSearch = escapeRegex(search);
@@ -80,7 +90,7 @@ export async function GET(req: NextRequest) {
 
       andConditions.push({ $or: searchConditions });
     }
-    
+
     if (username) {
       const escapedUsername = escapeRegex(username);
       andConditions.push({
@@ -111,11 +121,11 @@ export async function GET(req: NextRequest) {
     if (createdAtStart || createdAtEnd) {
       const createdAtQuery: Record<string, Date> = {};
       if (createdAtStart) {
-        const [y, m, d] = createdAtStart.split('-').map(Number);
+        const [y, m, d] = createdAtStart.split("-").map(Number);
         createdAtQuery.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
       }
       if (createdAtEnd) {
-        const [y, m, d] = createdAtEnd.split('-').map(Number);
+        const [y, m, d] = createdAtEnd.split("-").map(Number);
         createdAtQuery.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
       }
       andConditions.push({ createdAt: createdAtQuery });
@@ -233,7 +243,10 @@ export async function POST(req: NextRequest) {
       "code" in error &&
       error.code === 11000
     ) {
-      return errorResponse("A user with this phone or email already exists", 409);
+      return errorResponse(
+        "A user with this phone or email already exists",
+        409,
+      );
     }
 
     const message = error instanceof Error ? error.message : "Unknown error";
