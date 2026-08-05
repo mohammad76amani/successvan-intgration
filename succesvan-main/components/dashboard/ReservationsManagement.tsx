@@ -15,6 +15,7 @@ import {
   FiDownload,
   FiAlertTriangle,
   FiRefreshCw,
+  FiSmartphone,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import DynamicTableView from "./DynamicTableView";
@@ -1891,6 +1892,16 @@ export default function ReservationsManagement() {
             })),
           },
           {
+            key: "reservationType",
+            label: "Type",
+            type: "select",
+            options: [
+              { _id: "Website", name: "Website" },
+              { _id: "Office", name: "Office" },
+              { _id: "App", name: "App" },
+            ],
+          },
+          {
             key: "totalPrice",
             label: "Total Price Range",
             type: "range",
@@ -2020,6 +2031,17 @@ export default function ReservationsManagement() {
                     title="Office"
                   >
                     <FiBriefcase className="text-sm" />
+                  </span>
+                );
+              }
+
+              if (value === "App") {
+                return (
+                  <span
+                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    title="App"
+                  >
+                    <FiSmartphone className="text-sm" />
                   </span>
                 );
               }

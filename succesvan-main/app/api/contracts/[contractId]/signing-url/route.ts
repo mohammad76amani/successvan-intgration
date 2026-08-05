@@ -13,8 +13,13 @@ export async function POST(
   try {
     const auth = requireCustomerAuth(req);
     const { contractId } = await params;
+    const body = await req.json().catch(() => ({}));
+    const returnUrl =
+      typeof body?.returnUrl === "string" && body.returnUrl.trim()
+        ? body.returnUrl.trim()
+        : undefined;
     return successResponse(
-      await createContractSigningUrl(contractId, auth.userId),
+      await createContractSigningUrl(contractId, auth.userId, { returnUrl }),
     );
   } catch (error) {
     return errorResponse(safeErrorMessage(error), errorStatus(error));

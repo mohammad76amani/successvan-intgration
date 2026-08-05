@@ -12,13 +12,14 @@ export type RecipientViewInput = {
   signerEmail: string;
   signerRecipientId: string;
   signerClientUserId: string;
+  returnUrl?: string;
 };
 
 export async function createEmbeddedSigningUrl(input: RecipientViewInput) {
   const { accountId, envelopesApi } = await getDocuSignApiClient();
   const env = getDocuSignEnv();
   const docusign = getDocuSignSdk();
-  const returnUrl = new URL(env.DOCUSIGN_SIGNING_RETURN_URL);
+  const returnUrl = new URL(input.returnUrl || env.DOCUSIGN_SIGNING_RETURN_URL);
   returnUrl.searchParams.set("contractId", input.contractId);
 
   const recipientViewRequest = docusign.RecipientViewRequest.constructFromObject({

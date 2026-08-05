@@ -289,7 +289,7 @@ export interface Reservation {
   manualPricePerDay?: number;
   manualPriceNote?: string;
   perInvoice?: boolean;
-  reservationType?: "Office" | "Website";
+  reservationType?: "Office" | "Website" | "App";
   deposit?: {
     amount?: number;
     originalAmount?: number;

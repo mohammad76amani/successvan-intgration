@@ -637,6 +637,7 @@ export async function sendContract(contractId: string, actor: ActorInput) {
 export async function createContractSigningUrl(
   contractId: string,
   customerId: string,
+  options?: { returnUrl?: string },
 ) {
   await connect();
   const contract = await getContractForCustomer(contractId, customerId);
@@ -667,6 +668,7 @@ export async function createContractSigningUrl(
       signerEmail: contract.customerEmail,
       signerRecipientId: contract.docusign.signerRecipientId,
       signerClientUserId: contract.docusign.signerClientUserId,
+      returnUrl: options?.returnUrl,
     });
   } catch (error) {
     if (!isUnknownEnvelopeRecipient(error)) throw error;
@@ -688,6 +690,7 @@ export async function createContractSigningUrl(
       signerEmail: repairedContract.customerEmail,
       signerRecipientId: repairedContract.docusign.signerRecipientId,
       signerClientUserId: repairedContract.docusign.signerClientUserId,
+      returnUrl: options?.returnUrl,
     });
     signingContract = repairedContract;
   }

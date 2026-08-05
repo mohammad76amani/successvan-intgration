@@ -106,7 +106,7 @@ const reservationSchema = new mongoose.Schema(
     // Per-invoice: admin creates the reservation with no price; the final
     // total is entered when the admin marks the reservation as completed.
     perInvoice: { type: Boolean, default: false },
-    reservationType: { type: String, enum: ["Office", "Website"] },
+    reservationType: { type: String, enum: ["Office", "Website", "App"] },
     // ── Booking journey data ─────────────────────────────────────
     deposit: {
       amount: { type: Number },
