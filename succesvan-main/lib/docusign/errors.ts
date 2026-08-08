@@ -45,17 +45,29 @@ export function errorStatus(error: unknown) {
 function extractDocuSignErrorText(error: unknown): string {
   if (error && typeof error === "object") {
     const e = error as Record<string, unknown>;
-    const res = e.response as Record<string, unknown> | undefined;
+    const res = e.response as
+      | {
+          status?: number;
+          data?: unknown;
+          text?: unknown;
+          body?: unknown;
+        }
+      | undefined;
 
     // axios: error.response.data
     if (res?.data) {
       const d = res.data;
-      if (typeof d === "string") return d;
-      if (typeof d === "object") return JSON.stringify(d);
+      const text = typeof d === "string" ? d : JSON.stringify(d);
+      return res.status ? `${res.status}: ${text}` : text;
     }
     // superagent: error.response.text / error.response.body
-    if (typeof res?.text === "string") return res.text;
-    if (res?.body) return JSON.stringify(res.body);
+    if (typeof res?.text === "string") {
+      return res.status ? `${res.status}: ${res.text}` : res.text;
+    }
+    if (res?.body) {
+      const text = JSON.stringify(res.body);
+      return res.status ? `${res.status}: ${text}` : text;
+    }
     // plain Error or SDK error with .message
     if (typeof e.message === "string") return e.message;
   }
@@ -84,11 +96,15 @@ export function normalizeDocuSignSdkError(error: unknown) {
   if (
     lower.includes("invalid_grant") ||
     lower.includes("invalid_client") ||
-    lower.includes("access_denied")
+    lower.includes("access_denied") ||
+    (lower.includes("444") &&
+      lower.includes("custom error module"))
   ) {
     return new ContractIntegrationError(
       "DOCUSIGN_AUTH_FAILED",
-      `DocuSign authentication failed: ${raw.slice(0, 200)}`,
+      lower.includes("444")
+        ? "DocuSign JWT authentication was rejected. Check DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_USER_ID, DOCUSIGN_PRIVATE_KEY, consent, and sandbox/production account settings in .env."
+        : `DocuSign authentication failed: ${raw.slice(0, 200)}`,
       502,
     );
   }

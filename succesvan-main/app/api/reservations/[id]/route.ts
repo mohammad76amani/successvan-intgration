@@ -156,6 +156,17 @@ export async function PATCH(
       body.status = normalized;
     }
 
+    // Keep compatibility with the legacy misspelled Reservation field. The
+    // model and dashboard currently read `messege`, while some clients may
+    // naturally send `message`.
+    if (
+      body.messege === undefined &&
+      typeof body.message === "string" &&
+      body.message.trim()
+    ) {
+      body.messege = body.message;
+    }
+
     // Completing/canceling releases the fleet vehicle, but the reservation
     // keeps its reference as permanent booking history.
     if (
@@ -257,8 +268,11 @@ export async function PATCH(
         "endDateDisplay",
         "pickupTime",
         "returnTime",
+        "driverAge",
+        "dirverAge",
         "totalPrice",
         "addOns",
+        "messege",
         "selectedGear",
         "pickupExtensionPrice",
         "returnExtensionPrice",
