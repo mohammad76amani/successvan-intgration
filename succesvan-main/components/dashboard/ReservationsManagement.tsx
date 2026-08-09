@@ -1316,7 +1316,9 @@ export default function ReservationsManagement() {
         const [vehiclesRes, usersRes, categoriesRes, officesRes, addOnsRes] =
           await Promise.all([
             fetch("/api/vehicles?status=active&limit=1000"),
-            fetch("/api/users?limit=100"),
+            fetch("/api/users?limit=100", {
+              headers: clientAuthHeaders(),
+            }),
             fetch("/api/categories?status=active"),
             fetch("/api/offices"),
             fetch("/api/addons?status=active"),
@@ -1838,7 +1840,7 @@ export default function ReservationsManagement() {
   };
 
   return (
-    <div className="space-y-5 sm:space-y-7">
+    <div className=" ">
       <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.07] via-white/[0.035] to-[#fe9a00]/[0.055] p-4 shadow-[0_16px_44px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <h3 className="text-lg font-black tracking-tight text-white sm:text-xl">
           Quick Actions

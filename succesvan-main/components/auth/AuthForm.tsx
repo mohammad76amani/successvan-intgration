@@ -174,7 +174,7 @@ export default function AuthForm() {
         setUser(data.data.user);
         showToast.success("Welcome back! Redirecting...");
         setTimeout(() => {
-          window.location.href = "/";
+          window.location.href = "/customerDashboard";
         }, 1500);
       } else {
         showToast.success("Phone verified! Please complete registration.");

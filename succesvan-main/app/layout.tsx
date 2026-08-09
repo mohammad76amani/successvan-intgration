@@ -3,13 +3,11 @@ import { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navbar from "@/components/global/Navbar";
 import Footer from "@/components/global/footer";
-import FloatingActionMenu from "@/components/ui/FloatingActionMenu";
 import AnnouncementBar, { AnnouncementProvider } from "@/components/global/AnnouncementBar";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "@/context/AuthContext";
- import Script from "next/script";
+import Script from "next/script";
 import Breadcrumbs from "@/components/global/breadcrumbs";
-import ErrorBoundary from "@/components/global/ErrorBoundary";
 import ClockGuard from "@/components/global/ClockGuard";
 
 const inter = Inter({
@@ -39,6 +37,7 @@ export const metadata: Metadata = {
   keywords:
     "van hire London, van rental, last minute van hire, North West London, Cricklewood, Golders Green, Hampstead, Hendon, Mill Hill, Wembley",
   authors: [{ name: "SuccessVan" }],
+  applicationName: "SuccessVan",
   creator: "SuccessVan",
   publisher: "SuccessVan",
   robots: "index, follow",
@@ -68,6 +67,21 @@ export const metadata: Metadata = {
     description: "Premium van hire and rental services in North West London",
     images: ["https://successvanhire.co.uk/icon.png"],
   },
+  appleWebApp: {
+    capable: true,
+    title: "SuccessVan",
+    statusBarStyle: "black-translucent",
+    startupImage: [
+      {
+        url: "/android-chrome-512x512.png",
+        media:
+          "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)",
+      },
+    ],
+  },
+  formatDetection: {
+    telephone: false,
+  },
   manifest: "/site.webmanifest",
 };
 
@@ -75,6 +89,7 @@ export const viewport: Viewport = {
   themeColor: "#fe9a00",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -107,14 +122,9 @@ export default function RootLayout({
           fetchPriority="high"
           imageSizes="100vw"
         />
-        <link
-          rel="preload"
-          href="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2"
-          as="font"
-          type="font/woff2"
-          crossOrigin="anonymous"
-        />
         <meta name="theme-color" content="#fe9a00" />
+        <meta name="application-name" content="SuccessVan" />
+        <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta

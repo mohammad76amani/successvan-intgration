@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import {
   FiFileText,
@@ -8,6 +9,11 @@ import {
   FiRefreshCw,
   FiCheckCircle,
   FiClock,
+  FiCalendar,
+  FiCreditCard,
+  FiHeadphones,
+  FiEye,
+  FiMoreVertical,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import type { SafeContractSummary } from "@/lib/docusign/types";
@@ -39,6 +45,33 @@ function formatDate(value?: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+function agreementDate(contract: SafeContractSummary) {
+  return (
+    contract.docusign?.completedAt ||
+    contract.docusign?.sentAt ||
+    contract.createdAt
+  );
+}
+
+function formatTime(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function splitVehicleLabel(value?: string) {
+  if (!value) return { title: "Rental vehicle", meta: "Vehicle details pending" };
+  const parts = value.split(" - ");
+  return {
+    title: parts[0]?.trim() || value,
+    meta: parts.slice(1).join(" - ").trim() || "Agreement vehicle",
+  };
 }
 
 const statusBadgeStyles: Record<string, string> = {

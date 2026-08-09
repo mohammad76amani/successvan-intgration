@@ -1,19 +1,36 @@
 {
-  "name": "SuccessVan",
+  "name": "SuccessVan - Van Hire & Rental in London",
   "short_name": "SuccessVan",
-  "description": "Premium van hire and rental services in North West London. Book your van today with SuccessVan - serving Cricklewood, Golders Green, Hampstead, Hendon, Mill Hill, Wembley and more.",
+  "description": "Premium van hire and rental services in North West London. Book your van today with SuccessVan.",
   "id": "/?source=pwa",
-  "start_url": "/",
-
+  "start_url": "/?source=pwa",
   "scope": "/",
   "lang": "en-GB",
-  "orientation": "portrait-primary",
-  "categories": ["business", "transportation", "travel"],
-  "theme_color": "#fe9a00",
-  "background_color": "#0f172b",
+  "dir": "ltr",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "theme_color": "#fe9a00",
+  "background_color": "#fe9a00",
+  "categories": ["business", "transportation", "travel"],
   "prefer_related_applications": false,
   "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/android-chrome-192x192.png",
       "sizes": "192x192",
@@ -27,26 +44,10 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/icon.png",
-      "sizes": "192x192",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon-16x16.png",
-      "sizes": "16x16",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon-32x32.png",
-      "sizes": "32x32",
-      "type": "image/png"
+      "purpose": "any"
     }
   ],
   "shortcuts": [
@@ -55,42 +56,39 @@
       "short_name": "Book",
       "description": "Book your van rental now",
       "url": "/reservation",
-      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
-      "name": "Our Fleet",
-      "short_name": "Fleet",
-      "description": "View our available vans",
-      "url": "/reservation",
-      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }]
+      "name": "Customer Dashboard",
+      "short_name": "Dashboard",
+      "description": "Open your SuccessVan dashboard",
+      "url": "/customerDashboard",
+      "icons": [
+        {
+          "src": "/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Contact Us",
       "short_name": "Contact",
-      "description": "Get in touch with us",
+      "description": "Get in touch with SuccessVan",
       "url": "/contact-us",
-      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-wide.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "SuccessVan Fleet Booking"
-    },
-    {
-      "src": "/screenshot-narrow.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "SuccessVan Mobile Booking"
-    }
-  ],
-
-  "related_applications": [],
-  "protocol_handler": {
-    "origin": "https://successvanhire.co.uk"
-  }
+  ]
 }

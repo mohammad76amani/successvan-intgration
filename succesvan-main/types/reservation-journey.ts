@@ -53,6 +53,7 @@ export interface ReservationJourneyViewModel {
   reservationId: string;
   bookingReference: string;
   vehicleName: string;
+  vehicleNumber?: string;
   vehicleImage?: string;
   pickupDateTime: string;
   returnDateTime: string;

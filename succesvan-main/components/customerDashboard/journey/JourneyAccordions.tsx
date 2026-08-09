@@ -49,6 +49,213 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   );
 }
 
+type InspectionComparisonRow = {
+  label: string;
+  before?: React.ReactNode;
+  after?: React.ReactNode;
+  note?: React.ReactNode;
+};
+
+const hasDisplayValue = (value: unknown) =>
+  value !== undefined &&
+  value !== null &&
+  value !== "" &&
+  !(Array.isArray(value) && value.length === 0);
+
+const listValue = (
+  items?: string[],
+  emptyLabel = "None recorded",
+): React.ReactNode =>
+  items && items.length > 0 ? (
+    <span className="leading-5">{items.join(", ")}</span>
+  ) : (
+    <span className="text-slate-500">{emptyLabel}</span>
+  );
+
+const plainValue = (
+  value: unknown,
+  emptyLabel = "Not recorded",
+): React.ReactNode =>
+  hasDisplayValue(value) ? (
+    String(value)
+  ) : (
+    <span className="text-slate-500">{emptyLabel}</span>
+  );
+
+const countValue = (count?: number, singular = "photo") => {
+  const safeCount = Number(count || 0);
+  return safeCount > 0
+    ? `${safeCount} ${singular}${safeCount === 1 ? "" : "s"}`
+    : "No photos";
+};
+
+const statusPill = (
+  active: boolean | undefined,
+  activeLabel: string,
+  inactiveLabel: string,
+) => (
+  <span
+    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${
+      active
+        ? "border-red-400/30 bg-red-500/10 text-red-200"
+        : "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+    }`}
+  >
+    {active ? activeLabel : inactiveLabel}
+  </span>
+);
+
+function InspectionComparisonTable({
+  handover,
+  inspection,
+}: {
+  handover?: Reservation["handover"];
+  inspection?: Reservation["inspection"];
+}) {
+  const mileageDifference =
+    typeof handover?.startMileage === "number" &&
+    typeof inspection?.returnMileage === "number"
+      ? inspection.returnMileage - handover.startMileage
+      : null;
+
+  const rows: InspectionComparisonRow[] = [
+    {
+      label: "Mileage",
+      before: plainValue(handover?.startMileage),
+      after: plainValue(inspection?.returnMileage),
+      note:
+        mileageDifference !== null ? (
+          <span className="rounded-full border border-[#fe9a00]/30 bg-[#fe9a00]/10 px-2.5 py-1 text-xs font-black text-[#fe9a00]">
+            {mileageDifference >= 0 ? "+" : ""}
+            {mileageDifference} miles
+          </span>
+        ) : undefined,
+    },
+    {
+      label: "Fuel level",
+      before: plainValue(handover?.startFuelLevel),
+      after: plainValue(inspection?.returnFuelLevel),
+    },
+    {
+      label: "Vehicle condition",
+      before: plainValue(handover?.conditionNotes, "No notes"),
+      after: plainValue(inspection?.notes, "No notes"),
+    },
+    {
+      label: "Damages",
+      before: listValue(handover?.existingDamages, "No existing damage"),
+      after: listValue(inspection?.newDamages, "No new damage"),
+    },
+    {
+      label: "Equipment",
+      before: listValue(handover?.equipment, "No equipment recorded"),
+      after: listValue(inspection?.missingEquipment, "Nothing missing"),
+    },
+    {
+      label: "Photos",
+      before: countValue(handover?.photos?.length),
+      after: countValue(inspection?.photos?.length),
+    },
+    {
+      label: "Timing",
+      before: plainValue(
+        handover?.completedAt ? compactDate(handover.completedAt) : undefined,
+      ),
+      after: (
+        <span className="inline-flex flex-wrap items-center justify-end gap-2">
+          {plainValue(
+            inspection?.completedAt
+              ? compactDate(inspection.completedAt)
+              : inspection?.receivedAt
+                ? compactDate(inspection.receivedAt)
+                : undefined,
+          )}
+          {inspection &&
+            statusPill(
+              inspection.lateReturn,
+              inspection.lateMinutes
+                ? `${inspection.lateMinutes} min late`
+                : "Late",
+              "On time",
+            )}
+        </span>
+      ),
+    },
+    {
+      label: "Cleanliness",
+      before: <span className="text-slate-500">Checked at handover</span>,
+      after: inspection
+        ? statusPill(inspection.cleaningIssue, "Issue found", "No issue")
+        : plainValue(undefined),
+    },
+  ];
+
+  if (!handover && !inspection) {
+    return (
+      <Placeholder text="The handover and return inspection comparison will appear here once the vehicle checks are completed." />
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
+      <div className="border-b border-white/10 bg-gradient-to-r from-white/[0.07] via-white/[0.03] to-[#fe9a00]/[0.08] px-4 py-4 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#fe9a00]">
+              Before / after inspection
+            </p>
+            <h3 className="mt-1 text-base font-black tracking-tight text-white sm:text-lg">
+              Vehicle condition comparison
+            </h3>
+          </div>
+          <span className="w-fit rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-slate-300">
+            Customer-visible report
+          </span>
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-[1.1fr_1.4fr_1.4fr_0.9fr] gap-3 border-b border-white/10 bg-black/20 px-4 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 lg:grid">
+        <span>Check</span>
+        <span>Before handover</span>
+        <span>After return</span>
+        <span className="text-right">Change</span>
+      </div>
+
+      <div className="divide-y divide-white/10">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[1.1fr_1.4fr_1.4fr_0.9fr] lg:items-center"
+          >
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 lg:text-sm lg:normal-case lg:tracking-normal lg:text-white">
+              {row.label}
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 lg:hidden">
+                Before
+              </p>
+              <div className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2 font-semibold text-slate-100 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                {row.before ?? <span className="text-slate-500">-</span>}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 lg:hidden">
+                After
+              </p>
+              <div className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2 font-semibold text-slate-100 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                {row.after ?? <span className="text-slate-500">-</span>}
+              </div>
+            </div>
+            <div className="flex justify-start lg:justify-end">
+              {row.note ?? <span className="text-slate-600">-</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const compactDate = (value?: Date | string) =>
   value
     ? new Date(value).toLocaleString("en-GB", { timeZone: "Europe/London" })
@@ -338,6 +545,7 @@ export default function JourneyAccordions({
 
   const handover = reservation.handover;
   const inspection = reservation.inspection;
+  const hasInspectionComparison = Boolean(handover || inspection);
   const refund = reservation.refund;
   const refundDeductions = refundDeductionItems(refund);
   const compactRefundDeductions = refundDeductions.slice(0, 3);
@@ -647,14 +855,20 @@ export default function JourneyAccordions({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {contract?.files.source && (
+            {(contract?.files.signed || contract?.files.source) && (
               <button
                 type="button"
-                onClick={() => onDownloadContract("source")}
+                onClick={() =>
+                  onDownloadContract(
+                    contract?.files.signed ? "signed" : "source",
+                  )
+                }
                 className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
               >
                 <FiDownload />
-                Download contract
+                {contract?.files.signed
+                  ? "Download signed contract"
+                  : "Download contract"}
               </button>
             )}
             <span className="inline-flex w-fit rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
@@ -665,6 +879,15 @@ export default function JourneyAccordions({
       </div>
 
       {/* ── Documents ───────────────────────────────────────── */}
+      {hasInspectionComparison && openSection !== "inspection" && (
+        <div className="mt-5">
+          <InspectionComparisonTable
+            handover={handover}
+            inspection={inspection}
+          />
+        </div>
+      )}
+
       <Section id="documents" open={openSection === "documents"}>
         <div className="space-y-2">
           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
@@ -842,47 +1065,10 @@ export default function JourneyAccordions({
 
       {/* ── Return inspection ──────────────────────────────── */}
       <Section id="inspection" open={openSection === "inspection"}>
-        {inspection?.completedAt ? (
-          <>
-            <Row label="Return mileage" value={inspection.returnMileage} />
-            <Row label="Return fuel level" value={inspection.returnFuelLevel} />
-            {(inspection.newDamages?.length ?? 0) > 0 && (
-              <Row
-                label="New damages"
-                value={inspection.newDamages!.join(", ")}
-              />
-            )}
-            <Row
-              label="Late return"
-              value={inspection.lateReturn ? "Yes" : "No"}
-            />
-            {(inspection.lateMinutes ?? 0) > 0 && (
-              <Row
-                label="Late by"
-                value={`${inspection.lateMinutes} minutes`}
-              />
-            )}
-            <Row
-              label="Cleaning issue"
-              value={inspection.cleaningIssue ? "Yes" : "No"}
-            />
-            {(inspection.missingEquipment?.length ?? 0) > 0 && (
-              <Row
-                label="Missing equipment"
-                value={inspection.missingEquipment!.join(", ")}
-              />
-            )}
-            {inspection.notes && <Row label="Notes" value={inspection.notes} />}
-            <Row
-              label="Completed"
-              value={new Date(inspection.completedAt).toLocaleString("en-GB", {
-                timeZone: "Europe/London",
-              })}
-            />
-          </>
-        ) : (
-          <Placeholder text="We inspect the van after you return it. The inspection result will appear here." />
-        )}
+        <InspectionComparisonTable
+          handover={handover}
+          inspection={inspection}
+        />
       </Section>
 
       {/* ── Refund summary ─────────────────────────────────── */}

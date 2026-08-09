@@ -15,14 +15,16 @@ import {
   FiCalendar,
   FiClock,
   FiPrinter,
-  FiDownload,
   FiFileText,
+  FiPhone,
+  FiTruck,
 } from "react-icons/fi";
 import ProfileContent from "./ProfileContent";
 import DynamicTableView from "../dashboard/DynamicTableView";
 import { Reservation } from "@/types/type";
 import { showToast } from "@/lib/toast";
 import { clientAuthHeaders } from "@/lib/client-auth";
+import { useAuth } from "@/context/AuthContext";
 import { Range, DateRange } from "react-date-range";
 import { usePriceCalculation } from "@/hooks/usePriceCalculation";
 import { generateTimeSlots } from "@/utils/timeSlots";
@@ -85,7 +87,20 @@ const hasCompleteLicence = (userData: unknown) => {
   return Boolean(licenceAttached?.front && licenceAttached?.back);
 };
 
+function getInitials(name: string) {
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "SV"
+  );
+}
+
 export default function CustomerDashboard() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("reserves");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -94,6 +109,16 @@ export default function CustomerDashboard() {
   const [scrollToSection, setScrollToSection] = useState<
     "license" | "address" | null
   >(null);
+  const customerName = useMemo(
+    () => [user?.name, user?.lastName].filter(Boolean).join(" ") || "Customer",
+    [user?.lastName, user?.name],
+  );
+  const customerPhone =
+    user?.phoneData?.phoneNumber || user?.phoneNumber || "No phone saved";
+  const customerInitials = useMemo(
+    () => getInitials(customerName),
+    [customerName],
+  );
 
   const checkLicenseStatus = () => {
     const user = localStorage.getItem("user");
@@ -189,80 +214,103 @@ export default function CustomerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172b]">
+    <div className="min-h-screen  bg-[#071326]/95 p-0 text-white sm:p-4 lg:p-7">
+      <div className="min-h-screen overflow-hidden border border-white/10 bg-[radial-gradient(circle_at_top_right,_rgba(254,154,0,0.12),_transparent_24%),radial-gradient(circle_at_18%_0%,_rgba(37,99,235,0.16),_transparent_28%),#061025] shadow-2xl shadow-black/60 sm:rounded-2xl">
       <aside
-        className={`fixed left-0 top-0 h-screen w-64 bg-[#1a2847] border-r border-white/10 z-50 transition-transform duration-300 flex flex-col ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-white/10 bg-[#071326]/95 shadow-2xl shadow-black/30 backdrop-blur-xl transition-transform duration-300    ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="p-6 border-b border-white/10">
-          <h1 className="text-2xl font-black text-white">
-            Success<span className="text-[#fe9a00]">Van</span>
+        <div className="border-b border-white/10 p-5">
+          <h1 className="flex items-center gap-2 text-xl font-black text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 text-[#fe9a00]">
+              <FiTruck />
+            </span>
+            Success<span className="-ml-1 text-[#fe9a00]">Van</span>
           </h1>
         </div>
 
-        <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
+        <nav className="flex-1 space-y-2 overflow-y-auto p-4">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => handleTabChange(item.id)}
-              className={`w-full flex items-center cursor-pointer gap-3 px-4 py-2.5 rounded-lg transition-all duration-300 ${
+              className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-3 text-sm transition-all duration-300 ${
                 activeTab === item.id
-                  ? "bg-[#fe9a00] text-white shadow-lg"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#ff7a00] to-[#fe9a00] text-white shadow-lg shadow-[#fe9a00]/25"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
-              <span className="font-semibold">{item.label}</span>
+              <span className="text-lg">{item.icon}</span>
+              <span className="font-bold">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="p-4 space-y-2 border-t border-white/10">
-          <Link
-            href="/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold"
-          >
-            <FiExternalLink className="text-lg" />
-            <span>Back to Site</span>
-          </Link>
+        <div className="space-y-3 border-t border-white/10 p-4">
+         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/20 text-xs font-black text-white">
+                {customerInitials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-black text-white">
+                  {customerName}
+                </p>
+                <p className="truncate text-[11px] font-semibold text-slate-500">
+                  {customerPhone}
+                </p>
+              </div>
+            </div>
+          </div>
           <button
             onClick={() => setShowLogoutModal(true)}
-            className="w-full flex items-center justify-center cursor-pointer gap-2 px-4 py-3 border border-red-500 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors font-semibold"
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-500/60 px-4 py-3 text-sm font-black text-red-400 transition-colors hover:bg-red-500/10"
           >
             <FiLogOut className="text-lg" />
             <span>Logout</span>
           </button>
+       
         </div>
       </aside>
 
       <main className="lg:ml-64">
-        <div className="sticky top-0 bg-[#1a2847] border-b border-white/10 px-4 sm:px-6 py-4 flex items-center justify-between z-40">
+        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-white/10 bg-[#071326]/95 px-4 py-4 backdrop-blur-xl sm:px-6 lg:static lg:border-b-0 lg:bg-transparent lg:px-8 lg:pb-2 lg:pt-6">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden w-10 h-10 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
           >
             {sidebarOpen ? <FiX /> : <FiMenu />}
           </button>
-          <h2 className="text-lg md:text-2xl font-black text-white">
-            {menuItems.find((item) => item.id === activeTab)?.label}
-          </h2>
+          <div className="min-w-0 flex-1 px-3">
+            <h2 className="truncate text-2xl font-black tracking-tight text-white md:text-3xl">
+              {menuItems.find((item) => item.id === activeTab)?.label}
+            </h2>
+            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 text-[11px] font-bold text-slate-400 sm:text-xs">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <FiUser className="shrink-0 text-slate-500" />
+                <span className="truncate">{customerName}</span>
+              </span>
+              <span className="hidden min-w-0 items-center gap-1.5 sm:inline-flex">
+                <FiPhone className="shrink-0 text-[#fe9a00]" />
+                <span className="truncate">{customerPhone}</span>
+              </span>
+            </div>
+          </div>
           <div>
             <Link
               href="/"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-2 p-1.5 md:px-4 md:py-3 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#ff7a00] to-[#fe9a00] p-2 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/20 transition hover:brightness-110 md:px-5 md:py-3"
             >
               <FiExternalLink className="text-lg" />
-              <span>Back to Site</span>
+              <span className="hidden sm:inline">Back to Site</span>
             </Link>
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 lg:p-8">
+        <div className="px-4 pb-6 sm:px-6 lg:px-8">
           {!hasLicense && (
             <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
               <FiAlertCircle className="text-yellow-500 text-xl mt-0.5 shrink-0" />
@@ -348,6 +396,7 @@ export default function CustomerDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

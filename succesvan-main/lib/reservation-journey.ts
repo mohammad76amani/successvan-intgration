@@ -314,7 +314,9 @@ export function buildReservationJourney(
         deposit?: { securePayPrice?: number };
       }
     | undefined;
-  const vehicle = reservation.vehicle as { title?: string } | undefined;
+  const vehicle = reservation.vehicle as
+    | { title?: string; number?: string | number }
+    | undefined;
   const office = reservation.office as
     { name?: string; address?: string } | undefined;
 
@@ -325,6 +327,10 @@ export function buildReservationJourney(
     reservationId: reservation._id || "",
     bookingReference: reservation.reservationCode || reservation._id || "-",
     vehicleName: vehicle?.title || category?.name || "Van",
+    vehicleNumber:
+      vehicle?.number !== undefined
+        ? String(vehicle.number)
+        : reservation.vehicleSnapshot?.number,
     vehicleImage: category?.image,
     pickupDateTime: formatReservationDateTime(reservation, "start"),
     returnDateTime: formatReservationDateTime(reservation, "end"),

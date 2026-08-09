@@ -501,9 +501,16 @@ export default function ReservationJourneyPage({
                   {journey.publicStatusLabel}
                 </span>
               </div>
-              <h2 className="text-2xl font-black tracking-tight text-white">
-                {journey.vehicleName}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-black tracking-tight text-white">
+                  {journey.vehicleName}
+                </h2>
+                {journey.vehicleNumber && (
+                  <span className="inline-flex shrink-0 rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2.5 py-1 text-xs font-black tracking-wide text-[#fe9a00]">
+                    {journey.vehicleNumber}
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500 sm:text-sm">
                 {journey.bookingReference}
               </p>

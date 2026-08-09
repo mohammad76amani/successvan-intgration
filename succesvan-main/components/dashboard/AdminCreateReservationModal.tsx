@@ -33,10 +33,10 @@ export default function AdminCreateReservationModal({
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-9999"
+            className="fixed inset-0 bg-black/10 backdrop-blur-lg z-9999"
             onClick={closeInitialForm}
           />
-          <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-10000 flex items-center justify-center overflow-y-auto">
             <div className="relative bg-[#0f172b] rounded-2xl max-w-6xl w-full h-130 overflow-y-auto border border-white/10">
               <div className="sticky top-0 bg-[#0f172b] border-b border-white/10 px-6 py-4 flex items-center justify-between z-10">
                 <h2 className="text-xl font-bold text-white">

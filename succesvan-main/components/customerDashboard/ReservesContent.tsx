@@ -181,9 +181,16 @@ export default function ReservesContent() {
                 </div>
 
                 <div className="min-w-0 flex-1 md:py-1">
-                  <h3 className="break-words text-lg font-black tracking-tight text-white sm:text-xl lg:text-2xl">
-                    {journey.vehicleName}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="break-words text-lg font-black tracking-tight text-white sm:text-xl lg:text-2xl">
+                      {journey.vehicleName}
+                    </h3>
+                    {journey.vehicleNumber && (
+                      <span className="inline-flex shrink-0 rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2.5 py-1 text-xs font-black tracking-wide text-[#fe9a00]">
+                        {journey.vehicleNumber}
+                      </span>
+                    )}
+                  </div>
                   <p className="mb-4 mt-1 text-xs font-bold uppercase tracking-[0.10em] text-slate-500 sm:text-sm sm:normal-case sm:tracking-normal">
                     Booking #{journey.bookingReference}
                   </p>

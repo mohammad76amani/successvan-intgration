@@ -441,7 +441,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="p-4 sm:p-5">
+        <div className="p-4 sm:p-6">
           {displayedActiveTab === "dashboard" && (
             <DashboardContent handleTabChange={handleTabChange} />
           )}
@@ -519,6 +519,8 @@ interface DashboardContentProps {
 
 interface Reservation {
   _id: string;
+  reservationCode?: string;
+  user?: { name?: string; lastName?: string } | string;
   category: { _id: string; name: string };
   selectedGear?: "manual" | "automatic";
   startDate: string;
@@ -563,6 +565,740 @@ function Skeleton({ className = "" }: { className?: string }) {
   );
 }
 
+interface ReservationWeekRange {
+  currentStart: Date;
+  currentEnd: Date;
+  previousStart: Date;
+  previousEnd: Date;
+}
+
+interface ReservationTrendPoint {
+  shortLabel: string;
+  label: string;
+  previousLabel: string;
+  currentCount: number;
+  previousCount: number;
+  currentRevenue: number;
+  previousRevenue: number;
+  currentReservations: Reservation[];
+  previousReservations: Reservation[];
+}
+
+interface WeeklyReservationsCacheEntry {
+  key: string;
+  data: Reservation[];
+}
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
+
+let weeklyReservationsCache: WeeklyReservationsCacheEntry | null = null;
+let weeklyReservationsRequest:
+  | { key: string; promise: Promise<Reservation[]> }
+  | null = null;
+
+function addDashboardDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function startOfDashboardWeek(date: Date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
+  return start;
+}
+
+function endOfDashboardDay(date: Date) {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function buildReservationWeekRange(): ReservationWeekRange {
+  const currentStart = startOfDashboardWeek(new Date());
+  const previousStart = addDashboardDays(currentStart, -7);
+
+  return {
+    currentStart,
+    currentEnd: endOfDashboardDay(addDashboardDays(currentStart, 6)),
+    previousStart,
+    previousEnd: endOfDashboardDay(addDashboardDays(previousStart, 6)),
+  };
+}
+
+function formatDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getReservationWeekRangeKey(range: ReservationWeekRange) {
+  return `${formatDateInputValue(range.previousStart)}:${formatDateInputValue(
+    range.currentEnd,
+  )}`;
+}
+
+async function loadWeeklyReservationsForChart(
+  range: ReservationWeekRange,
+  key: string,
+) {
+  if (weeklyReservationsCache?.key === key) {
+    return weeklyReservationsCache.data;
+  }
+
+  if (weeklyReservationsRequest?.key === key) {
+    return weeklyReservationsRequest.promise;
+  }
+
+  const params = new URLSearchParams({
+    page: "1",
+    limit: "500",
+    sortBy: "createdAt",
+    sortOrder: "desc",
+    createdAtStart: formatDateInputValue(range.previousStart),
+    createdAtEnd: formatDateInputValue(range.currentEnd),
+  });
+
+  const promise = fetch(`/api/reservations?${params.toString()}`, {
+    headers: clientAuthHeaders(),
+  })
+    .then(async (response) => {
+      const payload = (await response.json()) as {
+        success?: boolean;
+        data?: Reservation[];
+        error?: string;
+      };
+
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.error || "Could not load chart reservations");
+      }
+
+      const data = Array.isArray(payload.data) ? payload.data : [];
+      weeklyReservationsCache = { key, data };
+      return data;
+    })
+    .finally(() => {
+      if (weeklyReservationsRequest?.key === key) {
+        weeklyReservationsRequest = null;
+      }
+    });
+
+  weeklyReservationsRequest = { key, promise };
+  return promise;
+}
+
+function formatChartDateLabel(date: Date) {
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatReservationMoney(value: number) {
+  return `GBP ${Math.round(value || 0).toLocaleString("en-GB")}`;
+}
+
+function getReservationChartDate(reservation: Reservation) {
+  const rawDate = reservation.createdAt || reservation.startDate;
+  const date = new Date(rawDate);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isDateInRange(date: Date, start: Date, end: Date) {
+  const time = date.getTime();
+  return time >= start.getTime() && time <= end.getTime();
+}
+
+function sumReservationRevenue(reservations: Reservation[]) {
+  return reservations.reduce(
+    (sum, reservation) => sum + Number(reservation.totalPrice || 0),
+    0,
+  );
+}
+
+function getReservationLabel(reservation: Reservation) {
+  if (reservation.reservationCode) return reservation.reservationCode;
+  return `#${reservation._id.slice(-6).toUpperCase()}`;
+}
+
+function getReservationCustomerName(reservation: Reservation) {
+  if (!reservation.user || typeof reservation.user === "string") {
+    return "Customer";
+  }
+
+  const fullName = [reservation.user.name, reservation.user.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return fullName || "Customer";
+}
+
+function buildWeeklyReservationComparison(
+  reservations: Reservation[],
+  range: ReservationWeekRange,
+): ReservationTrendPoint[] {
+  return WEEKDAY_LABELS.map((shortLabel, index) => {
+    const currentStart = addDashboardDays(range.currentStart, index);
+    const previousStart = addDashboardDays(range.previousStart, index);
+    const currentEnd = endOfDashboardDay(currentStart);
+    const previousEnd = endOfDashboardDay(previousStart);
+
+    const currentReservations = reservations.filter((reservation) => {
+      const date = getReservationChartDate(reservation);
+      return date ? isDateInRange(date, currentStart, currentEnd) : false;
+    });
+
+    const previousReservations = reservations.filter((reservation) => {
+      const date = getReservationChartDate(reservation);
+      return date ? isDateInRange(date, previousStart, previousEnd) : false;
+    });
+
+    return {
+      shortLabel,
+      label: formatChartDateLabel(currentStart),
+      previousLabel: formatChartDateLabel(previousStart),
+      currentCount: currentReservations.length,
+      previousCount: previousReservations.length,
+      currentRevenue: sumReservationRevenue(currentReservations),
+      previousRevenue: sumReservationRevenue(previousReservations),
+      currentReservations,
+      previousReservations,
+    };
+  });
+}
+
+function ReservationWeekComparisonChart({
+  points,
+  isLoading,
+  hasError,
+  onViewReservations,
+}: {
+  points: ReservationTrendPoint[];
+  isLoading: boolean;
+  hasError: boolean;
+  onViewReservations: () => void;
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const todayIndex = Math.min(
+    6,
+    Math.max(
+      0,
+      Math.floor(
+        (new Date().getTime() -
+          startOfDashboardWeek(new Date()).getTime()) /
+          MS_IN_DAY,
+      ),
+    ),
+  );
+  const activeIndex = hoveredIndex ?? todayIndex;
+  const activePoint = points[activeIndex] || points[0];
+  const currentTotal = points.reduce(
+    (sum, point) => sum + point.currentCount,
+    0,
+  );
+  const previousTotal = points.reduce(
+    (sum, point) => sum + point.previousCount,
+    0,
+  );
+  const currentRevenue = points.reduce(
+    (sum, point) => sum + point.currentRevenue,
+    0,
+  );
+  const previousRevenue = points.reduce(
+    (sum, point) => sum + point.previousRevenue,
+    0,
+  );
+  const countDelta = currentTotal - previousTotal;
+  const countDeltaPercent =
+    previousTotal > 0
+      ? Math.round((countDelta / previousTotal) * 100)
+      : currentTotal > 0
+        ? 100
+        : 0;
+  const maxCount = Math.max(
+    1,
+    ...points.flatMap((point) => [point.currentCount, point.previousCount]),
+  );
+  const chartWidth = 720;
+  const chartHeight = 280;
+  const chartTop = 34;
+  const chartBottom = 218;
+  const chartLeft = 52;
+  const chartRight = 682;
+  const plotHeight = chartBottom - chartTop;
+  const plotWidth = chartRight - chartLeft;
+  const yFor = (value: number) =>
+    chartBottom - (Math.min(value, maxCount) / maxCount) * plotHeight;
+  const coordinates = points.map((point, index) => {
+    const x =
+      chartLeft +
+      (points.length > 1 ? (plotWidth / (points.length - 1)) * index : 0);
+    return {
+      x,
+      currentY: yFor(point.currentCount),
+      previousY: yFor(point.previousCount),
+      point,
+    };
+  });
+  const currentPath = coordinates
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"} ${point.x} ${point.currentY}`,
+    )
+    .join(" ");
+  const previousPath = coordinates
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"} ${point.x} ${point.previousY}`,
+    )
+    .join(" ");
+  const currentArea =
+    coordinates.length > 0
+      ? `${currentPath} L ${coordinates[coordinates.length - 1].x} ${chartBottom} L ${coordinates[0].x} ${chartBottom} Z`
+      : "";
+  const activeCoordinate = coordinates[activeIndex] || coordinates[0];
+  const tooltipSide =
+    activeCoordinate && activeCoordinate.x > chartWidth * 0.58
+      ? "left"
+      : "right";
+  const tooltipLeft = activeCoordinate
+    ? `${(activeCoordinate.x / chartWidth) * 100}%`
+    : "50%";
+  const tooltipTop = activeCoordinate
+    ? `${Math.min(
+        70,
+        Math.max(38, (activeCoordinate.currentY / chartHeight) * 100),
+      )}%`
+    : "50%";
+  const tooltipTransform =
+    tooltipSide === "right"
+      ? "translate(1rem, -50%)"
+      : "translate(calc(-100% - 1rem), -50%)";
+  const detailReservations =
+    activePoint?.currentReservations.length > 0
+      ? activePoint.currentReservations
+      : activePoint?.previousReservations || [];
+  const detailLabel =
+    activePoint?.currentReservations.length > 0
+      ? "This week details"
+      : "Previous week details";
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827] shadow-xl shadow-black/10">
+      <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 text-[#fe9a00]">
+            <FiBarChart2 className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-black text-white">
+              Reservation week comparison
+            </h3>
+            <p className="mt-1 text-xs text-white/35">
+              This week against the previous week by booking date
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/25">
+              This week
+            </span>
+            <span className="mt-0.5 block text-xl font-black text-white">
+              {isLoading ? <Skeleton className="h-6 w-10" /> : currentTotal}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/25">
+              Previous
+            </span>
+            <span className="mt-0.5 block text-xl font-black text-white/70">
+              {isLoading ? <Skeleton className="h-6 w-10" /> : previousTotal}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/25">
+              Change
+            </span>
+            <span
+              className={`mt-0.5 block text-xl font-black ${
+                countDelta >= 0 ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {isLoading ? (
+                <Skeleton className="h-6 w-14" />
+              ) : (
+                `${countDelta >= 0 ? "+" : ""}${countDeltaPercent}%`
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onViewReservations}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-3 py-2 text-xs font-bold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/15"
+          >
+            View reserves
+            <FiArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-5">
+        {isLoading ? (
+          <Skeleton className="block h-80 w-full rounded-xl" />
+        ) : hasError ? (
+          <div className="flex items-start gap-3 rounded-xl border border-red-500/15 bg-red-500/[0.04] px-4 py-4">
+            <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+            <div>
+              <p className="text-sm font-bold text-white">
+                Reservation comparison could not be loaded
+              </p>
+              <p className="mt-1 text-xs text-white/35">
+                The rest of the dashboard is still available.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="relative min-h-80">
+              {activePoint && (
+                <div
+                  className="reservation-chart-tooltip pointer-events-none absolute z-10 w-56 max-w-[calc(100vw-3rem)] rounded-2xl border border-white/20 p-3 shadow-2xl ring-1 ring-white/15 backdrop-blur-3xl sm:w-64"
+                  style={{
+                    left: tooltipLeft,
+                    top: tooltipTop,
+                    transform: tooltipTransform,
+                  }}
+                >
+                  <div className="absolute inset-x-4 top-0 h-px bg-linear-to-r from-transparent via-white/70 to-transparent" />
+                  <div className="absolute inset-0 rounded-2xl bg-linear-to-br from-white/12 via-white/[0.035] to-[#fe9a00]/10 pointer-events-none" />
+                  <div className="relative">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="block text-xs font-black text-white">
+                        {activePoint.shortLabel}, {activePoint.label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] text-white/35">
+                        Previous: {activePoint.previousLabel}
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-[#fe9a00]/15 px-2 py-0.5 text-[10px] font-black text-[#fe9a00]">
+                      {activePoint.currentCount} now
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="block text-white/30">This week</span>
+                      <span className="font-black text-white">
+                        {activePoint.currentCount} reserves
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-white/30">Previous</span>
+                      <span className="font-black text-white/70">
+                        {activePoint.previousCount} reserves
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 border-t border-white/10 pt-3">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-white/25">
+                      {detailLabel}
+                    </span>
+                    <div className="mt-2 space-y-1.5">
+                      {detailReservations.slice(0, 3).map((reservation) => (
+                        <div
+                          key={reservation._id}
+                          className="flex items-center justify-between gap-2 text-[11px]"
+                        >
+                          <span className="min-w-0 truncate text-white/70">
+                            {getReservationLabel(reservation)}
+                          </span>
+                          <span className="shrink-0 font-bold text-[#fe9a00]">
+                            {formatReservationMoney(reservation.totalPrice)}
+                          </span>
+                        </div>
+                      ))}
+                      {detailReservations.length === 0 && (
+                        <span className="block text-[11px] text-white/30">
+                          No reservations recorded for this day.
+                        </span>
+                      )}
+                      {detailReservations.length > 3 && (
+                        <span className="block text-[10px] text-white/25">
+                          +{detailReservations.length - 3} more reservation
+                          {detailReservations.length - 3 !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  </div>
+                </div>
+              )}
+
+              <svg
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                role="img"
+                aria-label="Reservation comparison chart"
+                className="h-80 w-full overflow-visible"
+                onPointerLeave={(event) => {
+                  if (event.pointerType === "mouse") setHoveredIndex(null);
+                }}
+              >
+                <defs>
+                  <linearGradient
+                    id="reservationCurrentFill"
+                    x1="0"
+                    x2="0"
+                    y1="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor="#fe9a00" stopOpacity="0.28" />
+                    <stop offset="100%" stopColor="#fe9a00" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+
+                {[0, 0.5, 1].map((step) => {
+                  const y = chartBottom - plotHeight * step;
+                  const value = Math.round(maxCount * step);
+                  return (
+                    <g key={step}>
+                      <line
+                        x1={chartLeft}
+                        x2={chartRight}
+                        y1={y}
+                        y2={y}
+                        stroke="rgba(255,255,255,0.08)"
+                        strokeDasharray="6 8"
+                      />
+                      <text
+                        x={chartLeft - 16}
+                        y={y + 4}
+                        textAnchor="end"
+                        fontSize="11"
+                        fill="rgba(255,255,255,0.28)"
+                      >
+                        {value}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {currentArea && (
+                  <path
+                    d={currentArea}
+                    fill="url(#reservationCurrentFill)"
+                    className="reservation-chart-area"
+                  />
+                )}
+                <path
+                  d={previousPath}
+                  fill="none"
+                  stroke="rgba(125,211,252,0.55)"
+                  strokeWidth="3"
+                  strokeDasharray="8 8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="reservation-chart-line reservation-chart-line-previous"
+                />
+                <path
+                  d={currentPath}
+                  fill="none"
+                  stroke="#fe9a00"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="reservation-chart-line reservation-chart-line-current"
+                />
+
+                {coordinates.map((coordinate, index) => {
+                  const isActive = index === activeIndex;
+                  return (
+                    <g
+                      key={coordinate.point.shortLabel}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`${coordinate.point.shortLabel}: ${coordinate.point.currentCount} reservations this week, ${coordinate.point.previousCount} previous week`}
+                      onPointerEnter={() => setHoveredIndex(index)}
+                      onPointerDown={() => setHoveredIndex(index)}
+                      onFocus={() => setHoveredIndex(index)}
+                      className="outline-none"
+                    >
+                      <rect
+                        x={coordinate.x - 32}
+                        y={chartTop}
+                        width="64"
+                        height={chartBottom - chartTop}
+                        fill="transparent"
+                        className="cursor-pointer"
+                      />
+                      {isActive && (
+                        <line
+                          x1={coordinate.x}
+                          x2={coordinate.x}
+                          y1={chartTop}
+                          y2={chartBottom}
+                          stroke="rgba(255,255,255,0.16)"
+                          className="reservation-chart-guide"
+                        />
+                      )}
+                      <circle
+                        cx={coordinate.x}
+                        cy={coordinate.previousY}
+                        r={isActive ? 5 : 4}
+                        fill="#0b1120"
+                        stroke="rgba(125,211,252,0.85)"
+                        strokeWidth="3"
+                        className="reservation-chart-dot"
+                      />
+                      <circle
+                        cx={coordinate.x}
+                        cy={coordinate.currentY}
+                        r={isActive ? 7 : 5}
+                        fill="#0b1120"
+                        stroke="#fe9a00"
+                        strokeWidth="4"
+                        className={`reservation-chart-dot ${
+                          isActive ? "reservation-chart-dot-active" : ""
+                        }`}
+                      />
+                      <text
+                        x={coordinate.x}
+                        y={chartBottom + 34}
+                        textAnchor="middle"
+                        fontSize="12"
+                        fontWeight={isActive ? "800" : "600"}
+                        fill={isActive ? "#ffffff" : "rgba(255,255,255,0.32)"}
+                      >
+                        {coordinate.point.shortLabel}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              <div className="mt-1 flex items-center justify-center gap-5 text-xs">
+                <span className="inline-flex items-center gap-2 font-semibold text-white/55">
+                  <span className="h-1 w-7 rounded-full bg-[#fe9a00]" />
+                  This week
+                </span>
+                <span className="inline-flex items-center gap-2 font-semibold text-white/55">
+                  <span className="h-1 w-7 rounded-full border-t-2 border-dashed border-sky-300/70" />
+                  Previous week
+                </span>
+              </div>
+            </div>
+
+            <div className="xl:border-l xl:border-white/[0.06] xl:pl-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="block text-xs font-bold uppercase tracking-wider text-white/25">
+                    Hover detail
+                  </span>
+                  <h4 className="mt-1 text-lg font-black text-white">
+                    {activePoint?.shortLabel}, {activePoint?.label}
+                  </h4>
+                  <p className="mt-1 text-xs text-white/35">
+                    Current day bookings compared with the same weekday last
+                    week.
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                    (activePoint?.currentCount || 0) >=
+                    (activePoint?.previousCount || 0)
+                      ? "bg-emerald-500/10 text-emerald-300"
+                      : "bg-red-500/10 text-red-300"
+                  }`}
+                >
+                  {(activePoint?.currentCount || 0) -
+                    (activePoint?.previousCount || 0) >=
+                  0
+                    ? "+"
+                    : ""}
+                  {(activePoint?.currentCount || 0) -
+                    (activePoint?.previousCount || 0)}
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-4">
+                <div>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/25">
+                    This week revenue
+                  </span>
+                  <span className="mt-1 block text-sm font-black text-[#fe9a00]">
+                    {formatReservationMoney(activePoint?.currentRevenue || 0)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/25">
+                    Previous revenue
+                  </span>
+                  <span className="mt-1 block text-sm font-black text-sky-200/80">
+                    {formatReservationMoney(activePoint?.previousRevenue || 0)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-white/[0.06] pt-5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-white/25">
+                  {detailLabel}
+                </span>
+                <div className="mt-3 space-y-2.5">
+                  {detailReservations.slice(0, 5).map((reservation) => (
+                    <div
+                      key={reservation._id}
+                      className="group flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <span className="block truncate text-xs font-bold text-white">
+                          {getReservationLabel(reservation)}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-white/30">
+                          {getReservationCustomerName(reservation)} -{" "}
+                          {reservation.category?.name || "Category"}
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-xs font-black text-[#fe9a00]">
+                        {formatReservationMoney(reservation.totalPrice)}
+                      </span>
+                    </div>
+                  ))}
+                  {detailReservations.length === 0 && (
+                    <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-3 text-xs text-white/35">
+                      No reservation details for this chart point.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-white/[0.06] pt-5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/35">Week revenue</span>
+                  <span className="font-black text-white">
+                    {formatReservationMoney(currentRevenue)}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-white/35">Previous revenue</span>
+                  <span className="font-black text-white/65">
+                    {formatReservationMoney(previousRevenue)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard Content ──────────────────────────────────────────
 function DashboardContent({ handleTabChange }: DashboardContentProps) {
   const { stats, isLoading: statsLoading } = useStats();
@@ -586,11 +1322,9 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
     isLoading: dueRefundsLoading,
     error: dueRefundsError,
   } = useDueRefunds();
-  const { availableVehicles, isLoading: vehiclesLoading } =
-    useAvailableVehicles() as {
-      availableVehicles: DashboardVehicle[];
-      isLoading: boolean;
-    };
+  const { availableVehicles } = useAvailableVehicles() as {
+    availableVehicles: DashboardVehicle[];
+  };
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState<
@@ -600,11 +1334,74 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
   const [assigning, setAssigning] = useState(false);
   const [activityExpanded, setActivityExpanded] = useState(true);
   const [reservesExpanded, setReservesExpanded] = useState(true);
+  const reservationChartRange = useMemo(() => buildReservationWeekRange(), []);
+  const reservationChartCacheKey = useMemo(
+    () => getReservationWeekRangeKey(reservationChartRange),
+    [reservationChartRange],
+  );
+  const cachedWeeklyReservations =
+    weeklyReservationsCache?.key === reservationChartCacheKey
+      ? weeklyReservationsCache.data
+      : null;
+  const [weeklyReservations, setWeeklyReservations] = useState<Reservation[]>(
+    () => cachedWeeklyReservations || [],
+  );
+  const [weeklyReservationsLoading, setWeeklyReservationsLoading] =
+    useState(!cachedWeeklyReservations);
+  const [weeklyReservationsError, setWeeklyReservationsError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWeeklyReservations = async () => {
+      if (weeklyReservationsCache?.key === reservationChartCacheKey) {
+        setWeeklyReservations(weeklyReservationsCache.data);
+        setWeeklyReservationsLoading(false);
+        setWeeklyReservationsError(false);
+        return;
+      }
+
+      setWeeklyReservationsLoading(true);
+      setWeeklyReservationsError(false);
+
+      try {
+        const data = await loadWeeklyReservationsForChart(
+          reservationChartRange,
+          reservationChartCacheKey,
+        );
+
+        if (!cancelled) {
+          setWeeklyReservations(data);
+        }
+      } catch {
+        if (!cancelled) setWeeklyReservationsError(true);
+      } finally {
+        if (!cancelled) {
+          setWeeklyReservationsLoading(false);
+        }
+      }
+    };
+
+    loadWeeklyReservations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reservationChartCacheKey, reservationChartRange]);
 
   // ── Computed (no fetch) ───────────────────────────────────────
   const availableCount = useMemo(
     () => availableVehicles.filter((v) => v.available).length,
     [availableVehicles],
+  );
+
+  const weeklyReservationPoints = useMemo(
+    () =>
+      buildWeeklyReservationComparison(
+        weeklyReservations,
+        reservationChartRange,
+      ),
+    [reservationChartRange, weeklyReservations],
   );
 
   const unassignedPickups = useMemo(
@@ -908,17 +1705,17 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
   };
 
   return (
-    <div className="space-y-5 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       {/* ═══ 1. HERO ═══════════════════════════════════════════ */}
-      <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-[#fe9a00]/8 via-[#111827] to-[#111827] border border-white/5 p-5 sm:p-6">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-[#fe9a00]/8 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4 pointer-events-none" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111827] p-5 shadow-xl shadow-black/10 sm:p-6">
+        <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-[#fe9a00]/70 to-transparent" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <h1 className="flex items-center gap-2 text-2xl font-black text-white sm:text-3xl">
               {getGreeting()}
               <HiOutlineSparkles className="w-5 h-5 text-[#fe9a00]" />
             </h1>
-            <span className="text-sm text-white/40 block">
+            <span className="block max-w-2xl text-sm leading-6 text-white/45">
               {getHeroMessage()}
             </span>
           </div>
@@ -962,7 +1759,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       </div>
 
       {/* ═══ 2. SUMMARY BAR ════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[
           {
             label: "Today Pickups",
@@ -1013,14 +1810,14 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             key={i}
             onClick={item.onClick}
             disabled={!item.onClick}
-            className={`flex items-center gap-3 p-3.5 rounded-xl bg-[#111827] border border-white/5 transition-all duration-200 text-left ${
+            className={`flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#111827] p-4 text-left shadow-lg shadow-black/5 transition-all duration-200 ${
               item.onClick
-                ? "hover:border-white/10 cursor-pointer"
+                ? "cursor-pointer hover:-translate-y-0.5 hover:border-white/10 hover:bg-white/[0.03]"
                 : "cursor-default"
             }`}
           >
             <div
-              className={`w-9 h-9 rounded-lg ${item.bg} flex items-center justify-center ${item.color} shrink-0`}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.bg} ${item.color}`}
             >
               {item.icon}
             </div>
@@ -1041,7 +1838,8 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
         ))}
       </div>
 
-      {/* ═══ 3. NEEDS ATTENTION ════════════════════════════════ */}
+ 
+
       {!fleetLoading && totalAttentionItems > 0 && (
         <div className="rounded-2xl bg-linear-to-br from-red-500/5 via-[#111827] to-[#111827] border border-red-500/10 overflow-hidden">
           <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
@@ -1271,7 +2069,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       )}
 
       {/* Due deposit refunds use the same deadline as the customer countdown. */}
-      <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827]">
+      <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827] shadow-lg shadow-black/5">
         <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-400">
@@ -1406,7 +2204,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       </div>
 
       {/* ═══ 4. KPI CARDS ══════════════════════════════════════ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         {[
           {
             label: "Total Vehicles",
@@ -1444,7 +2242,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
           <button
             key={i}
             onClick={() => handleTabChange(stat.tabId)}
-            className="group relative overflow-hidden bg-[#111827] border border-white/5 rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all duration-300 text-left"
+            className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827] p-4 text-left shadow-lg shadow-black/5 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/10 hover:bg-white/[0.03] sm:p-5"
           >
             <div className="relative">
               <div className="flex items-center justify-between mb-3">
@@ -1470,7 +2268,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       </div>
 
       {/* ═══ 5. FLEET STATUS ═══════════════════════════════════ */}
-      <div className="bg-[#111827] border border-white/5 rounded-2xl p-5">
+      <div className="rounded-2xl border border-white/[0.06] bg-[#111827] p-5 shadow-lg shadow-black/5">
         <div className="flex items-center gap-2 mb-4">
           <FiActivity className="w-4 h-4 text-[#fe9a00]" />
           <h3 className="text-sm font-bold text-white">Fleet Status</h3>
@@ -1540,8 +2338,12 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
       </div>
 
       {/* ═══ 6. TODAY'S ACTIVITY ═══════════════════════════════ */}
-      <div className="bg-[#111827] border border-white/5 rounded-2xl overflow-hidden">
-        <button className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors">
+      <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827] shadow-lg shadow-black/5">
+        <button
+          type="button"
+          onClick={() => setActivityExpanded((expanded) => !expanded)}
+          className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors"
+        >
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <FiClock className="w-4 h-4 text-[#fe9a00]" />
             Today&apos;s Activity
@@ -1790,10 +2592,20 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
           </div>
         )}
       </div>
-
+     {/* ═══ 3. NEEDS ATTENTION ════════════════════════════════ */}
+      <ReservationWeekComparisonChart
+        points={weeklyReservationPoints}
+        isLoading={weeklyReservationsLoading}
+        hasError={weeklyReservationsError}
+        onViewReservations={() => handleTabChange("reserves")}
+      />
       {/* ═══ 7. RECENT RESERVES ════════════════════════════════ */}
-      <div className="bg-[#111827] border border-white/5 rounded-2xl overflow-hidden">
-        <button className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors">
+      <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111827] shadow-lg shadow-black/5">
+        <button
+          type="button"
+          onClick={() => setReservesExpanded((expanded) => !expanded)}
+          className="w-full px-5 py-4 border-b border-white/5 flex items-center justify-between hover:bg-white/2 transition-colors"
+        >
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             <FiClipboard className="w-4 h-4 text-[#fe9a00]" />
             Recent Reserves
@@ -1933,7 +2745,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
 
       {/* ═══ ASSIGN MODAL ══════════════════════════════════════ */}
       {isAssignModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-999 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-md z-999 flex items-center justify-center p-4">
           <div className="bg-[#111827] rounded-2xl border border-white/10 w-full max-w-md shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
