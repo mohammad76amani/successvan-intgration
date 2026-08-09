@@ -9,6 +9,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import Script from "next/script";
 import Breadcrumbs from "@/components/global/breadcrumbs";
 import ClockGuard from "@/components/global/ClockGuard";
+import FloatingActionMenu from "@/components/ui/FloatingActionMenu";
 
 const inter = Inter({
   subsets: ["latin"],
