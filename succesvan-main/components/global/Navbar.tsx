@@ -437,7 +437,10 @@ export default function Navbar() {
             ? "bg-[#0a0f1c]/50 backdrop-blur-md shadow-lg shadow-black/10"
             : "bg-linear-to-b from-[#0a0f1c]/10 to-[#0a0f1c]/20 backdrop-blur-sm"
         }`}
-        style={{ top: navTopPosition, willChange: "transform" }}
+        style={{
+          top: `calc(${navTopPosition} + var(--pwa-nav-offset, 0px))`,
+          willChange: "transform",
+        }}
       >
         {/* Simplified linear line at top */}
         <div
@@ -615,8 +618,12 @@ export default function Navbar() {
       {/* Slide-In Menu */}
       <div
         ref={menuRef}
-        className="fixed left-0 w-[320px] md:w-95 h-screen bg-linear-to-b from-[#141f38] via-[#0f172a] to-[#080d17] transform -translate-x-full z-999 shadow-xl overflow-hidden"
-        style={{ willChange: "transform" }}
+        className="fixed left-0 w-[320px] md:w-95 bg-linear-to-b from-[#141f38] via-[#0f172a] to-[#080d17] transform -translate-x-full z-999 shadow-xl overflow-hidden"
+        style={{
+          top: "var(--pwa-nav-offset, 0px)",
+          height: "calc(100dvh - var(--pwa-nav-offset, 0px))",
+          willChange: "transform",
+        }}
       >
         {/* Scrollable Content */}
         <div
