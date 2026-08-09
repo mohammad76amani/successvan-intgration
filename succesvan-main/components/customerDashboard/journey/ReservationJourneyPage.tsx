@@ -124,13 +124,17 @@ function DateMeta({
   value: string;
 }) {
   return (
-    <div className="flex items-start gap-2">
-      <span className="mt-0.5 text-[#fe9a00]">{icon}</span>
+    <div className="flex min-w-0 items-start gap-3 rounded-xl border border-white/[0.06] bg-black/[0.08] p-3 sm:border-0 sm:bg-transparent sm:p-0">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#fe9a00]/20 bg-[#fe9a00]/10 text-[#fe9a00] sm:h-auto sm:w-auto sm:border-0 sm:bg-transparent">
+        {icon}
+      </span>
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
           {label}
         </p>
-        <p className="text-sm font-bold text-white">{value}</p>
+        <p className="mt-0.5 break-words text-sm font-bold leading-5 text-white">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -154,11 +158,11 @@ function ReservationMeta({
   value: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 border-b border-white/[0.07] py-2.5 last:border-b-0 sm:border-b-0 sm:py-1">
-      <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+    <div className="min-w-0 rounded-xl border border-white/[0.06] bg-black/[0.08] px-3 py-2.5 sm:border-0 sm:bg-transparent sm:px-0 sm:py-1">
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">
         {label}
       </p>
-      <div className="mt-0.5 break-words text-[13px] font-semibold leading-5 text-slate-100">
+      <div className="mt-1 break-words text-[13px] font-semibold leading-5 text-slate-100">
         {value || "-"}
       </div>
     </div>
@@ -383,8 +387,10 @@ export default function ReservationJourneyPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0f172b] flex items-center justify-center">
-        <p className="text-gray-400">Loading booking...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(254,154,0,0.08),_transparent_32%),#0b1224] px-4">
+        <p className="rounded-2xl border border-white/[0.08] bg-white/[0.035] px-5 py-4 text-sm font-semibold text-slate-400 shadow-xl shadow-black/10 backdrop-blur-xl">
+          Loading booking...
+        </p>
       </div>
     );
   }
@@ -393,22 +399,26 @@ export default function ReservationJourneyPage({
     return (
       <div
         className={`flex flex-col items-center justify-center gap-4 p-4 ${
-          embedded ? "min-h-[360px]" : "min-h-screen bg-[#0f172b]"
+          embedded
+            ? "min-h-[360px] bg-[#0b1224]/80"
+            : "min-h-screen bg-[radial-gradient(circle_at_top,_rgba(254,154,0,0.08),_transparent_32%),#0b1224]"
         }`}
       >
-        <p className="text-white font-bold text-lg">Booking not found</p>
+        <p className="text-xl font-black tracking-tight text-white sm:text-2xl">
+          Booking not found
+        </p>
         {embedded ? (
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold transition-colors"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#fe9a00]/15"
           >
             Close
           </button>
         ) : (
           <Link
             href="/customerDashboard#reserves"
-            className="px-5 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-semibold transition-colors"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#fe9a00]/15"
           >
             Back to My Reservations
           </Link>
@@ -421,9 +431,11 @@ export default function ReservationJourneyPage({
     .filter(Boolean)
     .join(" ");
   const vehicle = reservation.vehicle as
-    (Partial<Pick<Vehicle, "title">> & { name?: string }) | undefined;
+    | (Partial<Pick<Vehicle, "title">> & { name?: string })
+    | undefined;
   const category = reservation.category as
-    Partial<Pick<Category, "name">> | undefined;
+    | Partial<Pick<Category, "name">>
+    | undefined;
   const vehicleLabel = vehicle?.title || vehicle?.name || journey.vehicleName;
   const rentalDays = getRentalDays(reservation);
   const addOnBreakdown = (reservation.addOns || []).map((item) => ({
@@ -459,41 +471,43 @@ export default function ReservationJourneyPage({
   const journeyContent = (
     <div
       className={
-        embedded ? "p-4 sm:p-5" : "mx-auto max-w-6xl p-3 pb-24 sm:p-6 lg:pb-6"
+        embedded
+          ? "p-3 sm:p-5 lg:p-6"
+          : "mx-auto max-w-7xl px-3 pb-28 pt-4 sm:px-5 sm:pt-6 lg:px-7 lg:pb-8 xl:px-8"
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-4 sm:space-y-5 lg:space-y-6">
         {/* ── Main reservation card ─────────────────────────── */}
-        <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl shadow-black/10 backdrop-blur-xl">
-          <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[180px_minmax(0,1fr)_minmax(240px,310px)] lg:items-start">
-            <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 lg:aspect-[4/3]">
+        <section className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#111a31]/95 to-[#08111f]/95 shadow-2xl shadow-black/20 backdrop-blur-xl">
+          <div className="grid gap-4 p-3.5 sm:gap-5 sm:p-5 md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[200px_minmax(0,1fr)_minmax(260px,320px)] lg:items-start lg:p-6">
+            <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/[0.10] bg-[#050b14]/70 shadow-lg shadow-black/20 md:aspect-[4/3] lg:aspect-[4/3]">
               {journey.vehicleImage ? (
                 <Image
                   src={journey.vehicleImage}
                   alt={journey.vehicleName}
                   fill
-                  className="object-cover"
+                  className="object-cover transition duration-500 hover:scale-[1.025]"
                   sizes="(max-width: 1024px) 100vw, 180px"
                 />
               ) : (
-                <FiTruck className="text-gray-500 text-4xl" />
+                <FiTruck className="text-4xl text-slate-600 sm:text-5xl" />
               )}
             </div>
             <div className="min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
+                  className={`inline-flex rounded-full border border-white/[0.06] px-3 py-1.5 text-[11px] font-black shadow-sm ${statusBadgeClasses(journey.mainStatus)}`}
                 >
                   {journey.publicStatusLabel}
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-white">
+              <h2 className="text-2xl font-black tracking-tight text-white">
                 {journey.vehicleName}
               </h2>
-              <p className="text-sm font-bold text-gray-400">
+              <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500 sm:text-sm">
                 {journey.bookingReference}
               </p>
-              <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+              <div className="mt-4 grid grid-cols-1 gap-2.5 text-sm sm:grid-cols-3 sm:gap-3">
                 <DateMeta
                   icon={<FiCalendar />}
                   label="Pickup"
@@ -511,8 +525,8 @@ export default function ReservationJourneyPage({
                 />
               </div>
               {journey.collection?.location && (
-                <p className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-400">
-                  <FiMapPin className="shrink-0 text-[#fe9a00]" />
+                <p className="mt-4 flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-black/[0.08] px-3 py-2.5 text-sm font-medium leading-5 text-slate-400">
+                  <FiMapPin className="mt-0.5 shrink-0 text-[#fe9a00]" />
                   <span className="break-words">
                     {journey.collection.location}
                   </span>
@@ -520,7 +534,7 @@ export default function ReservationJourneyPage({
               )}
             </div>
 
-            <div className="min-w-0 self-start">
+            <div className="min-w-0 self-stretch md:col-span-2 lg:col-span-1 lg:self-start">
               <NextActionCard
                 action={journey.nextAction}
                 onSectionLink={openAndScroll}
@@ -533,23 +547,23 @@ export default function ReservationJourneyPage({
               <RefundCountdown expectedBy={journey.refund.expectedBy} />
             )}
 
-          <div className="border-t border-white/[0.08]">
+          <div className="border-t border-white/[0.07] bg-black/[0.06]">
             <button
               type="button"
               onClick={() => handleToggle("summary")}
               aria-expanded={openSection === "summary"}
               aria-controls="reservation-price-details"
-              className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.035] sm:px-5"
+              className="group flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition duration-200 hover:bg-white/[0.035] sm:px-5 lg:px-6"
             >
               <span className="min-w-0">
-                <span className="block text-xs font-black uppercase tracking-wide text-slate-300 transition-colors group-hover:text-white">
+                <span className="block text-[11px] font-black uppercase tracking-[0.13em] text-slate-300 transition-colors group-hover:text-white">
                   Reservation &amp; price details
                 </span>
-                <span className="mt-0.5 block text-xs text-slate-500">
+                <span className="mt-1 block max-w-xl text-xs leading-5 text-slate-500">
                   Booking information and full price breakdown
                 </span>
               </span>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-400 transition-colors group-hover:border-[#fe9a00]/30 group-hover:text-[#fe9a00]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-slate-400 shadow-sm transition duration-200 group-hover:border-[#fe9a00]/30 group-hover:bg-[#fe9a00]/[0.06] group-hover:text-[#fe9a00]">
                 <FiChevronDown
                   className={`transition-transform duration-300 ease-out motion-reduce:transition-none ${openSection === "summary" ? "rotate-180" : ""}`}
                   aria-hidden="true"
@@ -566,8 +580,8 @@ export default function ReservationJourneyPage({
               }`}
             >
               <div id="reservation-price-details" className="overflow-hidden">
-                <div className="grid border-t border-white/[0.08] lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-                  <div className="grid px-4 py-3 sm:grid-cols-2 sm:gap-x-5 lg:grid-cols-3 lg:border-r lg:border-white/[0.08] lg:px-5">
+                <div className="grid border-t border-white/[0.07] lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+                  <div className="grid gap-2 px-3.5 py-4 sm:grid-cols-2 sm:gap-x-4 sm:px-5 lg:grid-cols-3 lg:border-r lg:border-white/[0.07] lg:px-6 lg:py-5">
                     <ReservationMeta
                       label="Customer"
                       value={textOrDash(customerName)}
@@ -622,19 +636,19 @@ export default function ReservationJourneyPage({
                     )}
                   </div>
 
-                  <div className="border-t border-white/[0.08] px-4 py-4 lg:border-t-0 lg:px-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                  <div className="border-t border-white/[0.07] bg-black/[0.08] px-4 py-4 sm:px-5 lg:border-t-0 lg:px-6 lg:py-5">
+                    <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                         Price calculation
                       </p>
                       {reservation.discountCode && (
-                        <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300">
+                        <span className="rounded-lg border border-emerald-400/15 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-300">
                           Code: {reservation.discountCode}
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 space-y-1.5 text-xs">
-                      <div className="flex justify-between gap-4 text-slate-300">
+                    <div className="mt-3 space-y-2 text-xs">
+                      <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-300">
                         <span>Rental balance</span>
                         <span className="font-semibold text-white">
                           {money(rentalBalance)}
@@ -643,7 +657,7 @@ export default function ReservationJourneyPage({
                       {addOnBreakdown.map((item, index) => (
                         <div
                           key={`${item.label}-${index}`}
-                          className="flex justify-between gap-4 text-slate-400"
+                          className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-400"
                         >
                           <span className="min-w-0 break-words">
                             {item.label} × {item.quantity}
@@ -655,29 +669,29 @@ export default function ReservationJourneyPage({
                           </span>
                         </div>
                       ))}
-                      <div className="flex justify-between gap-4 text-slate-300">
+                      <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-300">
                         <span>Add-ons total</span>
                         <span>{money(addOnsTotal)}</span>
                       </div>
-                      <div className="flex justify-between gap-4 text-slate-400">
+                      <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-400">
                         <span>Pickup extension</span>
                         <span>{money(pickupExtension)}</span>
                       </div>
-                      <div className="flex justify-between gap-4 text-slate-400">
+                      <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-400">
                         <span>Return extension</span>
                         <span>{money(returnExtension)}</span>
                       </div>
                       {depositDiscountPercent > 0 && (
-                        <div className="flex justify-between gap-4 text-emerald-300">
+                        <div className="flex items-start justify-between gap-4 rounded-lg border border-emerald-400/10 bg-emerald-500/[0.05] px-2 py-1.5 text-emerald-300">
                           <span>
                             Full-payment discount ({depositDiscountPercent}%)
                           </span>
                           <span>-{money(depositDiscountAmount)}</span>
                         </div>
                       )}
-                      <div className="flex justify-between gap-4 border-t border-white/[0.08] pt-2 text-sm font-black text-white">
+                      <div className="mt-2 flex items-center justify-between gap-4 rounded-xl border border-[#fe9a00]/15 bg-[#fe9a00]/[0.05] px-3 py-2.5 text-sm font-black text-white">
                         <span>Final total</span>
-                        <span className="text-[#fe9a00]">
+                        <span className="shrink-0 text-base text-[#fe9a00]">
                           {reservation.perInvoice && !reservation.totalPrice
                             ? "Per Invoice"
                             : money(finalTotal)}
@@ -688,7 +702,7 @@ export default function ReservationJourneyPage({
                       <button
                         type="button"
                         onClick={() => setIsEditOpen(true)}
-                        className="mt-3 inline-flex items-center gap-2 text-xs font-black text-[#fe9a00] transition-colors hover:text-[#e68a00]"
+                        className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-3 py-2 text-xs font-black text-[#fe9a00] transition hover:border-[#fe9a00]/35 hover:bg-[#fe9a00]/15 sm:w-auto"
                       >
                         Edit booking
                       </button>
@@ -701,13 +715,13 @@ export default function ReservationJourneyPage({
         </section>
 
         {!licenceComplete && (
-          <div className="rounded-2xl border border-[#fe9a00]/40 bg-[#fe9a00]/10 p-5 shadow-2xl shadow-black/10 backdrop-blur-xl">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="overflow-hidden rounded-3xl border border-[#fe9a00]/25 bg-gradient-to-r from-[#fe9a00]/10 via-[#fe9a00]/[0.06] to-transparent p-4 shadow-xl shadow-black/10 backdrop-blur-xl sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
               <div>
-                <p className="text-sm font-black text-white">
+                <p className="text-base font-black tracking-tight text-white">
                   Driving licence required
                 </p>
-                <p className="mt-1 text-sm text-gray-300">
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-300">
                   Upload the front and back of your driving licence to keep this
                   booking moving.
                 </p>
@@ -715,7 +729,7 @@ export default function ReservationJourneyPage({
               <button
                 type="button"
                 onClick={() => openAndScroll("documents")}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e68a00]"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-4 py-3 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#fe9a00]/15 sm:w-auto"
               >
                 <FiUpload />
                 Upload Licence
@@ -742,20 +756,20 @@ export default function ReservationJourneyPage({
 
   if (embedded) {
     return (
-      <div className="max-h-[90vh] overflow-y-auto bg-[#0f172b]">
-        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#111b33]/95 px-4 py-4 backdrop-blur-xl sm:px-5">
+      <div className="max-h-[92dvh] overflow-y-auto overscroll-contain bg-[#0b1224] [scrollbar-gutter:stable]">
+        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.08] bg-[#0d172c]/95 px-3.5 py-3.5 shadow-lg shadow-black/10 backdrop-blur-xl sm:px-5 sm:py-4">
           <div className="min-w-0">
-            <h1 className="truncate text-base font-black text-white md:text-xl">
+            <h1 className="truncate text-base font-black tracking-tight text-white sm:text-lg md:text-xl">
               Track booking
             </h1>
-            <p className="text-xs font-bold text-[#fe9a00]">
+            <p className="mt-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-[#fe9a00]">
               {journey.bookingReference}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-white transition hover:border-white/15 hover:bg-white/[0.12]"
             aria-label="Close booking tracker"
           >
             <FiX />
@@ -776,33 +790,34 @@ export default function ReservationJourneyPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172b]">
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-64 flex-col border-r border-white/10 bg-[#111b33] lg:flex">
-        <div className="border-b border-white/10 p-6">
-          <h1 className="text-2xl font-black text-white">
-            Success<span className="text-[#fe9a00]">Van</span>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(254,154,0,0.06),_transparent_28%),#0b1224]">
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-64 flex-col border-r border-white/[0.08] bg-[#0d172c]/95 shadow-2xl shadow-black/20 backdrop-blur-xl lg:flex xl:w-72">
+        <div className="border-b border-white/[0.08] px-5 py-6 xl:px-6">
+          <h1 className="text-2xl font-black tracking-tight text-white">
+            Success
+            <span className="shrink-0 text-base text-[#fe9a00]">Van</span>
           </h1>
         </div>
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 space-y-1.5 p-3.5 xl:p-4">
           {panelNavItems.map((item) => (
             <Link
               key={item.label}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold transition-colors ${
+              className={`flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition duration-200 ${
                 item.label === "My Reservations"
-                  ? "bg-[#fe9a00] text-white"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+                  ? "bg-gradient-to-r from-[#fe9a00] to-[#ff8500] text-white shadow-lg shadow-[#fe9a00]/10"
+                  : "text-slate-300 hover:bg-white/[0.07] hover:text-white"
               }`}
             >
-              <span className="text-lg">{item.icon}</span>
+              <span className="text-lg opacity-90">{item.icon}</span>
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="space-y-2 border-t border-white/10 p-4">
+        <div className="space-y-2 border-t border-white/[0.08] p-4">
           <Link
             href="/"
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#e68a00]"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-4 py-3 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition hover:-translate-y-0.5"
           >
             <FiExternalLink />
             Back to Site
@@ -810,36 +825,36 @@ export default function ReservationJourneyPage({
         </div>
       </aside>
 
-      <main className="lg:ml-64">
+      <main className="lg:ml-64 xl:ml-72">
         {/* Header */}
-        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-white/10 bg-[#111b33] px-4 py-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="sticky top-0 z-40 flex items-center justify-between border-b border-white/[0.08] bg-[#0d172c]/90 px-3.5 py-3 shadow-lg shadow-black/10 backdrop-blur-xl sm:px-5 sm:py-4 lg:px-7">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <Link
               href="/customerDashboard#reserves"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-white transition hover:border-white/15 hover:bg-white/[0.12]"
             >
               <FiArrowLeft />
             </Link>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-black text-white md:text-xl">
+              <h1 className="truncate text-base font-black tracking-tight text-white sm:text-lg md:text-xl">
                 My Reservation
               </h1>
-              <p className="hidden text-xs font-bold text-[#fe9a00] sm:block">
+              <p className="mt-0.5 hidden text-[11px] font-black uppercase tracking-[0.12em] text-[#fe9a00] sm:block">
                 {journey.bookingReference}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Link
               href="/"
-              className="hidden items-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#e68a00] sm:flex"
+              className="hidden min-h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition hover:-translate-y-0.5 sm:flex"
             >
               <FiExternalLink />
               Back to Site
             </Link>
             <button
               type="button"
-              className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white lg:hidden"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-white lg:hidden"
               aria-label="Notifications"
             >
               <FiBell />
@@ -849,16 +864,18 @@ export default function ReservationJourneyPage({
 
         {journeyContent}
 
-        <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/10 bg-[#111b33]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-2xl backdrop-blur-xl lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-white/[0.08] bg-[#0d172c]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 shadow-[0_-12px_35px_rgba(0,0,0,0.28)] backdrop-blur-xl lg:hidden">
           {mobileNavItems.map((item) => (
             <Link
               key={item.label}
               href={item.href}
-              className={`flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold ${
-                item.label === "Booking" ? "text-[#fe9a00]" : "text-gray-400"
+              className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-[10px] font-black transition ${
+                item.label === "Booking"
+                  ? "bg-[#fe9a00]/[0.08] text-[#fe9a00]"
+                  : "text-slate-500 hover:text-slate-300"
               }`}
             >
-              <span className="text-lg">{item.icon}</span>
+              <span className="text-lg opacity-90">{item.icon}</span>
               {item.label}
             </Link>
           ))}
