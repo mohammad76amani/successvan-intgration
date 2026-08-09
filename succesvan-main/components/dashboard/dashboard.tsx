@@ -1953,7 +1953,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
               </button>
             </div>
             <div className="p-5">
-              <div className="mb-6">
+              <div className="mb-60">
                 <label className="block text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">
                   Available Vehicles in Category
                 </label>
@@ -2005,6 +2005,8 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                             ? "No vehicles available"
                             : "Select a vehicle..."
                         }
+                        
+
                       />
                       {reqGear &&
                         catVehicles.length > 0 &&

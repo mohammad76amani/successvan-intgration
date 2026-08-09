@@ -88,7 +88,7 @@ function DepositVerificationBadge({
 
   if (!deposit?.status || deposit.status === "not_paid") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-gray-400">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 shadow-sm ring-1 ring-inset ring-white/[0.03]">
         <FiClock className="text-xs" />
         Not paid
       </span>
@@ -97,7 +97,7 @@ function DepositVerificationBadge({
 
   if (deposit.status === "pending" && deposit.receiptUrl) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-[#fe9a00]/20 px-2 py-1 text-[11px] font-bold text-[#fe9a00] ring-1 ring-[#fe9a00]/30">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-2.5 py-1.5 text-[11px] font-bold text-[#ffb347] shadow-[0_4px_18px_rgba(254,154,0,0.10)] ring-1 ring-inset ring-[#fe9a00]/10">
         <FiClock className="text-xs" />
         Receipt uploaded
       </span>
@@ -106,7 +106,7 @@ function DepositVerificationBadge({
 
   if (deposit.status === "paid") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-300">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-300 shadow-sm ring-1 ring-inset ring-emerald-400/5">
         <FiCheck className="text-xs" />
         Verified
       </span>
@@ -115,7 +115,7 @@ function DepositVerificationBadge({
 
   if (deposit.status === "failed") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-semibold text-red-300">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-300 shadow-sm ring-1 ring-inset ring-red-400/5">
         <FiX className="text-xs" />
         Rejected
       </span>
@@ -123,7 +123,7 @@ function DepositVerificationBadge({
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-1 text-[11px] font-semibold text-sky-300 capitalize">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-sky-300 shadow-sm ring-1 ring-inset ring-sky-400/5 capitalize">
       {deposit.status.replace(/_/g, " ")}
     </span>
   );
@@ -375,14 +375,14 @@ function ReservationStepManagerModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-        <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1224]/95 shadow-2xl">
-          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#0b1224]/95 p-5 backdrop-blur">
+      <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-5">
+        <div className="max-h-[96dvh] w-full max-w-4xl overscroll-contain overflow-y-auto rounded-t-[28px] border border-white/10 bg-linear-to-b from-[#101a31]/98 to-[#070d19]/98 shadow-[0_30px_100px_rgba(0,0,0,0.60)] ring-1 ring-inset ring-white/[0.04] sm:max-h-[92vh] sm:rounded-[28px]">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#0b1224]/85 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:gap-4 sm:p-6">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#fe9a00]">
                 Admin step manager
               </p>
-              <h2 className="mt-1 text-2xl font-black text-white">
+              <h2 className="mt-1 break-all text-xl font-black text-white sm:text-2xl">
                 {reservation.reservationCode || reservation._id}
               </h2>
               <p className="mt-1 text-sm text-gray-400">
@@ -392,14 +392,14 @@ function ReservationStepManagerModal({
             </div>
             <button
               onClick={onClose}
-              className="rounded-xl p-2 text-gray-300 transition hover:bg-white/10 hover:text-white"
+              className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-gray-300 shadow-sm transition-all duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white active:scale-95 active:bg-white/15"
             >
               <FiX className="text-xl" />
             </button>
           </div>
 
-          <div className="space-y-5 p-5">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="space-y-4 p-3 sm:space-y-5 sm:p-6">
+            <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm text-gray-400">Current status</p>
@@ -411,13 +411,13 @@ function ReservationStepManagerModal({
                 </div>
                 <button
                   onClick={() => setIsReservationDetailsOpen(true)}
-                  className="rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                  className="min-h-11 w-full touch-manipulation rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2.5 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25 active:bg-[#fe9a00]/30 sm:w-auto"
                 >
                   View reservation details
                 </button>
               </div>
 
-              <div className="mt-5 grid gap-2 md:grid-cols-5">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:grid-cols-3 lg:grid-cols-5">
                 {ADMIN_FLOW_STEPS.map((step, index) => {
                   const state =
                     index < currentIndex
@@ -428,12 +428,12 @@ function ReservationStepManagerModal({
                   return (
                     <div
                       key={step}
-                      className={`rounded-xl border p-3 ${
+                      className={`min-h-[76px] rounded-xl border p-3.5 shadow-sm transition-all duration-200 ${
                         state === "done"
-                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                          ? "border-emerald-400/25 bg-emerald-500/[0.09] text-emerald-200 ring-1 ring-inset ring-emerald-400/[0.04]"
                           : state === "current"
-                            ? "border-[#fe9a00]/40 bg-[#fe9a00]/15 text-[#fe9a00]"
-                            : "border-white/10 bg-white/[0.03] text-gray-500"
+                            ? "border-[#fe9a00]/45 bg-[#fe9a00]/[0.14] text-[#ffad33] shadow-[0_8px_24px_rgba(254,154,0,0.10)] ring-1 ring-inset ring-[#fe9a00]/10"
+                            : "border-white/[0.08] bg-white/[0.02] text-slate-500 ring-1 ring-inset ring-white/[0.015]"
                       }`}
                     >
                       <p className="text-[10px] font-bold uppercase tracking-wide">
@@ -448,7 +448,7 @@ function ReservationStepManagerModal({
               </div>
 
               {(contractLoading || actionContract) && (
-                <div className="mt-3 flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#050a14]/45 p-4 shadow-inner ring-1 ring-inset ring-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-bold text-white">
                       Contract document
@@ -460,12 +460,12 @@ function ReservationStepManagerModal({
                     </p>
                   </div>
                   {actionContract && (
-                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                       {actionContract.files.signed && (
                         <button
                           type="button"
                           onClick={() => downloadActionContract("signed")}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25"
+                          className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 active:bg-emerald-500/30 sm:w-auto"
                         >
                           <FiEye />
                           View signed contract
@@ -475,7 +475,7 @@ function ReservationStepManagerModal({
                         <button
                           type="button"
                           onClick={() => downloadActionContract("source")}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                          className="inline-flex items-center justify-center gap-2 min-h-11 w-full touch-manipulation rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2.5 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25 active:bg-[#fe9a00]/30 sm:w-auto"
                         >
                           <FiDownload />
                           Unsigned contract
@@ -485,7 +485,7 @@ function ReservationStepManagerModal({
                         <button
                           type="button"
                           onClick={() => downloadActionContract("certificate")}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                          className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 active:bg-white/25 sm:w-auto"
                         >
                           <FiDownload />
                           Certificate
@@ -497,7 +497,7 @@ function ReservationStepManagerModal({
                             type="button"
                             disabled={contractDocumentBusy}
                             onClick={fetchSignedContractDocuments}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 active:bg-emerald-500/30 sm:w-auto disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <FiRefreshCw
                               className={
@@ -516,8 +516,8 @@ function ReservationStepManagerModal({
             </div>
 
             {reservation.status === "pending" && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                   <h3 className="text-lg font-bold text-white">
                     Review booking
                   </h3>
@@ -530,13 +530,13 @@ function ReservationStepManagerModal({
                     onClick={() =>
                       onStatusChange(reservation, "deposit_pending")
                     }
-                    className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                    className="mt-4 min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-3 text-sm font-black text-white shadow-[0_10px_28px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(254,154,0,0.25)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                   >
                     {isSubmitting ? "Confirming..." : "Confirm booking"}
                   </button>
                 </div>
 
-                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4">
+                <div className="rounded-2xl border border-red-400/20 bg-linear-to-br from-red-500/[0.13] to-red-500/[0.055] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-red-300/[0.04] sm:p-5">
                   <h3 className="text-lg font-bold text-red-100">
                     Cancel reservation
                   </h3>
@@ -545,7 +545,7 @@ function ReservationStepManagerModal({
                     onChange={(event) => setCancelReason(event.target.value)}
                     rows={3}
                     placeholder="Reason shown in admin record"
-                    className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-red-300 focus:outline-none"
+                    className="mt-3 min-h-24 w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-3 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-red-300/70 focus:ring-4 focus:ring-red-300/10"
                   />
                   <button
                     disabled={isSubmitting || !cancelReason.trim()}
@@ -554,7 +554,7 @@ function ReservationStepManagerModal({
                         cancelReason: cancelReason.trim(),
                       })
                     }
-                    className="mt-3 w-full rounded-xl bg-red-500/20 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+                    className="mt-3 min-h-11 w-full touch-manipulation rounded-xl border border-red-400/20 bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 shadow-sm transition-all duration-200 hover:border-red-400/30 hover:bg-red-500/25 active:scale-[0.99] disabled:opacity-50"
                   >
                     Cancel with reason
                   </button>
@@ -564,7 +564,7 @@ function ReservationStepManagerModal({
 
             {(reservation.status === "confirmed" ||
               reservation.status === "deposit_pending") && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-bold text-white">
@@ -584,8 +584,8 @@ function ReservationStepManagerModal({
                 </div>
 
                 {deposit?.receiptUrl && (
-                  <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3">
-                    <div className="flex items-center gap-3">
+                  <div className="mt-4 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3 sm:p-4">
+                    <div className="flex items-start gap-3 sm:items-center">
                       {isImageFileUrl(deposit.receiptUrl) ? (
                         <button
                           type="button"
@@ -637,14 +637,14 @@ function ReservationStepManagerModal({
                 )}
 
                 {deposit?.status === "pending" && deposit.receiptUrl ? (
-                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                  <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
                     <input
                       value={depositTransactionRef}
                       onChange={(event) =>
                         setDepositTransactionRef(event.target.value)
                       }
                       placeholder="Transaction reference (optional)"
-                      className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                      className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
                     />
                     <textarea
                       value={depositFailureReason}
@@ -653,20 +653,20 @@ function ReservationStepManagerModal({
                       }
                       rows={2}
                       placeholder="Refuse reason (required when refusing)"
-                      className="w-full resize-none rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                      className="w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
                     />
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <button
                         disabled={depositBusy}
                         onClick={() => onVerifyDeposit(reservation, "reject")}
-                        className="rounded-xl bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+                        className="min-h-11 touch-manipulation rounded-xl border border-red-400/20 bg-red-500/[0.11] px-4 py-3 text-sm font-bold text-red-200 shadow-sm transition-all duration-200 hover:border-red-400/30 hover:bg-red-500/20 active:scale-[0.99] disabled:opacity-50"
                       >
                         Refuse deposit
                       </button>
                       <button
                         disabled={depositBusy}
                         onClick={() => onVerifyDeposit(reservation, "approve")}
-                        className="rounded-xl bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                        className="min-h-11 touch-manipulation rounded-xl border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-sm font-bold text-emerald-200 shadow-sm transition-all duration-200 hover:border-emerald-400/30 hover:bg-emerald-500/25 active:scale-[0.99] disabled:opacity-50"
                       >
                         Accept deposit
                       </button>
@@ -686,7 +686,7 @@ function ReservationStepManagerModal({
               (reservation.status === "deposit_paid" ||
                 reservation.status === "deposit_pending" ||
                 reservation.status === "confirmed") && (
-                <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+                <div className="rounded-2xl border border-[#fe9a00]/20 bg-linear-to-br from-[#fe9a00]/[0.13] to-[#fe9a00]/[0.045] p-4 shadow-[0_12px_36px_rgba(254,154,0,0.06)] ring-1 ring-inset ring-[#fe9a00]/[0.05] sm:p-5">
                   <h3 className="text-lg font-bold text-white">
                     Assign vehicle & create contract
                   </h3>
@@ -731,7 +731,7 @@ function ReservationStepManagerModal({
                       </p>
                     </div>
                   )}
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-4 space-y-4">
                     <CustomSelect
                       options={vehicles}
                       value={selectedVehicle}
@@ -751,7 +751,7 @@ function ReservationStepManagerModal({
                     <button
                       disabled={isSubmitting || !selectedVehicle}
                       onClick={() => onAssignVehicle(reservation)}
-                      className="w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                      className="min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-3 text-sm font-black text-white shadow-[0_10px_28px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(254,154,0,0.25)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                     >
                       {isSubmitting
                         ? "Assigning vehicle & creating contract..."
@@ -762,7 +762,7 @@ function ReservationStepManagerModal({
               )}
 
             {reservation.status === "contract_pending" && (
-              <div className="rounded-2xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-4">
+              <div className="rounded-2xl border border-[#fe9a00]/20 bg-linear-to-br from-[#fe9a00]/[0.13] to-[#fe9a00]/[0.045] p-4 shadow-[0_12px_36px_rgba(254,154,0,0.06)] ring-1 ring-inset ring-[#fe9a00]/[0.05] sm:p-5">
                 <h3 className="text-lg font-bold text-white">
                   Waiting for contract signature
                 </h3>
@@ -775,7 +775,7 @@ function ReservationStepManagerModal({
                   <button
                     type="button"
                     onClick={() => downloadActionContract("source")}
-                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                    className="mt-4 inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 active:bg-white/25 sm:w-auto"
                   >
                     <FiDownload />
                     Download contract
@@ -785,7 +785,7 @@ function ReservationStepManagerModal({
             )}
 
             {laterStep && !showOperationsPanel && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <h3 className="text-lg font-bold text-white">
                   Next admin step
                 </h3>
@@ -793,7 +793,7 @@ function ReservationStepManagerModal({
                 <button
                   disabled={isSubmitting}
                   onClick={() => onStatusChange(reservation, laterStep.next)}
-                  className="mt-4 w-full rounded-xl bg-[#fe9a00] px-4 py-3 text-sm font-black text-white transition hover:bg-[#e68a00] disabled:opacity-50"
+                  className="mt-4 min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-3 text-sm font-black text-white shadow-[0_10px_28px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(254,154,0,0.25)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {laterStep.label}
                 </button>
@@ -815,14 +815,14 @@ function ReservationStepManagerModal({
         layerClassName="z-[80]"
       />
       {receiptPreviewUrl && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b1224] p-4 shadow-2xl">
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/85 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-w-4xl rounded-t-2xl border border-white/10 bg-[#0b1224] p-3 shadow-2xl sm:rounded-2xl sm:p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="font-bold text-white">Deposit receipt</p>
               <button
                 type="button"
                 onClick={() => setReceiptPreviewUrl(null)}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+                className="min-h-10 touch-manipulation rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 active:bg-white/25"
               >
                 Close
               </button>
@@ -830,7 +830,7 @@ function ReservationStepManagerModal({
             <img
               src={receiptPreviewUrl}
               alt="Deposit receipt preview"
-              className="max-h-[76vh] w-full rounded-xl object-contain"
+              className="max-h-[78dvh] w-full rounded-xl object-contain sm:max-h-[76vh]"
             />
           </div>
         </div>
@@ -1838,12 +1838,14 @@ export default function ReservationsManagement() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-white">Quick Actions</h3>
+    <div className="space-y-5 sm:space-y-7">
+      <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.07] via-white/[0.035] to-[#fe9a00]/[0.055] p-4 shadow-[0_16px_44px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <h3 className="text-lg font-black tracking-tight text-white sm:text-xl">
+          Quick Actions
+        </h3>
         <button
           onClick={() => setShowCreateReservation(true)}
-          className="flex items-center gap-2 px-5 py-3 bg-linear-to-r from-[#fe9a00] to-[#ff8800] hover:from-[#e68a00] hover:to-[#e67700] text-white font-bold rounded-lg transition-all text-sm shadow-lg hover:shadow-2xl hover:scale-105"
+          className="flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-[#ffbd66]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7200] px-5 py-3 text-sm font-black text-white shadow-[0_12px_32px_rgba(254,154,0,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(254,154,0,0.30)] active:translate-y-0 active:scale-[0.99] sm:w-auto sm:px-6"
         >
           <FiPlus className="text-lg" />
           Create Reservation
@@ -2016,7 +2018,7 @@ export default function ReservationsManagement() {
               if (value === "Website") {
                 return (
                   <span
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-400/20 bg-sky-500/10 text-sky-300 shadow-sm ring-1 ring-inset ring-sky-400/5"
                     title="Website"
                   >
                     <FiGlobe className="text-sm" />
@@ -2027,7 +2029,7 @@ export default function ReservationsManagement() {
               if (value === "Office") {
                 return (
                   <span
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-purple-400/20 bg-purple-500/10 text-purple-300 shadow-sm ring-1 ring-inset ring-purple-400/5"
                     title="Office"
                   >
                     <FiBriefcase className="text-sm" />
@@ -2038,7 +2040,7 @@ export default function ReservationsManagement() {
               if (value === "App") {
                 return (
                   <span
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-sm ring-1 ring-inset ring-emerald-400/5"
                     title="App"
                   >
                     <FiSmartphone className="text-sm" />
@@ -2059,7 +2061,7 @@ export default function ReservationsManagement() {
               if (hasFront && hasBack) {
                 return (
                   <span
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-500/20 text-green-400 border border-green-500/30"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-green-400/20 bg-green-500/10 text-green-300 shadow-sm ring-1 ring-inset ring-green-400/5"
                     title="Complete"
                   >
                     <FiCheck className="text-sm" />
@@ -2070,7 +2072,7 @@ export default function ReservationsManagement() {
               if (hasFront || hasBack) {
                 return (
                   <span
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-yellow-400/20 bg-yellow-500/10 text-yellow-300 shadow-sm ring-1 ring-inset ring-yellow-400/5"
                     title="Partial"
                   >
                     <FiCheck className="text-sm" />
@@ -2080,7 +2082,7 @@ export default function ReservationsManagement() {
 
               return (
                 <span
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-500/20 text-red-400 border border-red-500/30"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-400/20 bg-red-500/10 text-red-300 shadow-sm ring-1 ring-inset ring-red-400/5"
                   title="Missing"
                 >
                   <FiX className="text-sm" />
@@ -2115,7 +2117,7 @@ export default function ReservationsManagement() {
               row ? (
                 <button
                   onClick={() => handleOpenStepManager(row)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-2.5 py-1.5 text-xs font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-3 py-2 text-xs font-bold text-[#ffad33] shadow-sm transition-all duration-200 hover:border-[#fe9a00]/40 hover:bg-[#fe9a00]/20 active:scale-[0.98]"
                   title="Open step manager"
                 >
                   Step
@@ -2134,7 +2136,7 @@ export default function ReservationsManagement() {
                   setSelectedReservationForDetails(row);
                   setDetailsModalOpen(true);
                 }}
-                className="p-1.5 tooltip hover:bg-[#fe9a00]/20 rounded-lg transition-colors text-[#fe9a00] hover:text-[#fe9a00]"
+                className="tooltip flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-[#ffad33] transition-all duration-200 hover:border-[#fe9a00]/20 hover:bg-[#fe9a00]/10 active:scale-95"
                 title="View Details"
                 data-tooltip="View Details"
               >
@@ -2215,11 +2217,11 @@ export default function ReservationsManagement() {
       /> */}
 
       {isDetailOpen && selectedReservation && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a2847] rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-white/10">
-            <div className="sticky top-0 flex items-center justify-between p-6 border-b z-10 border-white/10 bg-[#1a2847]">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-5">
+          <div className="max-h-[96dvh] w-full max-w-2xl overscroll-contain overflow-y-auto rounded-t-[28px] border border-white/10 bg-linear-to-b from-[#1a294a] to-[#0b1324] shadow-[0_30px_100px_rgba(0,0,0,0.60)] ring-1 ring-inset ring-white/[0.04] sm:max-h-[90vh] sm:rounded-[28px]">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#152441]/88 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:p-6">
               <div className="min-w-0">
-                <h2 className="text-2xl font-black text-white">
+                <h2 className="text-xl font-black text-white sm:text-2xl">
                   Reservation Details
                 </h2>
                 <p className="text-[#fe9a00] text-sm font-bold">
@@ -2231,27 +2233,27 @@ export default function ReservationsManagement() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => printReservationReceipt(selectedReservation)}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-[#fe9a00]/20 hover:bg-[#fe9a00]/30 text-[#fe9a00] rounded-lg transition-colors text-sm font-bold"
+                  className="inline-flex min-h-10 touch-manipulation items-center justify-center gap-2 rounded-xl bg-[#fe9a00]/20 px-3 py-2 text-sm font-bold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/30 active:bg-[#fe9a00]/35"
                 >
                   <FiPrinter className="text-base" />
                   Print
                 </button>
                 <button
                   onClick={() => setIsDetailOpen(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-xl transition-colors hover:bg-white/10 active:bg-white/15"
                 >
                   <FiX className="text-white text-xl" />
                 </button>
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="space-y-4 p-3 sm:space-y-5 sm:p-6">
               {/* User Information */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <h3 className="text-white font-semibold mb-3">
                   User Information
                 </h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-4">
                   <div>
                     <p className="text-gray-400">Name</p>
                     <p className="text-white font-semibold">
@@ -2282,11 +2284,11 @@ export default function ReservationsManagement() {
               {/* License Information */}
               {(selectedReservation.user?.licenceAttached?.front ||
                 selectedReservation.user?.licenceAttached?.back) && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                   <h3 className="text-white font-semibold mb-3">
                     Driver licences
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
                     {selectedReservation.user?.licenceAttached?.front && (
                       <div>
                         <p className="text-gray-400 text-sm mb-2">Front Side</p>
@@ -2304,7 +2306,7 @@ export default function ReservationsManagement() {
                                 selectedReservation.user.licenceAttached.front
                               }
                               alt="licences Front"
-                              className="w-full h-32 object-cover rounded-lg border border-white/10 cursor-pointer hover:border-[#fe9a00]/50 transition-colors"
+                              className="h-40 w-full cursor-pointer rounded-xl border border-white/10 object-cover transition-colors hover:border-[#fe9a00]/50 sm:h-32"
                             />
                             <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center opacity-0 hover:opacity-100">
                               <span className="text-white text-sm font-medium">
@@ -2330,7 +2332,7 @@ export default function ReservationsManagement() {
                                 selectedReservation.user.licenceAttached.back
                               }
                               alt="licences Back"
-                              className="w-full h-32 object-cover rounded-lg border border-white/10 cursor-pointer hover:border-[#fe9a00]/50 transition-colors"
+                              className="h-40 w-full cursor-pointer rounded-xl border border-white/10 object-cover transition-colors hover:border-[#fe9a00]/50 sm:h-32"
                             />
                             <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center opacity-0 hover:opacity-100">
                               <span className="text-white text-sm font-medium">
@@ -2369,11 +2371,11 @@ export default function ReservationsManagement() {
               )}
 
               {/* Reservation Details */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <h3 className="text-white font-semibold mb-3">
                   Reservation Details
                 </h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-4">
                   <div>
                     <p className="text-gray-400">Office</p>
                     <p className="text-white font-semibold">
@@ -2450,7 +2452,7 @@ export default function ReservationsManagement() {
               {/* Add-ons */}
               {selectedReservation.addOns &&
                 selectedReservation.addOns.length > 0 && (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-white font-semibold">Add-ons</h3>
                       <button
@@ -2485,7 +2487,7 @@ export default function ReservationsManagement() {
                         return (
                           <div
                             key={idx}
-                            className="flex justify-between items-center text-sm"
+                            className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.07] via-white/[0.035] to-[#fe9a00]/[0.055] p-4 shadow-[0_16px_44px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:flex-row sm:items-center sm:justify-between sm:p-5 text-sm"
                           >
                             <div className="flex flex-col">
                               <span className="text-white font-semibold">
@@ -2502,7 +2504,7 @@ export default function ReservationsManagement() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-start gap-3 sm:items-center">
                               <span className="text-gray-400">
                                 Qty: {item.quantity}
                               </span>
@@ -2519,7 +2521,7 @@ export default function ReservationsManagement() {
 
               {/* Message */}
               {selectedReservation.messege && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                   <h3 className="text-white font-semibold mb-2">Message</h3>
                   <p className="text-gray-300 text-sm">
                     {selectedReservation.messege}
@@ -2528,19 +2530,19 @@ export default function ReservationsManagement() {
               )}
 
               {/* Edit Dates */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <h3 className="text-white font-semibold mb-3">
                   Edit Reservation
                 </h3>
                 <button
                   onClick={() => setIsEditDatesOpen(!isEditDatesOpen)}
-                  className="w-full px-4 py-2 bg-[#fe9a00]/20 text-[#fe9a00] rounded-lg hover:bg-[#fe9a00]/30 transition-colors font-semibold text-sm"
+                  className="min-h-11 w-full touch-manipulation rounded-xl bg-[#fe9a00]/20 px-4 py-2.5 text-sm font-semibold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/30 active:bg-[#fe9a00]/35"
                 >
                   Edit Category, Dates & Times
                 </button>
 
                 {isEditDatesOpen && (
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-4 space-y-4">
                     <div>
                       <label className="text-white text-sm font-semibold mb-2 block">
                         Category
@@ -2560,7 +2562,7 @@ export default function ReservationsManagement() {
                       <button
                         type="button"
                         onClick={() => setShowDateRange(!showDateRange)}
-                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm text-left focus:outline-none focus:border-[#fe9a00]"
+                        className="min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-left text-sm text-white focus:border-[#fe9a00] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/20"
                       >
                         {editDateRange[0].startDate && editDateRange[0].endDate
                           ? `${editDateRange[0].startDate.toLocaleDateString("en-GB")} - ${editDateRange[0].endDate.toLocaleDateString("en-GB")}`
@@ -2568,11 +2570,11 @@ export default function ReservationsManagement() {
                       </button>
                       {showDateRange && (
                         <div
-                          className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center"
+                          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-5"
                           onClick={() => setShowDateRange(false)}
                         >
                           <div
-                            className="bg-slate-800 backdrop-blur-xl border border-white/20 rounded-lg p-4"
+                            className="max-h-[92dvh] max-w-[calc(100vw-1rem)] overflow-auto rounded-2xl border border-white/10 bg-linear-to-b from-slate-800 to-slate-900 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] backdrop-blur-xl sm:p-4"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <DateRange
@@ -2602,7 +2604,7 @@ export default function ReservationsManagement() {
                             <button
                               type="button"
                               onClick={() => setShowDateRange(false)}
-                              className="w-full mt-3 px-4 py-2 bg-[#fe9a00] text-slate-900 font-semibold rounded-lg hover:bg-[#e68a00] transition-colors text-sm"
+                              className="mt-3 min-h-11 w-full touch-manipulation rounded-xl border border-[#ffbd66]/40 bg-linear-to-r from-[#fe9a00] to-[#ffad33] px-4 py-2.5 text-sm font-bold text-slate-950 shadow-[0_8px_24px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(254,154,0,0.24)] active:translate-y-0 active:scale-[0.99]"
                             >
                               Done
                             </button>
@@ -2611,7 +2613,7 @@ export default function ReservationsManagement() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className="text-white text-sm font-semibold mb-2 flex items-center gap-2">
                           <FiClock className="text-[#fe9a00]" /> Start Time
@@ -2779,7 +2781,7 @@ export default function ReservationsManagement() {
                       </div>
                     </div>
 
-                    <div className="bg-amber-500/5 border border-amber-400/30 rounded-lg p-3 space-y-3">
+                    <div className="space-y-3 rounded-2xl border border-amber-400/20 bg-linear-to-br from-amber-500/[0.08] to-amber-500/[0.025] p-4 shadow-sm ring-1 ring-inset ring-amber-300/[0.03] sm:p-5">
                       <label className="flex items-center gap-2 text-amber-300 text-sm font-semibold cursor-pointer">
                         <input
                           type="checkbox"
@@ -2792,7 +2794,7 @@ export default function ReservationsManagement() {
                         Manual extension price (out-of-hours)
                       </label>
                       {isManualExtension && (
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
                             <label className="block text-white/70 text-xs mb-1">
                               Pickup extension (£)
@@ -2807,7 +2809,7 @@ export default function ReservationsManagement() {
                                   parseFloat(e.target.value) || 0,
                                 )
                               }
-                              className="w-full bg-white/10 border border-white/20 rounded-lg text-white px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                              className="min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                             />
                           </div>
                           <div>
@@ -2824,7 +2826,7 @@ export default function ReservationsManagement() {
                                   parseFloat(e.target.value) || 0,
                                 )
                               }
-                              className="w-full bg-white/10 border border-white/20 rounded-lg text-white px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                              className="min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                             />
                           </div>
                         </div>
@@ -2843,7 +2845,7 @@ export default function ReservationsManagement() {
                               e.target.value as "manual" | "automatic",
                             )
                           }
-                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:border-[#fe9a00]"
+                          className="min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white focus:border-[#fe9a00] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/20"
                         >
                           <option value="manual">Manual</option>
                           <option value="automatic">
@@ -2853,7 +2855,7 @@ export default function ReservationsManagement() {
                           </option>
                         </select>
                       ) : (
-                        <div className="px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-gray-400 text-sm">
+                        <div className="min-h-11 rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-gray-400">
                           {selectedGear === "automatic"
                             ? "Automatic"
                             : "Manual"}
@@ -2868,7 +2870,7 @@ export default function ReservationsManagement() {
                       <button
                         type="button"
                         onClick={() => setShowAddOnsModal(true)}
-                        className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm hover:bg-white/20 transition-colors"
+                        className="min-h-11 w-full touch-manipulation rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/20 active:bg-white/25"
                       >
                         {selectedAddOns.length > 0
                           ? `${selectedAddOns.length} add-on(s) selected`
@@ -2894,13 +2896,13 @@ export default function ReservationsManagement() {
                       )}
                     </div>
 
-                    <div className="bg-sky-500/10 border border-sky-500/30 rounded-lg p-3">
+                    <div className="rounded-2xl border border-sky-400/20 bg-linear-to-br from-sky-500/[0.11] to-sky-500/[0.035] p-4 shadow-sm ring-1 ring-inset ring-sky-300/[0.03] sm:p-5">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={editPerInvoice}
                           onChange={(e) => setEditPerInvoice(e.target.checked)}
-                          className="w-4 h-4 rounded border-sky-500/50 bg-sky-500/20 text-sky-500 focus:ring-sky-500 focus:ring-offset-0"
+                          className="h-5 w-5 shrink-0 rounded border-sky-500/50 bg-sky-500/20 text-sky-500 focus:ring-sky-500 focus:ring-offset-0"
                         />
                         <span className="text-sky-200 text-sm font-semibold">
                           🧾 Per Invoice (no price now)
@@ -2915,7 +2917,7 @@ export default function ReservationsManagement() {
                     </div>
 
                     {!editPerInvoice && priceCalc && (
-                      <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 space-y-3">
+                      <div className="space-y-3 rounded-2xl border border-purple-400/20 bg-linear-to-br from-purple-500/[0.11] to-purple-500/[0.035] p-4 shadow-sm ring-1 ring-inset ring-purple-300/[0.03] sm:p-5">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-purple-200 text-sm font-semibold">
@@ -2943,7 +2945,7 @@ export default function ReservationsManagement() {
                                   setManualPriceNote("");
                               }
                             }}
-                            className="w-4 h-4 rounded border-purple-500/50 bg-purple-500/20 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
+                            className="h-5 w-5 shrink-0 rounded border-purple-500/50 bg-purple-500/20 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
                           />
                           <span className="text-white text-sm font-semibold">
                             Manual daily price
@@ -2964,7 +2966,7 @@ export default function ReservationsManagement() {
                                 setManualPricePerDay(e.target.value)
                               }
                               placeholder={`Default: £${priceCalc.pricePerDay.toFixed(2)}`}
-                              className="w-full px-3 py-2 bg-white/10 border border-purple-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-purple-400 placeholder:text-purple-200/40"
+                              className="min-h-11 w-full rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-purple-200/40 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/20"
                             />
                           </div>
                         )}
@@ -2992,7 +2994,7 @@ export default function ReservationsManagement() {
                                 if (!isManualPrice) setManualPriceNote("");
                               }
                             }}
-                            className="w-4 h-4 rounded border-purple-500/50 bg-purple-500/20 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
+                            className="h-5 w-5 shrink-0 rounded border-purple-500/50 bg-purple-500/20 text-purple-500 focus:ring-purple-500 focus:ring-offset-0"
                           />
                           <span className="text-white text-sm font-semibold">
                             Override total price
@@ -3013,7 +3015,7 @@ export default function ReservationsManagement() {
                                 setManualTotalPrice(e.target.value)
                               }
                               placeholder={`Calculated: £${priceCalc.totalPrice.toFixed(2)}`}
-                              className="w-full px-3 py-2 bg-white/10 border border-purple-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-purple-400 placeholder:text-purple-200/40"
+                              className="min-h-11 w-full rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-purple-200/40 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/20"
                             />
                           </div>
                         )}
@@ -3030,7 +3032,7 @@ export default function ReservationsManagement() {
                                 setManualPriceNote(e.target.value)
                               }
                               placeholder="Optional admin note"
-                              className="w-full px-3 py-2 bg-white/10 border border-purple-500/30 rounded-lg text-white text-sm focus:outline-none focus:border-purple-400 placeholder:text-purple-200/40"
+                              className="min-h-11 w-full rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-purple-200/40 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/20"
                             />
                           </div>
                         )}
@@ -3038,7 +3040,7 @@ export default function ReservationsManagement() {
                     )}
 
                     {editPerInvoice ? (
-                      <div className="bg-sky-500/10 border border-sky-500/30 rounded-lg p-3">
+                      <div className="rounded-2xl border border-sky-400/20 bg-linear-to-br from-sky-500/[0.11] to-sky-500/[0.035] p-4 shadow-sm ring-1 ring-inset ring-sky-300/[0.03] sm:p-5">
                         <p className="text-white text-sm font-semibold mb-1">
                           New Total Price
                         </p>
@@ -3049,7 +3051,7 @@ export default function ReservationsManagement() {
                       </div>
                     ) : (
                       priceCalc && (
-                        <div className="bg-[#fe9a00]/10 border border-[#fe9a00]/30 rounded-lg p-3">
+                        <div className="rounded-2xl border border-[#fe9a00]/20 bg-linear-to-br from-[#fe9a00]/[0.12] to-[#fe9a00]/[0.035] p-4 shadow-[0_10px_28px_rgba(254,154,0,0.06)] ring-1 ring-inset ring-[#fe9a00]/[0.04] sm:p-5">
                           <p className="text-white text-sm font-semibold mb-1">
                             New Total Price
                           </p>
@@ -3072,7 +3074,7 @@ export default function ReservationsManagement() {
 
                     {requiresFreshContract && (
                       <div className="overflow-hidden rounded-xl border border-[#fe9a00]/35 bg-[#fe9a00]/[0.07]">
-                        <div className="flex gap-3 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row p-4">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#fe9a00]/35 bg-[#fe9a00]/15 text-[#fe9a00]">
                             <FiAlertTriangle className="h-4 w-4" />
                           </div>
@@ -3106,7 +3108,7 @@ export default function ReservationsManagement() {
                                 Preview
                               </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-4">
                               <div>
                                 <p className="text-xs text-slate-400">
                                   Previously paid
@@ -3174,7 +3176,7 @@ export default function ReservationsManagement() {
                     <button
                       onClick={handleDatesUpdate}
                       disabled={isSubmitting || !editCategory}
-                      className="w-full px-4 py-2 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
+                      className="min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_24px_rgba(254,154,0,0.16)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(254,154,0,0.22)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                     >
                       {isSubmitting
                         ? "Updating..."
@@ -3199,13 +3201,13 @@ export default function ReservationsManagement() {
               )}
 
               {/* Vehicle Assignment */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <h3 className="text-white font-semibold mb-3">
                   Assign Vehicle
                 </h3>
                 <button
                   onClick={() => setIsEditOpen(!isEditOpen)}
-                  className="w-full px-4 py-2 bg-[#fe9a00]/20 text-[#fe9a00] rounded-lg hover:bg-[#fe9a00]/30 transition-colors font-semibold text-sm"
+                  className="min-h-11 w-full touch-manipulation rounded-xl bg-[#fe9a00]/20 px-4 py-2.5 text-sm font-semibold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/30 active:bg-[#fe9a00]/35"
                 >
                   Edit Vehicle
                 </button>
@@ -3283,7 +3285,7 @@ export default function ReservationsManagement() {
                         }
                       }}
                       disabled={isSubmitting || !newVehicle}
-                      className="w-full px-4 py-2 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
+                      className="min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_24px_rgba(254,154,0,0.16)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(254,154,0,0.22)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                     >
                       {isSubmitting ? "Updating..." : "Assign & Collected"}
                     </button>
@@ -3300,14 +3302,14 @@ export default function ReservationsManagement() {
               />
 
               {selectedReservation.deposit && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-white font-semibold">Deposit</h3>
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-gray-200 capitalize">
                       {selectedReservation.deposit.status?.replace(/_/g, " ")}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                     <div>
                       <p className="text-gray-400 text-xs">Option</p>
                       <p className="text-white font-semibold">
@@ -3348,7 +3350,7 @@ export default function ReservationsManagement() {
                           setDepositTransactionRef(event.target.value)
                         }
                         placeholder="Transaction reference (optional)"
-                        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                        className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
                       />
                       <textarea
                         value={depositFailureReason}
@@ -3357,14 +3359,14 @@ export default function ReservationsManagement() {
                         }
                         placeholder="Rejection reason (required only when rejecting)"
                         rows={2}
-                        className="w-full resize-none rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                        className="w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
                       />
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <button
                           type="button"
                           disabled={depositBusy}
                           onClick={() => handleDepositVerification("reject")}
-                          className="rounded-lg bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                          className="min-h-11 touch-manipulation rounded-xl bg-red-500/15 px-3 py-2.5 text-sm font-semibold text-red-300 hover:bg-red-500/25 active:bg-red-500/30 disabled:opacity-50"
                         >
                           Reject receipt
                         </button>
@@ -3372,7 +3374,7 @@ export default function ReservationsManagement() {
                           type="button"
                           disabled={depositBusy}
                           onClick={() => handleDepositVerification("approve")}
-                          className="rounded-lg bg-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                          className="min-h-11 touch-manipulation rounded-xl bg-emerald-500/20 px-3 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/30 active:bg-emerald-500/35 disabled:opacity-50"
                         >
                           Verify payment
                         </button>
@@ -3383,7 +3385,7 @@ export default function ReservationsManagement() {
               )}
 
               {/* Status Management */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-white font-semibold">Current Status</h3>
                   <span
@@ -3405,7 +3407,7 @@ export default function ReservationsManagement() {
                   )}
                 <button
                   onClick={() => setIsStatusOpen(!isStatusOpen)}
-                  className="w-full px-4 py-2 bg-[#fe9a00]/20 text-[#fe9a00] rounded-lg hover:bg-[#fe9a00]/30 transition-colors font-semibold text-sm"
+                  className="min-h-11 w-full touch-manipulation rounded-xl bg-[#fe9a00]/20 px-4 py-2.5 text-sm font-semibold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/30 active:bg-[#fe9a00]/35"
                 >
                   Change Status
                 </button>
@@ -3428,14 +3430,14 @@ export default function ReservationsManagement() {
                           onChange={(e) => setCancelReason(e.target.value)}
                           rows={3}
                           placeholder="Add the reason for canceling this reservation"
-                          className="w-full resize-none rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none"
+                          className="w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
                         />
                       </div>
                     )}
                     <button
                       onClick={() => handleStatusChange()}
                       disabled={isSubmitting || !newStatus}
-                      className="w-full px-4 py-2 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
+                      className="min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_24px_rgba(254,154,0,0.16)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(254,154,0,0.22)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                     >
                       {isSubmitting ? "Updating..." : "Update Status"}
                     </button>
@@ -3444,10 +3446,10 @@ export default function ReservationsManagement() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:pt-4">
                 <button
                   onClick={() => setIsDetailOpen(false)}
-                  className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-semibold"
+                  className="min-h-11 flex-1 touch-manipulation rounded-xl bg-white/10 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/20 active:bg-white/25"
                 >
                   Close
                 </button>
@@ -3488,8 +3490,8 @@ export default function ReservationsManagement() {
 
       {/* Per-Invoice final price modal (shown when completing a per-invoice reserve) */}
       {isPerInvoicePriceOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-          <div className="bg-[#1a2847] rounded-2xl max-w-md w-full border border-white/10 p-6">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-5">
+          <div className="w-full max-w-md rounded-t-[28px] border border-white/10 bg-linear-to-b from-[#1a294a] to-[#0b1324] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.58)] ring-1 ring-inset ring-white/[0.04] sm:rounded-[28px] sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">
                 Enter final total price
@@ -3499,7 +3501,7 @@ export default function ReservationsManagement() {
                   setIsPerInvoicePriceOpen(false);
                   setPerInvoicePrice("");
                 }}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-xl transition-colors hover:bg-white/10 active:bg-white/15"
               >
                 <FiX className="text-white text-xl" />
               </button>
@@ -3519,22 +3521,22 @@ export default function ReservationsManagement() {
               value={perInvoicePrice}
               onChange={(e) => setPerInvoicePrice(e.target.value)}
               placeholder="0.00"
-              className="w-full bg-white/10 border border-white/20 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#fe9a00] mb-4"
+              className="mb-4 min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white focus:border-[#fe9a00] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/20"
             />
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={() => {
                   setIsPerInvoicePriceOpen(false);
                   setPerInvoicePrice("");
                 }}
-                className="flex-1 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-semibold text-sm"
+                className="min-h-11 flex-1 touch-manipulation rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20 active:bg-white/25"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmPerInvoicePrice}
                 disabled={isSubmitting || !perInvoicePrice}
-                className="flex-1 px-4 py-2.5 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
+                className="min-h-11 flex-1 touch-manipulation rounded-xl bg-[#fe9a00] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#e68a00] active:bg-[#d77f00] disabled:opacity-50"
               >
                 {isSubmitting ? "Completing..." : "Save & Complete"}
               </button>

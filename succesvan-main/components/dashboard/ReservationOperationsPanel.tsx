@@ -65,7 +65,7 @@ const additionalChargeRows = (reservation: Reservation) => {
 };
 
 const fieldClass =
-  "w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-[#fe9a00] focus:outline-none";
+  "w-full min-h-11 rounded-xl border border-white/[0.10] bg-[#07101f]/70 px-3.5 py-2.5 text-sm text-white shadow-inner shadow-black/10 outline-none transition duration-200 placeholder:text-slate-500 hover:border-white/20 hover:bg-[#091426]/80 focus:border-[#fe9a00]/70 focus:bg-[#091426] focus:ring-2 focus:ring-[#fe9a00]/15";
 
 const dateInputValue = (date: Date | null) => {
   if (!date) return "";
@@ -284,7 +284,8 @@ export default function ReservationOperationsPanel({
   useEffect(() => {
     if (!loadedReservation) return;
     const loadedCategory = loadedReservation.category as
-      { deposit?: { handoverDepositPrice?: number } } | undefined;
+      | { deposit?: { handoverDepositPrice?: number } }
+      | undefined;
     setHandover((current) => ({
       ...current,
       handoverDepositAmount: String(
@@ -469,11 +470,11 @@ export default function ReservationOperationsPanel({
     if (!urls.length) return null;
 
     return (
-      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2.5 sm:grid-cols-3 lg:grid-cols-4">
         {urls.map((url, index) => (
           <div
             key={`${label}-${url}-${index}`}
-            className="group relative overflow-hidden rounded-lg border border-white/10 bg-black/25"
+            className="group relative overflow-hidden rounded-xl border border-white/[0.10] bg-[#07101f]/70 shadow-sm shadow-black/20 transition hover:border-white/20"
           >
             {isImageUrl(url) ? (
               <button
@@ -486,7 +487,7 @@ export default function ReservationOperationsPanel({
                 <img
                   src={url}
                   alt={`${label} ${index + 1}`}
-                  className="h-20 w-full object-cover transition group-hover:scale-105"
+                  className="h-24 w-full object-cover transition duration-300 group-hover:scale-105"
                 />
               </button>
             ) : (
@@ -494,7 +495,7 @@ export default function ReservationOperationsPanel({
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex h-20 items-center justify-center px-2 text-center text-[11px] font-semibold text-[#fe9a00]"
+                className="flex h-24 items-center justify-center px-3 text-center text-xs font-semibold text-[#fe9a00] transition hover:bg-[#fe9a00]/5"
               >
                 View PDF
               </a>
@@ -503,7 +504,7 @@ export default function ReservationOperationsPanel({
               type="button"
               aria-label={`Remove ${label} ${index + 1}`}
               onClick={() => onRemove(index)}
-              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/75 text-sm text-white hover:bg-red-500"
+              className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/80 text-sm text-white shadow-lg transition hover:border-red-400/40 hover:bg-red-500"
             >
               ×
             </button>
@@ -522,14 +523,14 @@ export default function ReservationOperationsPanel({
   ) => {
     if (!fields.length) {
       return (
-        <div className="rounded-lg border border-dashed border-white/10 bg-black/10 px-3 py-4 text-center text-xs text-gray-500 sm:col-span-2">
+        <div className="rounded-xl border border-dashed border-white/[0.12] bg-black/10 px-4 py-5 text-center text-xs leading-5 text-slate-500 sm:col-span-2">
           No category checklist fields configured for this stage.
         </div>
       );
     }
 
     return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4">
         {fields.map((field) => {
           const key = customFieldKey(field);
           const isUploading = uploadingKey === `custom-${key}`;
@@ -537,17 +538,17 @@ export default function ReservationOperationsPanel({
           return (
             <div
               key={key}
-              className={`rounded-lg border border-white/10 bg-black/20 p-3 ${
+              className={`rounded-xl border border-white/[0.09] bg-[#07101f]/55 p-3.5 shadow-sm shadow-black/10 sm:p-4 ${
                 field.inputType === "textarea" ? "sm:col-span-2" : ""
               }`}
             >
               <label
                 htmlFor={field.fieldType === "file" ? inputId : undefined}
-                className="mb-1 block text-xs font-medium text-gray-300"
+                className="mb-1.5 block text-xs font-semibold text-slate-300"
               >
                 {field.label}
                 {field.helpText ? (
-                  <span className="ml-1 font-normal text-gray-500">
+                  <span className="ml-1 font-normal text-slate-500">
                     — {field.helpText}
                   </span>
                 ) : null}
@@ -576,11 +577,11 @@ export default function ReservationOperationsPanel({
                   />
                   <label
                     htmlFor={inputId}
-                    className={`group flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-2 transition hover:border-[#fe9a00]/45 hover:bg-white/[0.06] focus-within:border-[#fe9a00] ${
+                    className={`group flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-white/[0.10] bg-white/[0.035] px-3 py-2.5 shadow-sm shadow-black/10 transition duration-200 hover:border-[#fe9a00]/45 hover:bg-[#fe9a00]/[0.045] focus-within:border-[#fe9a00]/70 focus-within:ring-2 focus-within:ring-[#fe9a00]/10 ${
                       isUploading ? "pointer-events-none opacity-60" : ""
                     }`}
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#fe9a00]/20 bg-[#fe9a00]/10 text-[#fe9a00] transition group-hover:bg-[#fe9a00]/15">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 text-[#fe9a00] shadow-sm transition group-hover:bg-[#fe9a00]/15">
                       {isUploading ? (
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#fe9a00]/30 border-t-[#fe9a00]" />
                       ) : (
@@ -601,7 +602,7 @@ export default function ReservationOperationsPanel({
                       )}
                     </span>
                     <span className="min-w-0 flex-1 text-left">
-                      <span className="block truncate text-xs font-semibold text-gray-100">
+                      <span className="block truncate text-xs font-bold text-slate-100">
                         {isUploading ? "Uploading…" : "Choose images"}
                       </span>
                       <span
@@ -672,20 +673,20 @@ export default function ReservationOperationsPanel({
     before: string | number | boolean | undefined | null,
     after: string | number | boolean | undefined | null,
   ) => (
-    <div className="grid grid-cols-[1fr_1fr] gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+    <div className="grid grid-cols-1 gap-3 rounded-xl border border-white/[0.09] bg-[#07101f]/45 p-3.5 shadow-sm shadow-black/10 sm:grid-cols-2 sm:p-4">
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
           Before · {label}
         </p>
-        <p className="mt-1 text-sm font-semibold text-white">
+        <p className="mt-1.5 break-words text-sm font-semibold leading-5 text-white">
           {renderCompareValue(before)}
         </p>
       </div>
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#fe9a00]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#fe9a00]">
           After · {label}
         </p>
-        <p className="mt-1 text-sm font-semibold text-white">
+        <p className="mt-1.5 break-words text-sm font-semibold leading-5 text-white">
           {renderCompareValue(after)}
         </p>
       </div>
@@ -696,11 +697,15 @@ export default function ReservationOperationsPanel({
     const hasFiles = Boolean(savedUrls?.length);
 
     if (!hasFiles) {
-      return <p className="mt-1 text-sm font-semibold text-white">-</p>;
+      return (
+        <p className="mt-1.5 break-words text-sm font-semibold leading-5 text-white">
+          -
+        </p>
+      );
     }
 
     return (
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2.5 sm:grid-cols-3">
         {(savedUrls || []).map((url, index) => {
           const image = isImageUrl(url);
           return image ? (
@@ -713,12 +718,12 @@ export default function ReservationOperationsPanel({
                   title: `${label} before ${index + 1}`,
                 })
               }
-              className="group overflow-hidden rounded-lg border border-white/10 bg-black/20 text-left"
+              className="group overflow-hidden rounded-xl border border-white/[0.10] bg-[#07101f]/65 text-left shadow-sm transition hover:border-white/20"
             >
               <img
                 src={url}
                 alt={`${label} saved ${index + 1}`}
-                className="h-24 w-full object-cover transition group-hover:scale-105"
+                className="h-28 w-full object-cover transition duration-300 group-hover:scale-105"
               />
             </button>
           ) : (
@@ -727,9 +732,9 @@ export default function ReservationOperationsPanel({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="group overflow-hidden rounded-lg border border-white/10 bg-black/20"
+              className="group overflow-hidden rounded-xl border border-white/[0.10] bg-[#07101f]/65 shadow-sm transition hover:border-white/20"
             >
-              <span className="flex h-24 items-center justify-center px-2 text-center text-xs font-semibold text-[#fe9a00]">
+              <span className="flex h-28 items-center justify-center px-3 text-center text-xs font-semibold text-[#fe9a00]">
                 View file {index + 1}
               </span>
             </a>
@@ -744,15 +749,15 @@ export default function ReservationOperationsPanel({
     beforeUrls?: string[],
     afterUrls?: string[],
   ) => (
-    <div className="grid grid-cols-[1fr_1fr] gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+    <div className="grid grid-cols-1 gap-3 rounded-xl border border-white/[0.09] bg-[#07101f]/45 p-3.5 shadow-sm shadow-black/10 sm:grid-cols-2 sm:p-4">
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
           Before · {label}
         </p>
         {renderFilePreviewList(label, beforeUrls)}
       </div>
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#fe9a00]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#fe9a00]">
           After · {label}
         </p>
         {renderFilePreviewList(label, afterUrls)}
@@ -779,17 +784,15 @@ export default function ReservationOperationsPanel({
     if (!handoverData?.completedAt) return null;
 
     return (
-      <div className="rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/10 p-3 space-y-3">
+      <div className="space-y-4 rounded-2xl border border-[#fe9a00]/20 bg-gradient-to-b from-[#fe9a00]/10 to-[#fe9a00]/[0.035] p-3.5 shadow-lg shadow-black/10 sm:p-5">
         <div>
-          <h4 className="font-semibold text-white">
-            Before / after comparison
-          </h4>
-          <p className="text-xs text-gray-400">
+          <h4 className="font-bold text-white">Before / after comparison</h4>
+          <p className="text-xs font-medium leading-5 text-slate-400">
             Compare the handover values against the return inspection values as
             you fill the return form.
           </p>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {renderComparisonRow(
             "Mileage",
             handoverData.startMileage,
@@ -986,38 +989,38 @@ export default function ReservationOperationsPanel({
   if (!showHandover && !showInspection && !showRefund) return null;
   if (loadingReservation) {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-        <div className="flex items-center gap-3">
+      <div className="rounded-2xl border border-white/[0.09] bg-[#0b1224]/75 p-4 shadow-xl shadow-black/15 sm:p-5">
+        <div className="flex items-center gap-3.5">
           <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#fe9a00]/25 border-t-[#fe9a00]" />
           <div>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-sm font-bold text-white">
               Loading vehicle inspection form…
             </p>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <p className="mt-1 text-xs leading-5 text-slate-500">
               Reading the latest category checklist and reservation data.
             </p>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="h-16 animate-pulse rounded-lg bg-white/5" />
-          <div className="h-16 animate-pulse rounded-lg bg-white/5" />
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="h-20 animate-pulse rounded-xl border border-white/[0.04] bg-white/[0.045]" />
+          <div className="h-20 animate-pulse rounded-xl border border-white/[0.04] bg-white/[0.045]" />
         </div>
       </div>
     );
   }
   if (loadError || !loadedReservation) {
     return (
-      <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-5 text-center">
+      <div className="rounded-2xl border border-red-400/20 bg-gradient-to-b from-red-500/[0.07] to-red-500/[0.025] p-5 text-center shadow-xl shadow-black/10">
         <p className="text-sm font-semibold text-red-200">
           Could not load the vehicle form
         </p>
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="mt-1 text-xs font-medium leading-5 text-slate-400">
           {loadError || "The full reservation data was not returned."}
         </p>
         <button
           type="button"
           onClick={() => void loadReservation()}
-          className="mt-3 rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15"
+          className="mt-3 rounded-lg bg-white/10 px-4 py-2 text-sm font-bold text-white hover:bg-white/15"
         >
           Retry
         </button>
@@ -1025,28 +1028,30 @@ export default function ReservationOperationsPanel({
     );
   }
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+    <div className="space-y-5 rounded-2xl border border-white/[0.09] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 p-3 shadow-2xl shadow-black/15 sm:p-5 lg:p-6">
       {showHandover && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="space-y-4">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
             <div>
-              <h3 className="font-semibold text-white">Vehicle handover</h3>
+              <h3 className="text-lg font-black tracking-tight text-white sm:text-xl">
+                Vehicle handover
+              </h3>
               <p className="text-xs text-gray-500">
                 Record the vehicle state before collection.
               </p>
             </div>
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+            <span className="inline-flex w-fit rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300 shadow-sm shadow-emerald-950/10">
               {category?.name || "Category"} · {beforeFields.length} checklist
               {beforeFields.length === 1 ? " item" : " items"}
             </span>
           </div>
 
-          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <section className="rounded-2xl border border-white/[0.08] bg-[#07101f]/50 p-3.5 shadow-sm shadow-black/10 sm:p-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
               Vehicle readings
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="text-xs text-gray-400">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Starting mileage
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1060,7 +1065,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Starting fuel level
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1072,7 +1077,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Key count
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1086,7 +1091,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Handover deposit (£)
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1102,19 +1107,19 @@ export default function ReservationOperationsPanel({
                     })
                   }
                 />
-                <span className="mt-1 block text-[10px] text-gray-500">
+                <span className="mt-1.5 block text-[10px] leading-4 text-slate-500">
                   Category default; editable for this booking.
                 </span>
               </label>
             </div>
           </section>
 
-          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <section className="rounded-2xl border border-white/[0.08] bg-[#07101f]/50 p-3.5 shadow-sm shadow-black/10 sm:p-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
               Condition and checks
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="text-xs text-gray-400">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Condition notes
                 <textarea
                   className={`${fieldClass} mt-1`}
@@ -1127,7 +1132,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Existing damages
                 <textarea
                   className={`${fieldClass} mt-1`}
@@ -1143,7 +1148,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Equipment
                 <textarea
                   className={`${fieldClass} mt-1`}
@@ -1156,7 +1161,7 @@ export default function ReservationOperationsPanel({
                   }
                 />
               </label>
-              <label className="text-xs text-gray-400">
+              <label className="text-xs font-medium leading-5 text-slate-400">
                 Handover completed by
                 <SearchableStaffSelect
                   value={handover.staffId}
@@ -1175,8 +1180,8 @@ export default function ReservationOperationsPanel({
             </div>
           </section>
 
-          <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3.5 shadow-sm shadow-black/10 sm:p-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
               Category checklist · Before
             </p>
             {renderCustomFields(
@@ -1190,7 +1195,7 @@ export default function ReservationOperationsPanel({
           <button
             disabled={busy || Boolean(uploadingKey)}
             onClick={submitHandover}
-            className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-bold text-white disabled:opacity-50"
           >
             Confirm handover
           </button>
@@ -1198,28 +1203,30 @@ export default function ReservationOperationsPanel({
       )}
 
       {showInspection && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
+        <div className="space-y-4">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <h3 className="font-semibold text-white">Return inspection</h3>
-              <p className="text-xs text-gray-400">
+              <h3 className="text-lg font-black tracking-tight text-white sm:text-xl">
+                Return inspection
+              </h3>
+              <p className="text-xs font-medium leading-5 text-slate-400">
                 {returnMiniStep === "form"
                   ? "1. Re-fill the return form first."
                   : "2. Compare before/after, then complete inspection."}
               </p>
             </div>
-            <span className="rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
+            <span className="inline-flex w-fit rounded-full border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-3 py-1.5 text-xs font-black text-[#fe9a00]">
               {returnMiniStep === "form" ? "Fill form" : "Compare"}
             </span>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-400/15 bg-emerald-400/5 px-3 py-2">
-            <p className="text-xs text-gray-400">
+          <div className="flex flex-col items-start justify-between gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-3.5 py-3 sm:flex-row sm:items-center">
+            <p className="text-xs font-medium leading-5 text-slate-400">
               Loaded from{" "}
-              <strong className="text-gray-200">
+              <strong className="text-slate-200">
                 {category?.name || "category"}
               </strong>
             </p>
-            <span className="text-[11px] font-semibold text-emerald-300">
+            <span className="text-[11px] font-bold text-emerald-300">
               {returnFields.length} return checklist
               {returnFields.length === 1 ? " item" : " items"}
             </span>
@@ -1227,12 +1234,12 @@ export default function ReservationOperationsPanel({
 
           {returnMiniStep === "form" ? (
             <>
-              <section className="rounded-lg border border-white/10 bg-black/15 p-3">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <section className="rounded-2xl border border-white/[0.08] bg-[#07101f]/50 p-3.5 shadow-sm shadow-black/10 sm:p-4">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                   Vehicle readings
                 </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label className="text-xs text-gray-400">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     Return mileage
                     <input
                       className={`${fieldClass} mt-1`}
@@ -1249,7 +1256,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="text-xs text-gray-400">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     Return fuel level
                     <input
                       className={`${fieldClass} mt-1`}
@@ -1264,7 +1271,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="text-xs text-gray-400">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     Late minutes
                     <input
                       className={`${fieldClass} mt-1`}
@@ -1281,7 +1288,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="text-xs text-gray-400">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     Return inspection completed by
                     <SearchableStaffSelect
                       value={inspection.staffId}
@@ -1297,7 +1304,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="flex min-h-[62px] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-gray-300">
+                  <label className="flex min-h-12 items-center gap-3 rounded-xl border border-white/[0.10] bg-[#07101f]/60 px-3.5 py-3 text-sm font-medium text-slate-300 transition hover:border-white/20">
                     <input
                       type="checkbox"
                       className="accent-[#fe9a00]"
@@ -1314,12 +1321,12 @@ export default function ReservationOperationsPanel({
                 </div>
               </section>
 
-              <section className="rounded-lg border border-white/10 bg-black/15 p-3">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <section className="rounded-2xl border border-white/[0.08] bg-[#07101f]/50 p-3.5 shadow-sm shadow-black/10 sm:p-4">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                   Condition and checks
                 </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label className="text-xs text-gray-400">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     New damages
                     <textarea
                       className={`${fieldClass} mt-1`}
@@ -1335,7 +1342,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="text-xs text-gray-400">
+                  <label className="text-xs font-medium leading-5 text-slate-400">
                     Missing equipment
                     <textarea
                       className={`${fieldClass} mt-1`}
@@ -1351,7 +1358,7 @@ export default function ReservationOperationsPanel({
                       }
                     />
                   </label>
-                  <label className="text-xs text-gray-400 sm:col-span-2">
+                  <label className="text-xs font-medium leading-5 text-slate-400 sm:col-span-2">
                     Inspection notes
                     <textarea
                       className={`${fieldClass} mt-1`}
@@ -1367,8 +1374,8 @@ export default function ReservationOperationsPanel({
                 </div>
               </section>
 
-              <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3.5 shadow-sm shadow-black/10 sm:p-4">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                   Category checklist · After
                 </p>
                 {renderCustomFields(
@@ -1382,7 +1389,7 @@ export default function ReservationOperationsPanel({
               <button
                 disabled={busy || Boolean(uploadingKey)}
                 onClick={goToReturnComparison}
-                className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+                className="w-full rounded-lg bg-[#fe9a00] px-4 py-2 font-bold text-white disabled:opacity-50"
               >
                 Continue to comparison
               </button>
@@ -1390,18 +1397,18 @@ export default function ReservationOperationsPanel({
           ) : (
             <>
               {renderReturnComparison()}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <button
                   disabled={busy}
                   onClick={() => setReturnMiniStep("form")}
-                  className="rounded-lg bg-white/10 px-4 py-2 font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-white/10 px-4 py-2 font-bold text-white disabled:opacity-50"
                 >
                   Back to form
                 </button>
                 <button
                   disabled={busy}
                   onClick={submitInspection}
-                  className="rounded-lg bg-[#fe9a00] px-4 py-2 font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-[#fe9a00] px-4 py-2 font-bold text-white disabled:opacity-50"
                 >
                   Complete inspection
                 </button>
@@ -1412,11 +1419,11 @@ export default function ReservationOperationsPanel({
       )}
 
       {showRefund && (
-        <div className="space-y-3">
-          <h3 className="font-semibold text-white">
+        <div className="space-y-4">
+          <h3 className="text-lg font-black tracking-tight text-white sm:text-xl">
             Deposit and refund review
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {(
               [
                 "fuel",
@@ -1426,7 +1433,7 @@ export default function ReservationOperationsPanel({
                 "missingEquipment",
               ] as const
             ).map((field) => (
-              <label key={field} className="text-xs capitalize text-gray-400">
+              <label key={field} className="text-xs capitalize text-slate-400">
                 {field.replace(/([A-Z])/g, " $1")} charge (£)
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1450,10 +1457,10 @@ export default function ReservationOperationsPanel({
               setRefund({ ...refund, chargeReason: e.target.value })
             }
           />
-          <section className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <div className="flex items-center justify-between gap-3">
+          <section className="rounded-2xl border border-white/[0.08] bg-[#07101f]/50 p-3.5 shadow-sm shadow-black/10 sm:p-4">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-bold text-white">
                   Additional deductions
                 </p>
                 <p className="text-xs text-gray-500">
@@ -1472,7 +1479,7 @@ export default function ReservationOperationsPanel({
                     },
                   ])
                 }
-                className="flex h-9 items-center gap-1 rounded-lg border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-3 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25"
+                className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/10 px-4 text-sm font-black text-[#fe9a00] shadow-sm transition hover:border-[#fe9a00]/45 hover:bg-[#fe9a00]/20 sm:w-auto"
               >
                 <span className="text-lg leading-none">+</span>
                 Add
@@ -1480,17 +1487,17 @@ export default function ReservationOperationsPanel({
             </div>
 
             {additionalCharges.length === 0 ? (
-              <p className="mt-3 rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-gray-500">
+              <p className="mt-4 rounded-xl border border-dashed border-white/[0.12] bg-black/10 px-4 py-5 text-center text-xs leading-5 text-slate-500">
                 No additional deductions
               </p>
             ) : (
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 space-y-3.5">
                 {additionalCharges.map((charge, index) => (
                   <div
                     key={charge.id}
-                    className="grid grid-cols-[110px_minmax(0,1fr)_36px] gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2"
+                    className="grid grid-cols-1 gap-3 rounded-xl border border-white/[0.09] bg-white/[0.025] p-3 shadow-sm shadow-black/10 sm:grid-cols-[110px_minmax(0,1fr)_40px] sm:items-end"
                   >
-                    <label className="text-[11px] text-gray-400">
+                    <label className="text-[11px] font-medium text-slate-400">
                       Amount (£)
                       <input
                         className={`${fieldClass} mt-1`}
@@ -1509,7 +1516,7 @@ export default function ReservationOperationsPanel({
                         }
                       />
                     </label>
-                    <label className="text-[11px] text-gray-400">
+                    <label className="text-[11px] font-medium text-slate-400">
                       Reason
                       <input
                         className={`${fieldClass} mt-1`}
@@ -1535,7 +1542,7 @@ export default function ReservationOperationsPanel({
                           current.filter((_, itemIndex) => itemIndex !== index),
                         )
                       }
-                      className="mt-[18px] h-9 rounded-lg bg-red-500/10 text-lg text-red-300 transition hover:bg-red-500/20"
+                      className="h-10 w-full rounded-xl border border-red-400/10 bg-red-500/[0.08] text-lg text-red-300 transition hover:border-red-400/25 hover:bg-red-500/20 sm:w-10"
                     >
                       ×
                     </button>
@@ -1544,20 +1551,20 @@ export default function ReservationOperationsPanel({
               </div>
             )}
           </section>
-          <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 p-3 text-sm">
-            <p className="text-gray-400">
+          <div className="grid grid-cols-1 gap-2 rounded-2xl border border-white/[0.08] bg-[#07101f]/55 p-3 text-sm shadow-sm shadow-black/10 sm:grid-cols-3 sm:gap-3 sm:p-4">
+            <p className="text-slate-400">
               Deposit
               <br />
               <strong className="text-white">£{depositPaid.toFixed(2)}</strong>
             </p>
-            <p className="text-gray-400">
+            <p className="text-slate-400">
               Deductions
               <br />
               <strong className="text-red-300">
                 £{totalDeductions.toFixed(2)}
               </strong>
             </p>
-            <p className="text-gray-400">
+            <p className="text-slate-400">
               Refund
               <br />
               <strong className="text-emerald-300">
@@ -1565,7 +1572,7 @@ export default function ReservationOperationsPanel({
               </strong>
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <input
               className={fieldClass}
               placeholder="Refund reference"
@@ -1574,7 +1581,7 @@ export default function ReservationOperationsPanel({
                 setRefund({ ...refund, reference: e.target.value })
               }
             />
-            <label className="text-xs text-gray-400">
+            <label className="text-xs font-medium leading-5 text-slate-400">
               Expected refund date
               <DatePicker
                 selected={
@@ -1598,25 +1605,25 @@ export default function ReservationOperationsPanel({
               />
             </label>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <button
               disabled={busy}
               onClick={() => submitRefund("review")}
-              className="rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-white/10 px-2 py-2 text-xs font-bold text-white disabled:opacity-50"
             >
               Save deductions
             </button>
             <button
               disabled={busy}
               onClick={() => submitRefund("approve")}
-              className="rounded-lg bg-[#fe9a00]/20 px-2 py-2 text-xs font-semibold text-[#fe9a00] disabled:opacity-50"
+              className="min-h-11 rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-3 py-2.5 text-xs font-black text-[#fe9a00] transition hover:border-[#fe9a00]/40 hover:bg-[#fe9a00]/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Approve refund
             </button>
             <button
               disabled={busy}
               onClick={() => submitRefund("complete")}
-              className="rounded-lg bg-emerald-500/20 px-2 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-50"
+              className="min-h-11 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-black text-emerald-300 transition hover:border-emerald-400/35 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark completed
             </button>
@@ -1625,14 +1632,14 @@ export default function ReservationOperationsPanel({
       )}
 
       {previewImage && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#0b1224] p-4 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="font-semibold text-white">{previewImage.title}</p>
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/85 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto rounded-t-3xl border border-white/[0.10] bg-[#0b1224]/98 p-3 shadow-2xl shadow-black/40 sm:rounded-3xl sm:p-5">
+            <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <p className="font-bold text-white">{previewImage.title}</p>
               <button
                 type="button"
                 onClick={() => setPreviewImage(null)}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/20"
               >
                 Close
               </button>
@@ -1640,7 +1647,7 @@ export default function ReservationOperationsPanel({
             <img
               src={previewImage.url}
               alt={previewImage.title}
-              className="max-h-[75vh] w-full rounded-xl object-contain"
+              className="max-h-[72dvh] w-full rounded-2xl border border-white/[0.06] bg-black/20 object-contain"
             />
           </div>
         </div>

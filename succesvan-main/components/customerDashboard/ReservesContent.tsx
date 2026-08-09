@@ -107,7 +107,7 @@ export default function ReservesContent() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-gray-400 shadow-sm backdrop-blur-xl">
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 p-6 text-center text-slate-400 shadow-2xl shadow-black/15 backdrop-blur-xl sm:p-8">
         Loading reservations...
       </div>
     );
@@ -115,25 +115,25 @@ export default function ReservesContent() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
-        <p className="font-semibold text-red-300">{error}</p>
+      <div className="rounded-3xl border border-red-400/20 bg-gradient-to-b from-red-500/[0.09] to-red-500/[0.03] p-5 text-center shadow-xl shadow-black/10 sm:p-7">
+        <p className="text-sm font-bold leading-6 text-red-300 sm:text-base">{error}</p>
       </div>
     );
   }
 
   if (reservations.length === 0) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-10 text-center shadow-2xl shadow-black/10 backdrop-blur-xl">
-        <FiClipboard className="text-gray-500 text-5xl mx-auto mb-4" />
-        <h3 className="text-xl font-black text-white mb-2">
+      <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 px-4 py-10 text-center shadow-2xl shadow-black/15 backdrop-blur-xl sm:px-8 sm:py-14">
+        <FiClipboard className="mx-auto mb-5 text-5xl text-[#fe9a00]/70 sm:text-6xl" />
+        <h3 className="mb-2 text-xl font-black tracking-tight text-white sm:text-2xl">
           No reservations yet
         </h3>
-        <p className="text-gray-400 mb-6">
+        <p className="mx-auto mb-7 max-w-md text-sm leading-6 text-slate-400 sm:text-base">
           Start by creating your first reservation
         </p>
         <Link
           href="/reservation"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg transition-colors font-semibold"
+          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-6 py-3 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#fe9a00]/15 sm:w-auto"
         >
           Book a Van
         </Link>
@@ -143,7 +143,7 @@ export default function ReservesContent() {
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="space-y-4 sm:space-y-5">
       {reservations.map((reservation) => {
         const journey = buildReservationJourney(reservation);
         const actionSection = journey.nextAction.href?.startsWith("#")
@@ -162,64 +162,64 @@ export default function ReservesContent() {
         return (
           <div
             key={journey.reservationId}
-            className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl shadow-black/10 backdrop-blur-xl transition-colors hover:border-[#fe9a00]/35"
+            className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 shadow-2xl shadow-black/15 backdrop-blur-xl transition duration-200 hover:border-[#fe9a00]/30 hover:shadow-black/25"
           >
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_300px]">
-              <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
-                <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-48 sm:w-48 sm:shrink-0">
+            <div className="grid xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="flex flex-col gap-4 p-3.5 sm:gap-5 sm:p-5 md:flex-row lg:p-6">
+                <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/[0.08] bg-black/20 shadow-lg shadow-black/15 md:aspect-auto md:h-52 md:w-52 md:shrink-0 lg:h-56 lg:w-56">
                   {journey.vehicleImage ? (
                     <Image
                       src={journey.vehicleImage}
                       alt={journey.vehicleName}
                       fill
-                      className="object-cover"
+                      className="object-cover transition duration-500 group-hover:scale-[1.02]"
                       sizes="(max-width: 640px) 100vw, 192px"
                     />
                   ) : (
-                    <FiTruck className="text-5xl text-gray-500" />
+                    <FiTruck className="text-5xl text-slate-600" />
                   )}
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-lg font-black text-white">
+                <div className="min-w-0 flex-1 md:py-1">
+                  <h3 className="break-words text-lg font-black tracking-tight text-white sm:text-xl lg:text-2xl">
                     {journey.vehicleName}
                   </h3>
-                  <p className="mb-3 text-sm font-bold text-gray-400">
+                  <p className="mb-4 mt-1 text-xs font-bold uppercase tracking-[0.10em] text-slate-500 sm:text-sm sm:normal-case sm:tracking-normal">
                     Booking #{journey.bookingReference}
                   </p>
-                  <div className="grid gap-2 text-sm text-gray-400 sm:grid-cols-2">
-                    <p className="flex items-start gap-2">
+                  <div className="grid gap-2.5 text-sm text-slate-400 sm:grid-cols-2 lg:gap-3">
+                    <p className="flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.025] p-2.5 sm:p-3">
                       <FiCalendar className="mt-0.5 shrink-0 text-[#fe9a00]" />
                       <span>
-                        <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                           Pickup
                         </span>
-                        <span className="font-semibold text-white">
+                        <span className="break-words font-semibold leading-5 text-white">
                           {journey.pickupDateTime}
                         </span>
                       </span>
                     </p>
-                    <p className="flex items-start gap-2">
+                    <p className="flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.025] p-2.5 sm:p-3">
                       <FiCalendar className="mt-0.5 shrink-0 text-[#fe9a00]" />
                       <span>
-                        <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                           Return
                         </span>
-                        <span className="font-semibold text-white">
+                        <span className="break-words font-semibold leading-5 text-white">
                           {journey.returnDateTime}
                         </span>
                       </span>
                     </p>
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.025] p-2.5 sm:p-3">
                       <FiClock className="shrink-0 text-[#fe9a00]" />
-                      <span className="font-semibold text-white">
+                      <span className="break-words font-semibold leading-5 text-white">
                         {journey.durationLabel}
                       </span>
                     </p>
                     {reservation.office?.name && (
-                      <p className="flex items-center gap-2">
+                      <p className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.025] p-2.5 sm:p-3">
                         <FiMapPin className="shrink-0 text-[#fe9a00]" />
-                        <span className="font-semibold text-white">
+                        <span className="break-words font-semibold leading-5 text-white">
                           {reservation.office.name}
                         </span>
                       </p>
@@ -228,7 +228,7 @@ export default function ReservesContent() {
                   <button
                     type="button"
                     onClick={() => openTracker()}
-                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-[#fe9a00] hover:text-[#e68a00]"
+                    className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/[0.07] px-4 py-2 text-sm font-black text-[#fe9a00] transition hover:border-[#fe9a00]/35 hover:bg-[#fe9a00]/10 sm:w-auto"
                   >
                     Track booking
                     <FiArrowRight />
@@ -236,14 +236,14 @@ export default function ReservesContent() {
                 </div>
               </div>
 
-              <div className="border-t border-white/10 bg-black/10 p-4 lg:border-l lg:border-t-0 lg:p-5">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div className="border-t border-white/[0.08] bg-[#07101f]/55 p-4 sm:p-5 xl:border-l xl:border-t-0 xl:p-6">
+                <div className="mb-5 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-wide text-gray-400">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                       Current status
                     </p>
                     <span
-                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClasses(journey.mainStatus)}`}
+                      className={`mt-2 inline-flex rounded-full border border-white/[0.06] px-3 py-1.5 text-[11px] font-black shadow-sm ${statusBadgeClasses(journey.mainStatus)}`}
                     >
                       {journey.publicStatusLabel}
                     </span>
@@ -251,28 +251,28 @@ export default function ReservesContent() {
                   <button
                     type="button"
                     onClick={() => openTracker()}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/10"
+                    className="min-h-10 w-full rounded-xl border border-white/[0.10] bg-white/[0.05] px-3.5 py-2 text-xs font-bold text-white transition hover:border-white/20 hover:bg-white/[0.10] sm:w-auto"
                   >
                     Track booking
                   </button>
                 </div>
-                <p className="mb-2 text-xs font-black uppercase tracking-wide text-[#fe9a00]">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#fe9a00]">
                   Action needed
                 </p>
-                <h4 className="font-black text-white">
+                <h4 className="text-base font-black leading-6 text-white sm:text-lg">
                   {journey.nextAction.title}
                 </h4>
-                <p className="mt-1 text-sm text-gray-300">
+                <p className="mt-1.5 text-sm leading-6 text-slate-300">
                   {journey.nextAction.description}
                 </p>
                 {journey.nextAction.buttonLabel && actionSection && (
                   <button
                     type="button"
                     onClick={() => openTracker(actionSection)}
-                    className={`mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-bold transition-colors ${
+                    className={`mt-5 flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-black shadow-sm transition duration-200 ${
                       actionIsStrong
-                        ? "bg-[#fe9a00] text-white hover:bg-[#e68a00]"
-                        : "bg-white/10 text-white hover:bg-white/20"
+                        ? "bg-gradient-to-r from-[#fe9a00] to-[#ff8500] text-white shadow-[#fe9a00]/10 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#fe9a00]/15"
+                        : "border border-white/[0.10] bg-white/[0.06] text-white hover:border-white/20 hover:bg-white/[0.12]"
                     }`}
                   >
                     {journey.nextAction.buttonLabel}
@@ -281,22 +281,22 @@ export default function ReservesContent() {
                 {journey.nextAction.buttonLabel && !actionSection && (
                   <Link
                     href={journey.nextAction.href || "#"}
-                    className={`mt-4 flex w-full items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-bold transition-colors ${
+                    className={`mt-5 flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-black shadow-sm transition duration-200 ${
                       actionIsStrong
-                        ? "bg-[#fe9a00] text-white hover:bg-[#e68a00]"
-                        : "bg-white/10 text-white hover:bg-white/20"
+                        ? "bg-gradient-to-r from-[#fe9a00] to-[#ff8500] text-white shadow-[#fe9a00]/10 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#fe9a00]/15"
+                        : "border border-white/[0.10] bg-white/[0.06] text-white hover:border-white/20 hover:bg-white/[0.12]"
                     }`}
                   >
                     {journey.nextAction.buttonLabel}
                   </Link>
                 )}
                 {isDepositAction ? (
-                  <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-400">
+                  <p className="mt-3.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-500">
                     <FiShield />
                     Secure payment
                   </p>
                 ) : (
-                  <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-green-600">
+                  <p className="mt-3.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-400/80">
                     <FiCheckCircle />
                     We will keep you updated
                   </p>
@@ -310,14 +310,14 @@ export default function ReservesContent() {
 
       {trackingModal && (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/80 p-0 backdrop-blur-md sm:items-center sm:p-4 lg:p-6"
           role="dialog"
           aria-modal="true"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setTrackingModal(null);
           }}
         >
-          <div className="relative w-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-[#0f172b] shadow-2xl shadow-black/40">
+          <div className="relative max-h-[96dvh] w-full max-w-6xl overflow-hidden rounded-t-3xl border border-white/[0.10] bg-[#0f172b] shadow-2xl shadow-black/50 sm:max-h-[92dvh] sm:rounded-3xl">
             <ReservationJourneyPage
               reservationId={trackingModal.reservationId}
               initialSection={trackingModal.initialSection}
