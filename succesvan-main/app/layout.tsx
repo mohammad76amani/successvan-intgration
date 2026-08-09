@@ -171,7 +171,7 @@ export default function RootLayout({
             <main id="main-content">{children}</main>
             {/* </ErrorBoundary> */}
             <Footer />
-            {/* <FloatingActionMenu /> */}
+            <FloatingActionMenu />
           </AnnouncementProvider>
         </AuthProvider>
       </body>
