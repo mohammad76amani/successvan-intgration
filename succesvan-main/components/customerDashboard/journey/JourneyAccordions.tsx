@@ -108,9 +108,13 @@ const statusPill = (
 function InspectionComparisonTable({
   handover,
   inspection,
+  pickupDateTime,
+  returnDateTime,
 }: {
   handover?: Reservation["handover"];
   inspection?: Reservation["inspection"];
+  pickupDateTime?: string;
+  returnDateTime?: string;
 }) {
   const mileageDifference =
     typeof handover?.startMileage === "number" &&
@@ -157,29 +161,9 @@ function InspectionComparisonTable({
       after: countValue(inspection?.photos?.length),
     },
     {
-      label: "Timing",
-      before: plainValue(
-        handover?.completedAt ? compactDate(handover.completedAt) : undefined,
-      ),
-      after: (
-        <span className="inline-flex flex-wrap items-center justify-end gap-2">
-          {plainValue(
-            inspection?.completedAt
-              ? compactDate(inspection.completedAt)
-              : inspection?.receivedAt
-                ? compactDate(inspection.receivedAt)
-                : undefined,
-          )}
-          {inspection &&
-            statusPill(
-              inspection.lateReturn,
-              inspection.lateMinutes
-                ? `${inspection.lateMinutes} min late`
-                : "Late",
-              "On time",
-            )}
-        </span>
-      ),
+      label: "Before/after timestamps",
+      before: plainValue(pickupDateTime),
+      after: plainValue(returnDateTime),
     },
     {
       label: "Cleanliness",
@@ -884,6 +868,8 @@ export default function JourneyAccordions({
           <InspectionComparisonTable
             handover={handover}
             inspection={inspection}
+            pickupDateTime={journey.pickupDateTime}
+            returnDateTime={journey.returnDateTime}
           />
         </div>
       )}
@@ -1068,6 +1054,8 @@ export default function JourneyAccordions({
         <InspectionComparisonTable
           handover={handover}
           inspection={inspection}
+          pickupDateTime={journey.pickupDateTime}
+          returnDateTime={journey.returnDateTime}
         />
       </Section>
 
