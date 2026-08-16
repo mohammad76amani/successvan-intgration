@@ -50,16 +50,11 @@ export async function POST(
     const staffName = [staff.name, staff.lastName].filter(Boolean).join(" ");
 
     const now = new Date();
-    const handoverDepositAmount = Math.max(
-      0,
-      Number(body.handoverDepositAmount) || 0,
-    );
     const reservation = await Reservation.findByIdAndUpdate(
       id,
       {
         $set: {
           status: "delivered",
-          handoverDepositAmount,
           handover: {
             startedAt: now,
             startMileage,

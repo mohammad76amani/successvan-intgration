@@ -47,6 +47,7 @@ export default function VehiclesContent() {
 
   const [formData, setFormData] = useState({
     title: "",
+    make: "",
     description: "",
     number: "",
     color: "",
@@ -165,6 +166,7 @@ export default function VehiclesContent() {
   const resetForm = () => {
     setFormData({
       title: "",
+      make: "",
       description: "",
       number: "",
       color: "",
@@ -205,6 +207,7 @@ export default function VehiclesContent() {
 
     setFormData({
       title: item.title,
+      make: item.make || "",
       description: item.description,
       number: String(item.number || ""),
       color: item.color || "",
@@ -313,6 +316,7 @@ export default function VehiclesContent() {
 
       const payload = {
         title: formData.title,
+        make: formData.make.trim(),
         description: formData.description,
         number: formData.number,
         color: formData.color.trim(),
@@ -390,17 +394,30 @@ export default function VehiclesContent() {
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <label className="text-gray-400 text-sm mb-2 block">
-                Brand
+                Vehicle model
               </label>
               <input
                 type="text"
                 name="title"
-                placeholder="Brand"
+                placeholder="e.g. Transit, Sprinter"
                 value={formData.title}
                 onChange={handleInputChange}
                 required
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
               />
+              <label className="text-gray-400 text-sm mb-2 block">
+                Vehicle make
+              </label>
+              <input
+                type="text"
+                name="make"
+                placeholder="e.g. Ford, Mercedes-Benz"
+                value={formData.make}
+                onChange={handleInputChange}
+                required
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#fe9a00]"
+              />
+
               <label className="text-gray-400 text-sm mb-2 block">
                 Vehicle description
               </label>
@@ -672,7 +689,8 @@ export default function VehiclesContent() {
         apiEndpoint="/api/vehicles"
         hideDelete={true}
         filters={[
-          { key: "title", label: "Brand", type: "text" },
+          { key: "make", label: "Make", type: "text" },
+          { key: "title", label: "Model", type: "text" },
           { key: "number", label: "Number", type: "text" },
           { key: "keyNumber", label: "Key Number", type: "text" },
           {
@@ -687,7 +705,12 @@ export default function VehiclesContent() {
         ]}
         title="Vehicle"
         columns={[
-          { key: "title", label: "Brand" },
+          {
+            key: "make",
+            label: "Make",
+            render: (value) => value || "-",
+          },
+          { key: "title", label: "Model" },
           { key: "number", label: "Number" },
           {
             key: "color",

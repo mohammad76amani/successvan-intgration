@@ -104,6 +104,7 @@ export interface Property {
 export interface Vehicle {
   _id?: string;
   title: string;
+  make?: string;
   description: string;
   category: string;
   pricePerHour: number;
@@ -159,6 +160,7 @@ export interface Category {
   }[];
   extrahoursRate: number;
   deposit?: {
+    depositFee?: number;
     fullPayDiscountPercent?: number;
     securePayPrice?: number;
     officePayPrice?: number;
@@ -254,6 +256,7 @@ export interface Reservation {
   vehicleSnapshot?: {
     vehicleId?: string;
     title?: string;
+    make?: string;
     number?: string;
     keyNumber?: string;
     color?: string;
@@ -290,6 +293,12 @@ export interface Reservation {
   manualPriceNote?: string;
   perInvoice?: boolean;
   reservationType?: "Office" | "Website" | "App";
+  insuranceArrangement?: {
+    provider?: "diba" | "customer";
+    otherExcess?: string;
+    selectedAt?: Date | string;
+    selectedBy?: string;
+  };
   deposit?: {
     amount?: number;
     originalAmount?: number;

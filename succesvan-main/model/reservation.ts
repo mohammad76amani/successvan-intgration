@@ -52,6 +52,7 @@ const reservationSchema = new mongoose.Schema(
         ref: "Vehicle",
       },
       title: { type: String, trim: true },
+      make: { type: String, trim: true },
       number: { type: String, trim: true },
       keyNumber: { type: String, trim: true },
       color: { type: String, trim: true },
@@ -107,6 +108,15 @@ const reservationSchema = new mongoose.Schema(
     // total is entered when the admin marks the reservation as completed.
     perInvoice: { type: Boolean, default: false },
     reservationType: { type: String, enum: ["Office", "Website", "App"] },
+    insuranceArrangement: {
+      provider: {
+        type: String,
+        enum: ["diba", "customer"],
+      },
+      otherExcess: { type: String, trim: true },
+      selectedAt: { type: Date },
+      selectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     // ── Booking journey data ─────────────────────────────────────
     deposit: {
       amount: { type: Number },

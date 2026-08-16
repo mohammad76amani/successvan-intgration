@@ -1121,9 +1121,8 @@ export default function AdminReservationModal({
           perInvoice: usePerInvoice,
           driverAge: formData.driverAge,
           messege: customerMessage.trim() || "",
-          // Every new reservation starts in review. Creating it from the admin
-          // dashboard must not skip confirmation or the customer's deposit step.
-          status: "pending",
+          // Staff have already reviewed bookings created in the admin panel.
+          status: isAdminMode ? "confirmed" : "pending",
           addOns: selectedAddOns,
           discountCode: appliedDiscount?.code || null,
           selectedGear: formData.gearType,

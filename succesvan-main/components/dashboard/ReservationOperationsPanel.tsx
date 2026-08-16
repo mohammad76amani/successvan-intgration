@@ -135,6 +135,7 @@ export default function ReservationOperationsPanel({
     url: string;
     title: string;
   } | null>(null);
+  const [beforeImagesModalOpen, setBeforeImagesModalOpen] = useState(false);
   const needsOperationsData = OPERATION_STATUSES.includes(reservation.status);
   const activeReservation = loadedReservation || reservation;
   const category = activeReservation.category as
@@ -152,12 +153,7 @@ export default function ReservationOperationsPanel({
   const returnFields = handoverFieldTemplates.filter(
     (field) => field.requiredAfter,
   );
-  const defaultHandoverDeposit =
-    activeReservation.handoverDepositAmount ??
-    category?.deposit?.handoverDepositPrice ??
-    0;
   const [handover, setHandover] = useState({
-    handoverDepositAmount: String(defaultHandoverDeposit),
     startMileage: "",
     startFuelLevel: "",
     conditionNotes: "",
@@ -255,8 +251,8 @@ export default function ReservationOperationsPanel({
     setAfterFiles({});
     setReturnMiniStep("form");
     setPreviewImage(null);
+    setBeforeImagesModalOpen(false);
     setHandover({
-      handoverDepositAmount: "0",
       startMileage: "",
       startFuelLevel: "",
       conditionNotes: "",
@@ -283,16 +279,8 @@ export default function ReservationOperationsPanel({
 
   useEffect(() => {
     if (!loadedReservation) return;
-    const loadedCategory = loadedReservation.category as
-      | { deposit?: { handoverDepositPrice?: number } }
-      | undefined;
     setHandover((current) => ({
       ...current,
-      handoverDepositAmount: String(
-        loadedReservation.handoverDepositAmount ??
-          loadedCategory?.deposit?.handoverDepositPrice ??
-          0,
-      ),
       staffId: String(loadedReservation.handover?.staff?.user || ""),
       staffSignature:
         loadedReservation.handover?.staff?.name ||
@@ -344,6 +332,7 @@ export default function ReservationOperationsPanel({
   const depositPaid =
     activeReservation.refund?.depositPaid ??
     activeReservation.handoverDepositAmount ??
+    category?.deposit?.handoverDepositPrice ??
     activeReservation.deposit?.amount ??
     0;
   const refundAmount = Math.max(0, depositPaid - totalDeductions);
@@ -446,14 +435,12 @@ export default function ReservationOperationsPanel({
   const validateCustomFields = (
     fields: CategoryHandoverField[],
     values: Record<string, string>,
-    files: Record<string, string[]>,
   ) => {
     for (const field of fields) {
+      // Image evidence is useful but optional at both handover and return.
+      if (field.fieldType === "file") continue;
       const key = customFieldKey(field);
-      const hasValue =
-        field.fieldType === "file"
-          ? Boolean(files[key]?.length)
-          : Boolean((values[key] || "").trim());
+      const hasValue = Boolean((values[key] || "").trim());
       if (!hasValue) {
         showToast.error(`${field.label} is required`);
         return false;
@@ -552,6 +539,11 @@ export default function ReservationOperationsPanel({
                     — {field.helpText}
                   </span>
                 ) : null}
+                {field.fieldType === "file" && (
+                  <span className="ml-1 font-normal text-slate-500">
+                    — optional
+                  </span>
+                )}
               </label>
               {field.fieldType === "file" ? (
                 <>
@@ -561,7 +553,6 @@ export default function ReservationOperationsPanel({
                     type="file"
                     accept="image/*"
                     multiple
-                    required
                     disabled={isUploading}
                     onChange={(event) =>
                       uploadSelectedImages(
@@ -767,6 +758,31 @@ export default function ReservationOperationsPanel({
 
   const savedBeforeCustomFields =
     activeReservation.handover?.customFields || [];
+  const savedBeforeImageGroups = [
+    ...((activeReservation.handover?.photos?.length || 0) > 0
+      ? [
+          {
+            key: "legacy-handover-photos",
+            label: "Vehicle photos",
+            files: activeReservation.handover?.photos || [],
+          },
+        ]
+      : []),
+    ...savedBeforeCustomFields
+      .filter(
+        (field) =>
+          field.fieldType === "file" && (field.files?.length || 0) > 0,
+      )
+      .map((field, index) => ({
+        key: `before-${field.templateFieldId || index}`,
+        label: field.label || "Handover images",
+        files: field.files || [],
+      })),
+  ];
+  const savedBeforeImageCount = savedBeforeImageGroups.reduce(
+    (total, group) => total + group.files.length,
+    0,
+  );
   const beforeCustomByTemplateFieldId = new Map(
     savedBeforeCustomFields
       .filter((field) => field.templateFieldId)
@@ -843,7 +859,6 @@ export default function ReservationOperationsPanel({
 
   const submitHandover = async () => {
     const requiredFields = [
-      [handover.handoverDepositAmount, "Handover deposit amount"],
       [handover.startMileage, "Starting mileage"],
       [handover.startFuelLevel, "Fuel level"],
       [handover.keyCount, "Key count"],
@@ -861,7 +876,7 @@ export default function ReservationOperationsPanel({
       showToast.error("Please wait for uploads to finish");
       return;
     }
-    if (!validateCustomFields(beforeFields, beforeValues, beforeFiles)) return;
+    if (!validateCustomFields(beforeFields, beforeValues)) return;
 
     setBusy(true);
     try {
@@ -872,7 +887,6 @@ export default function ReservationOperationsPanel({
       );
       await post(`/api/admin/reservations/${activeReservation._id}/handover`, {
         ...handover,
-        handoverDepositAmount: Number(handover.handoverDepositAmount) || 0,
         existingDamages: lines(handover.existingDamages),
         equipment: lines(handover.equipment),
         customFields,
@@ -906,7 +920,7 @@ export default function ReservationOperationsPanel({
       showToast.error("Please wait for uploads to finish");
       return false;
     }
-    return validateCustomFields(returnFields, afterValues, afterFiles);
+    return validateCustomFields(returnFields, afterValues);
   };
 
   const goToReturnComparison = () => {
@@ -1090,26 +1104,6 @@ export default function ReservationOperationsPanel({
                     setHandover({ ...handover, keyCount: e.target.value })
                   }
                 />
-              </label>
-              <label className="text-xs font-medium leading-5 text-slate-400">
-                Handover deposit (£)
-                <input
-                  className={`${fieldClass} mt-1`}
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={handover.handoverDepositAmount}
-                  onChange={(e) =>
-                    setHandover({
-                      ...handover,
-                      handoverDepositAmount: e.target.value,
-                    })
-                  }
-                />
-                <span className="mt-1.5 block text-[10px] leading-4 text-slate-500">
-                  Category default; editable for this booking.
-                </span>
               </label>
             </div>
           </section>
@@ -1375,9 +1369,28 @@ export default function ReservationOperationsPanel({
               </section>
 
               <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3.5 shadow-sm shadow-black/10 sm:p-4">
-                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                  Category checklist · After
-                </p>
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      Category checklist · After
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-slate-500">
+                      Images are optional. Review the handover images before
+                      adding return evidence.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBeforeImagesModalOpen(true)}
+                    disabled={savedBeforeImageCount === 0}
+                    className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-3 py-2 text-xs font-black text-[#fe9a00] transition hover:border-[#fe9a00]/45 hover:bg-[#fe9a00]/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-600"
+                  >
+                    View before images
+                    <span className="rounded-full bg-black/20 px-1.5 py-0.5 text-[10px]">
+                      {savedBeforeImageCount}
+                    </span>
+                  </button>
+                </div>
                 {renderCustomFields(
                   returnFields,
                   afterValues,
@@ -1573,14 +1586,17 @@ export default function ReservationOperationsPanel({
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <input
-              className={fieldClass}
-              placeholder="Refund reference"
-              value={refund.reference}
-              onChange={(e) =>
-                setRefund({ ...refund, reference: e.target.value })
-              }
-            />
+            <label className="text-xs font-medium leading-5 text-slate-400">
+              Refund authorization number
+              <input
+                className={`${fieldClass} mt-1`}
+                placeholder="Enter bank authorization number"
+                value={refund.reference}
+                onChange={(e) =>
+                  setRefund({ ...refund, reference: e.target.value })
+                }
+              />
+            </label>
             <label className="text-xs font-medium leading-5 text-slate-400">
               Expected refund date
               <DatePicker
@@ -1627,6 +1643,69 @@ export default function ReservationOperationsPanel({
             >
               Mark completed
             </button>
+          </div>
+        </div>
+      )}
+
+      {beforeImagesModalOpen && (
+        <div
+          className="fixed inset-0 z-[75] flex items-end justify-center bg-black/85 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setBeforeImagesModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Before handover images"
+        >
+          <div
+            className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto rounded-t-3xl border border-white/[0.10] bg-[#0b1224]/98 p-4 shadow-2xl shadow-black/40 sm:rounded-3xl sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#fe9a00]">
+                  Handover evidence
+                </p>
+                <h4 className="mt-1 text-lg font-black text-white">
+                  Before images
+                </h4>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-400">
+                  Review the vehicle condition recorded before collection.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBeforeImagesModalOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-lg font-bold text-white transition hover:bg-white/20"
+                aria-label="Close before images"
+              >
+                ×
+              </button>
+            </div>
+
+            {savedBeforeImageGroups.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {savedBeforeImageGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-bold text-white">
+                        {group.label}
+                      </p>
+                      <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-slate-400">
+                        {group.files.length} image
+                        {group.files.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {renderFilePreviewList(group.label, group.files)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-sm font-medium text-slate-500">
+                No handover images were uploaded.
+              </div>
+            )}
           </div>
         </div>
       )}

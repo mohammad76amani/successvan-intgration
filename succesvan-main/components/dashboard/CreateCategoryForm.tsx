@@ -50,6 +50,7 @@ export default function CategoriesContent() {
     pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
     extrahoursRate: "",
     deposit: {
+      depositFee: "",
       fullPayDiscountPercent: "",
       securePayPrice: "",
       officePayPrice: "",
@@ -148,6 +149,7 @@ export default function CategoriesContent() {
       pricingTiers: [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: "",
       deposit: {
+        depositFee: "",
         fullPayDiscountPercent: "",
         securePayPrice: "",
         officePayPrice: "",
@@ -204,6 +206,7 @@ export default function CategoriesContent() {
       })) || [{ minDays: "", maxDays: "", pricePerDay: "" }],
       extrahoursRate: String((item as any).extrahoursRate || ""),
       deposit: {
+        depositFee: String(item.deposit?.depositFee ?? ""),
         fullPayDiscountPercent: String(
           item.deposit?.fullPayDiscountPercent ?? "",
         ),
@@ -379,6 +382,7 @@ export default function CategoriesContent() {
         })),
         extrahoursRate: parseFloat(formData.extrahoursRate),
         deposit: {
+          depositFee: parseFloat(formData.deposit.depositFee) || 0,
           fullPayDiscountPercent:
             parseFloat(formData.deposit.fullPayDiscountPercent) || 0,
           securePayPrice: parseFloat(formData.deposit.securePayPrice) || 0,
@@ -1054,6 +1058,7 @@ export default function CategoriesContent() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
+                    ["depositFee", "Contract deposit fee (£)"],
                     ["fullPayDiscountPercent", "Full deposit discount (%)"],
                     ["securePayPrice", "Safe & Secure price (£)"],
                     ["officePayPrice", "Office payment price (£)"],

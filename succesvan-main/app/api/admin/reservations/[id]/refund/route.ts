@@ -227,7 +227,7 @@ export async function POST(
           : "deposit_review";
 
     if (body.action === "complete" && !String(body.reference || "").trim()) {
-      return errorResponse("Refund reference is required", 400);
+      return errorResponse("Refund authorization number is required", 400);
     }
 
     let expectedBy = existing.refund?.expectedBy;

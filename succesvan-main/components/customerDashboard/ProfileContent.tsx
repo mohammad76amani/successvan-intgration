@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import Image from "next/image";
@@ -14,6 +15,7 @@ import {
   FiEdit3,
   FiHash,
   FiHome,
+  FiLoader,
   FiMail,
   FiMapPin,
   FiPhone,
@@ -55,7 +57,6 @@ interface UserData {
 
 type LicenceSide = "front" | "back";
 type PendingLicenceReview = {
-  file: File;
   previewUrl: string;
   details: LicenceDetailsReview;
 };
@@ -114,6 +115,9 @@ export default function ProfileContent({
   const [pendingLicenceReview, setPendingLicenceReview] =
     useState<PendingLicenceReview | null>(null);
   const [licenceReviewSaving, setLicenceReviewSaving] = useState(false);
+  const licenceUploadLock = useRef(false);
+  const isAnyLicenceBusy =
+    uploading.front || uploading.back || licenceReviewSaving;
 
   const fullName = `${user?.name || ""} ${user?.lastName || ""}`.trim();
   const completedAddressFields = [
@@ -218,17 +222,22 @@ export default function ProfileContent({
     return uploadData.url as string;
   };
 
-  const extractLicenceDetails = async (file: File) => {
-    const formData = new FormData();
-    formData.append("image", file);
+  const extractLicenceDetails = async (licence: {
+    front: string;
+    back: string;
+  }) => {
     const res = await fetch("/api/extract-license", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        frontImage: licence.front,
+        backImage: licence.back,
+      }),
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
       throw new Error(
-        payload?.error || "Could not scan the front licence image",
+        payload?.error || "Could not scan both licence images",
       );
     }
     return (await res.json()) as UserData["licenceDetails"];
@@ -310,69 +319,68 @@ export default function ProfileContent({
   };
 
   const handleFileUpload = async (file: File, side: LicenceSide) => {
-    if (!user) return;
+    if (!user || licenceUploadLock.current) return;
 
+    licenceUploadLock.current = true;
     setUploading((prev) => ({ ...prev, [side]: true }));
     try {
-      if (side === "front") {
-        const licenceDetails = await extractLicenceDetails(file);
+      const url = await uploadImage(file);
+      const nextLicence = {
+        ...user.licenceAttached,
+        [side]: url,
+      };
+      const data = await updateUser({ licenceAttached: nextLicence });
+      syncUser(data);
+      onLicenseUpdate?.();
+
+      if (nextLicence.front && nextLicence.back) {
+        const licenceDetails = await extractLicenceDetails({
+          front: nextLicence.front,
+          back: nextLicence.back,
+        });
         setPendingLicenceReview({
-          file,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: nextLicence.front,
           details: {
             ...licenceDetails,
             isFrontSide: true,
             sourceSide: "front",
           },
         });
-        showToast.success("Licence scanned. Please confirm the details.");
+        showToast.success("Both sides uploaded. Please confirm the scan.");
         return;
       }
 
-      const url = await uploadImage(file);
-      const data = await updateUser({
-        licenceAttached: {
-          ...user.licenceAttached,
-          [side]: url,
-        },
-      });
-      showToast.success(`Licence ${side} uploaded`);
-      syncUser(data);
-      onLicenseUpdate?.();
+      showToast.success(
+        `Licence ${side} uploaded. Upload the other side to scan the details.`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       showToast.error(message || "Upload failed");
     } finally {
+      licenceUploadLock.current = false;
       setUploading((prev) => ({ ...prev, [side]: false }));
     }
   };
 
   const closeLicenceReview = () => {
-    if (pendingLicenceReview?.previewUrl) {
-      URL.revokeObjectURL(pendingLicenceReview.previewUrl);
-    }
     setPendingLicenceReview(null);
   };
 
   const confirmLicenceDetails = async (licenceDetails: LicenceDetailsReview) => {
     if (!user || !pendingLicenceReview) return;
+    if (licenceUploadLock.current) return;
+    licenceUploadLock.current = true;
     setLicenceReviewSaving(true);
-    setUploading((prev) => ({ ...prev, front: true }));
     try {
-      const url = await uploadImage(pendingLicenceReview.file);
       const data = await updateUser({
         ...profileFieldsFromLicence(licenceDetails),
-        licenceAttached: {
-          ...user.licenceAttached,
-          front: url,
-        },
         licenceDetails: {
           ...licenceDetails,
           isFrontSide: true,
           sourceSide: "front",
         },
       });
-      showToast.success("Licence front and details saved");
+      showToast.success("Licence images and details saved");
       syncUser(data);
       onLicenseUpdate?.();
       closeLicenceReview();
@@ -380,8 +388,8 @@ export default function ProfileContent({
       const message = error instanceof Error ? error.message : "Unknown error";
       showToast.error(message || "Could not save licence details");
     } finally {
+      licenceUploadLock.current = false;
       setLicenceReviewSaving(false);
-      setUploading((prev) => ({ ...prev, front: false }));
     }
   };
 
@@ -500,7 +508,7 @@ export default function ProfileContent({
 
   const renderLicenceCard = (side: LicenceSide, title: string) => {
     const imageUrl = user?.licenceAttached?.[side];
-    const isBusy = uploading[side] || deleting[side];
+    const isBusy = isAnyLicenceBusy || deleting[side];
 
     return (
       <div className="rounded-xl border border-white/10 bg-white/4 p-3">
@@ -528,6 +536,12 @@ export default function ProfileContent({
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 className="object-cover"
               />
+              {uploading[side] && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-white">
+                  <FiLoader className="animate-spin text-2xl text-[#fe9a00]" />
+                  <span className="text-xs font-bold">Uploading and checking…</span>
+                </div>
+              )}
             </div>
             <div className="absolute inset-x-0 bottom-0 flex justify-end gap-2 bg-linear-to-t from-black/70 to-transparent p-3">
               <button
@@ -539,7 +553,7 @@ export default function ProfileContent({
                 <FiTrash2 />
                 {deleting[side] ? "Deleting" : "Delete"}
               </button>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#e68a00]">
+              <label className={`inline-flex items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors ${isBusy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#e68a00]"}`}>
                 <FiCamera />
                 {uploading[side] ? "Uploading" : "Change"}
                 <input
@@ -556,8 +570,12 @@ export default function ProfileContent({
             </div>
           </div>
         ) : (
-          <label className="flex h-48 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/10 text-center transition-colors hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5">
-            <FiUploadCloud className="mb-2 text-2xl text-[#fe9a00]" />
+          <label className={`flex h-48 w-full flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/10 text-center transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5"}`}>
+            {uploading[side] ? (
+              <FiLoader className="mb-2 animate-spin text-2xl text-[#fe9a00]" />
+            ) : (
+              <FiUploadCloud className="mb-2 text-2xl text-[#fe9a00]" />
+            )}
             <span className="text-sm font-semibold text-white">
               {uploading[side] ? "Uploading" : `Upload ${title}`}
             </span>
@@ -570,7 +588,7 @@ export default function ProfileContent({
                 event.target.files?.[0] &&
                 handleFileUpload(event.target.files[0], side)
               }
-              disabled={uploading[side]}
+              disabled={isAnyLicenceBusy}
             />
           </label>
         )}

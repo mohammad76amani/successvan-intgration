@@ -1,4 +1,32 @@
 import { Reservation } from "@/types/type";
+import {
+  DEPOSIT_OPTION_LABELS,
+  statusLabel as getReservationStatusLabel,
+} from "@/lib/reservation-status";
+
+type PrintAddOnItem = NonNullable<Reservation["addOns"]>[number] & {
+  totalPrice?: number;
+};
+
+type PrintUser = {
+  name?: string;
+  lastName?: string;
+  phoneData?: { phoneNumber?: string };
+  emaildata?: { emailAddress?: string };
+  address?: string;
+  city?: string;
+  postalCode?: string;
+};
+
+type PrintOffice = { name?: string };
+type PrintCategory = { name?: string };
+type PrintVehicle = {
+  title?: string;
+  make?: string;
+  number?: string | number;
+  color?: string;
+  keyNumber?: string;
+};
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "-")
@@ -27,8 +55,39 @@ const formatDateTime = (value: unknown) => {
   });
 };
 
-const statusLabel = (status?: string) =>
-  status === "delivered" ? "collected" : status || "-";
+const humanize = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "-";
+  return text
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+const formatDisplayDateTime = (
+  displayDate: string | undefined,
+  time: string | undefined,
+  fallback: Date | string,
+) => {
+  if (!displayDate) return formatDateTime(fallback);
+  const parsed = new Date(`${displayDate}T${time || "00:00"}:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return `${escapeHtml(displayDate)}${time ? ` at ${escapeHtml(time)}` : ""}`;
+  }
+  return parsed.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getRentalDays = (reservation: Reservation) => {
+  const start = new Date(reservation.startDate);
+  const end = new Date(reservation.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
+};
 
 const calculateDuration = (reservation: Reservation) => {
   const start = new Date(reservation.startDate);
@@ -41,35 +100,83 @@ const calculateDuration = (reservation: Reservation) => {
     0,
     Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60)),
   );
-  const days = Math.max(1, Math.ceil(totalHours / 24));
+  const days = getRentalDays(reservation);
   return `${days} day${days === 1 ? "" : "s"} / ${totalHours} hour${
     totalHours === 1 ? "" : "s"
   }`;
 };
 
-const getAddOnsRows = (reservation: Reservation) => {
+const getAddOnAmount = (item: PrintAddOnItem, rentalDays: number) => {
+  const storedTotal = Number(item.totalPrice);
+  if (Number.isFinite(storedTotal) && storedTotal > 0) return storedTotal;
+
+  const addOn = item.addOn;
+  if (!addOn) return 0;
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  if (addOn.pricingType === "flat") {
+    const amount =
+      typeof addOn.flatPrice === "object"
+        ? Number(addOn.flatPrice?.amount || 0)
+        : Number(addOn.flatPrice || 0);
+    const isPerDay =
+      typeof addOn.flatPrice === "object" && addOn.flatPrice?.isPerDay;
+    return (isPerDay ? amount * rentalDays : amount) * quantity;
+  }
+
+  const tierIndex = Number(item.selectedTierIndex ?? 0);
+  const tier = addOn.tieredPrice?.tiers?.[tierIndex] || addOn.tiers?.[tierIndex];
+  const amount = Number(tier?.price || 0);
+  const isPerDay = Boolean(addOn.tieredPrice?.isPerDay);
+  return (isPerDay ? amount * rentalDays : amount) * quantity;
+};
+
+const getAddOnsRows = (reservation: Reservation, rentalDays: number) => {
   const addOns = reservation.addOns || [];
   if (!addOns.length) {
-    return `<tr><td colspan="3" class="muted">No add-ons selected</td></tr>`;
+    return `<tr><td colspan="4" class="muted">No add-ons selected</td></tr>`;
   }
 
   return addOns
-    .map((item: any) => {
-      const addOn = item.addOn || {};
+    .map((item: PrintAddOnItem) => {
+      const addOn = item.addOn;
       return `
         <tr>
-          <td>${escapeHtml(addOn.name || "Add-on")}</td>
+          <td>${escapeHtml(addOn?.name || "Add-on")}</td>
           <td>${escapeHtml(item.quantity || 1)}</td>
           <td>${escapeHtml(
             item.selectedTierIndex !== undefined
               ? `Tier ${Number(item.selectedTierIndex) + 1}`
               : "-",
           )}</td>
+          <td>${formatCurrency(getAddOnAmount(item, rentalDays))}</td>
         </tr>
       `;
     })
     .join("");
 };
+
+const hasMeaningfulData = (value: unknown) => {
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some((item) => {
+    if (Array.isArray(item)) return item.length > 0;
+    return item !== undefined && item !== null && item !== "";
+  });
+};
+
+const customFieldRows = (
+  fields: NonNullable<Reservation["handover"]>["customFields"] = [],
+) =>
+  (fields || [])
+    .map((field) => {
+      const value =
+        field.fieldType === "file"
+          ? `${field.files?.length || 0} uploaded file(s)`
+          : field.value || "-";
+      return `<div class="price-row"><span>${escapeHtml(
+        field.label || "Checklist item",
+      )}</span><strong>${escapeHtml(value)}</strong></div>`;
+    })
+    .join("");
 
 export function downloadReservationReceiptPng(reservation: Reservation | null) {
   if (!reservation || typeof window === "undefined") return;
@@ -79,19 +186,76 @@ export function downloadReservationReceiptPng(reservation: Reservation | null) {
 export function printReservationReceipt(reservation: Reservation | null) {
   if (!reservation || typeof window === "undefined") return;
 
-  const user = (reservation.user || {}) as any;
-  const office = (reservation.office || {}) as any;
-  const category = (reservation.category || {}) as any;
-  const vehicle = (reservation.vehicle || {}) as any;
+  const user = (reservation.user || {}) as PrintUser;
+  const office = (reservation.office || {}) as PrintOffice;
+  const category = (reservation.category || {}) as PrintCategory;
+  const vehicle = (reservation.vehicle || {}) as PrintVehicle;
+  const vehicleSnapshot = reservation.vehicleSnapshot || {};
+  const deposit = reservation.deposit;
+  const handover = reservation.handover;
+  const inspection = reservation.inspection;
+  const refund = reservation.refund;
   const customerName =
     `${user.name || ""} ${user.lastName || ""}`.trim() || "Customer";
-  const pickupExtensionPrice = Number(
-    (reservation as any).pickupExtensionPrice || 0,
+  const pickupExtensionPrice = Number(reservation.pickupExtensionPrice || 0);
+  const returnExtensionPrice = Number(reservation.returnExtensionPrice || 0);
+  const gear = reservation.selectedGear || "-";
+  const rentalDays = getRentalDays(reservation);
+  const addOnsTotal = (reservation.addOns || []).reduce(
+    (total, item) => total + getAddOnAmount(item, rentalDays),
+    0,
   );
-  const returnExtensionPrice = Number(
-    (reservation as any).returnExtensionPrice || 0,
+  const depositDiscount = Number(deposit?.discountAmount || 0);
+  const rentalBalance = Math.max(
+    0,
+    Number(reservation.totalPrice || 0) +
+      depositDiscount -
+      addOnsTotal -
+      pickupExtensionPrice -
+      returnExtensionPrice,
   );
-  const gear = (reservation as any).selectedGear || "-";
+  const assignedVehicleName =
+    vehicle.title || vehicleSnapshot.title || category.name || "-";
+  const assignedVehicleMake = vehicle.make || vehicleSnapshot.make || "-";
+  const assignedVehicleNumber =
+    vehicle.number || vehicleSnapshot.number || "-";
+  const assignedVehicleColor = vehicle.color || vehicleSnapshot.color || "-";
+  const assignedVehicleKey =
+    vehicle.keyNumber || vehicleSnapshot.keyNumber || "-";
+  const refundChargeRows = refund
+    ? [
+        ["Fuel charge", refund.charges?.fuel],
+        ["Late return charge", refund.charges?.late],
+        ["Damage charge", refund.charges?.damage],
+        ["Cleaning charge", refund.charges?.cleaning],
+        ["Missing equipment", refund.charges?.missingEquipment],
+        [refund.otherChargeReason || "Other charge", refund.charges?.other],
+        ...(refund.additionalCharges || []).map((charge) => [
+          charge.reason || "Additional charge",
+          charge.amount,
+        ]),
+      ]
+        .filter(([, amount]) => Number(amount || 0) > 0)
+        .map(
+          ([label, amount]) =>
+            `<div class="price-row"><span>${escapeHtml(
+              label,
+            )}</span><strong>-${formatCurrency(amount)}</strong></div>`,
+        )
+        .join("")
+    : "";
+  const statusHistoryRows = (reservation.statusHistory || [])
+    .slice()
+    .reverse()
+    .map(
+      (entry) => `<tr>
+        <td>${escapeHtml(getReservationStatusLabel(entry.status, true))}</td>
+        <td>${formatDateTime(entry.changedAt)}</td>
+        <td>${escapeHtml(humanize(entry.source))}</td>
+        <td>${escapeHtml(entry.note || "-")}</td>
+      </tr>`,
+    )
+    .join("");
 
   const html = `<!DOCTYPE html>
 <html>
@@ -196,6 +360,7 @@ export function printReservationReceipt(reservation: Reservation | null) {
       }
       .section {
         margin-top: 22px;
+        break-inside: avoid;
       }
       .section-title {
         display: flex;
@@ -232,6 +397,15 @@ export function printReservationReceipt(reservation: Reservation | null) {
         font-weight: 900;
       }
       tr:last-child td { border-bottom: 0; }
+      .status-note {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #fff7ed;
+        color: #9a3412;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .price-row {
         display: flex;
         justify-content: space-between;
@@ -274,7 +448,7 @@ export function printReservationReceipt(reservation: Reservation | null) {
           <div class="brand">Success<span>Van</span>Hire</div>
           <div class="subtitle">Reservation receipt and hire summary</div>
         </div>
-        <div class="badge">${escapeHtml(statusLabel(reservation.status))}</div>
+        <div class="badge">${escapeHtml(getReservationStatusLabel(reservation.status, true))}</div>
       </header>
 
       <section class="content">
@@ -291,8 +465,12 @@ export function printReservationReceipt(reservation: Reservation | null) {
                 <div class="value">${formatDateTime(reservation.createdAt)}</div>
               </div>
               <div>
+                <div class="label">Last Updated</div>
+                <div class="value">${formatDateTime(reservation.updatedAt)}</div>
+              </div>
+              <div>
                 <div class="label">Type</div>
-                <div class="value">${escapeHtml((reservation as any).reservationType || "-")}</div>
+                <div class="value">${escapeHtml(reservation.reservationType || "-")}</div>
               </div>
               <div>
                 <div class="label">Driver Age</div>
@@ -348,8 +526,12 @@ export function printReservationReceipt(reservation: Reservation | null) {
                 <div class="value">${escapeHtml(category.name || "-")}</div>
               </div>
               <div>
+                <div class="label">Vehicle Make</div>
+                <div class="value">${escapeHtml(assignedVehicleMake)}</div>
+              </div>
+              <div>
                 <div class="label">Vehicle</div>
-                <div class="value">${escapeHtml(vehicle.title || vehicle.number || "-")}</div>
+                <div class="value">${escapeHtml(assignedVehicleName)}</div>
               </div>
               <div>
                 <div class="label">Duration</div>
@@ -357,11 +539,35 @@ export function printReservationReceipt(reservation: Reservation | null) {
               </div>
               <div>
                 <div class="label">Pickup</div>
-                <div class="value">${formatDateTime(reservation.startDate)}</div>
+                <div class="value">${formatDisplayDateTime(
+                  reservation.startDateDisplay,
+                  reservation.pickupTime,
+                  reservation.startDate,
+                )}</div>
               </div>
               <div>
                 <div class="label">Return</div>
-                <div class="value">${formatDateTime(reservation.endDate)}</div>
+                <div class="value">${formatDisplayDateTime(
+                  reservation.endDateDisplay,
+                  reservation.returnTime,
+                  reservation.endDate,
+                )}</div>
+              </div>
+              <div>
+                <div class="label">Vehicle Registration</div>
+                <div class="value">${escapeHtml(assignedVehicleNumber)}</div>
+              </div>
+              <div>
+                <div class="label">Vehicle Colour</div>
+                <div class="value">${escapeHtml(assignedVehicleColor)}</div>
+              </div>
+              <div>
+                <div class="label">Key Number</div>
+                <div class="value">${escapeHtml(assignedVehicleKey)}</div>
+              </div>
+              <div>
+                <div class="label">Collection Code</div>
+                <div class="value">${escapeHtml(reservation.collectionCode || "-")}</div>
               </div>
             </div>
           </div>
@@ -371,6 +577,14 @@ export function printReservationReceipt(reservation: Reservation | null) {
           <h3 class="section-title"><span class="bar"></span>Price Summary</h3>
           <div class="panel">
             <div class="price-row">
+              <span>Rental balance <span class="muted">(base hire, hours, gear and special-day pricing)</span></span>
+              <strong>${formatCurrency(rentalBalance)}</strong>
+            </div>
+            <div class="price-row">
+              <span>Add-ons</span>
+              <strong>${formatCurrency(addOnsTotal)}</strong>
+            </div>
+            <div class="price-row">
               <span>Pickup extension (either out of working time or weekend time)</span>
               <strong>${formatCurrency(pickupExtensionPrice)}</strong>
             </div>
@@ -378,15 +592,34 @@ export function printReservationReceipt(reservation: Reservation | null) {
               <span>Return extension (either out of working time or weekend time)</span>
               <strong>${formatCurrency(returnExtensionPrice)}</strong>
             </div>
+            ${
+              depositDiscount > 0
+                ? `<div class="price-row"><span>Full-payment discount (${escapeHtml(
+                    deposit?.discountPercent || 0,
+                  )}%)</span><strong>-${formatCurrency(depositDiscount)}</strong></div>`
+                : ""
+            }
             <div class="price-row">
               <span>Total reservation price</span>
               <strong>${formatCurrency(reservation.totalPrice)}</strong>
             </div>
             ${
-              (reservation as any).manualPriceNote
+              reservation.manualPriceNote
                 ? `<div class="price-row"><span>Admin note</span><strong>${escapeHtml(
-                    (reservation as any).manualPriceNote,
+                    reservation.manualPriceNote,
                   )}</strong></div>`
+                : ""
+            }
+            ${
+              reservation.discountCode
+                ? `<div class="price-row"><span>Discount code</span><strong>${escapeHtml(
+                    reservation.discountCode,
+                  )}</strong></div>`
+                : ""
+            }
+            ${
+              reservation.perInvoice
+                ? `<div class="price-row"><span>Pricing method</span><strong>Per invoice</strong></div>`
                 : ""
             }
           </div>
@@ -400,13 +633,240 @@ export function printReservationReceipt(reservation: Reservation | null) {
                 <th>Name</th>
                 <th>Qty</th>
                 <th>Tier</th>
+                <th>Amount</th>
               </tr>
             </thead>
             <tbody>
-              ${getAddOnsRows(reservation)}
+              ${getAddOnsRows(reservation, rentalDays)}
             </tbody>
           </table>
         </section>
+
+        ${
+          deposit
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Deposit Payment</h3>
+                <div class="panel">
+                  <div class="grid">
+                    <div><div class="label">Option</div><div class="value">${escapeHtml(
+                      deposit.option
+                        ? DEPOSIT_OPTION_LABELS[deposit.option]
+                        : "-",
+                    )}</div></div>
+                    <div><div class="label">Status</div><div class="value">${escapeHtml(
+                      humanize(deposit.status),
+                    )}</div></div>
+                    <div><div class="label">Amount</div><div class="value">${formatCurrency(
+                      deposit.amount,
+                    )}</div></div>
+                    <div><div class="label">Original Amount</div><div class="value">${formatCurrency(
+                      deposit.originalAmount,
+                    )}</div></div>
+                    <div><div class="label">Discount</div><div class="value">${formatCurrency(
+                      deposit.discountAmount,
+                    )}${
+                      deposit.discountPercent
+                        ? ` (${escapeHtml(deposit.discountPercent)}%)`
+                        : ""
+                    }</div></div>
+                    <div><div class="label">Method</div><div class="value">${escapeHtml(
+                      humanize(deposit.method),
+                    )}</div></div>
+                    <div><div class="label">Due</div><div class="value">${formatDateTime(
+                      deposit.dueAt,
+                    )}</div></div>
+                    <div><div class="label">Paid</div><div class="value">${formatDateTime(
+                      deposit.paidAt,
+                    )}</div></div>
+                    <div><div class="label">Transaction Reference</div><div class="value">${escapeHtml(
+                      deposit.transactionRef || "-",
+                    )}</div></div>
+                    <div><div class="label">Receipt Uploaded</div><div class="value">${formatDateTime(
+                      deposit.receiptUploadedAt,
+                    )}</div></div>
+                    <div><div class="label">Verified</div><div class="value">${formatDateTime(
+                      deposit.verifiedAt,
+                    )}</div></div>
+                    <div><div class="label">Handover Deposit</div><div class="value">${formatCurrency(
+                      reservation.handoverDepositAmount,
+                    )}</div></div>
+                  </div>
+                  ${
+                    deposit.failureReason
+                      ? `<div class="status-note">Payment issue: ${escapeHtml(
+                          deposit.failureReason,
+                        )}</div>`
+                      : ""
+                  }
+                  ${
+                    deposit.priceAdjustment
+                      ? `<div class="section">
+                          <div class="label">Price adjustment after booking edit</div>
+                          <div class="price-row"><span>Previous total</span><strong>${formatCurrency(
+                            deposit.priceAdjustment.previousTotal,
+                          )}</strong></div>
+                          <div class="price-row"><span>Revised total</span><strong>${formatCurrency(
+                            deposit.priceAdjustment.revisedTotal,
+                          )}</strong></div>
+                          <div class="price-row"><span>Paid amount</span><strong>${formatCurrency(
+                            deposit.priceAdjustment.paidAmount,
+                          )}</strong></div>
+                          <div class="price-row"><span>Balance due</span><strong>${formatCurrency(
+                            deposit.priceAdjustment.balanceDue,
+                          )}</strong></div>
+                          <div class="price-row"><span>Credit due</span><strong>${formatCurrency(
+                            deposit.priceAdjustment.creditAmount,
+                          )}</strong></div>
+                          <div class="price-row"><span>Status</span><strong>${escapeHtml(
+                            humanize(deposit.priceAdjustment.status),
+                          )}</strong></div>
+                        </div>`
+                      : ""
+                  }
+                </div>
+              </section>`
+            : ""
+        }
+
+        ${
+          hasMeaningfulData(handover)
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Vehicle Handover</h3>
+                <div class="panel">
+                  <div class="grid">
+                    <div><div class="label">Starting Mileage</div><div class="value">${escapeHtml(
+                      handover?.startMileage,
+                    )}</div></div>
+                    <div><div class="label">Starting Fuel</div><div class="value">${escapeHtml(
+                      handover?.startFuelLevel,
+                    )}</div></div>
+                    <div><div class="label">Keys</div><div class="value">${escapeHtml(
+                      handover?.keyCount,
+                    )}</div></div>
+                    <div><div class="label">Staff</div><div class="value">${escapeHtml(
+                      handover?.staff?.name || "-",
+                    )}</div></div>
+                    <div><div class="label">Completed</div><div class="value">${formatDateTime(
+                      handover?.completedAt,
+                    )}</div></div>
+                    <div><div class="label">Equipment</div><div class="value">${escapeHtml(
+                      handover?.equipment?.join(", ") || "-",
+                    )}</div></div>
+                    <div><div class="label">Existing Damage</div><div class="value">${escapeHtml(
+                      handover?.existingDamages?.join(", ") || "None recorded",
+                    )}</div></div>
+                    <div><div class="label">Condition Notes</div><div class="value">${escapeHtml(
+                      handover?.conditionNotes || "-",
+                    )}</div></div>
+                  </div>
+                  ${customFieldRows(handover?.customFields)}
+                </div>
+              </section>`
+            : ""
+        }
+
+        ${
+          hasMeaningfulData(inspection)
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Return Inspection</h3>
+                <div class="panel">
+                  <div class="grid">
+                    <div><div class="label">Return Mileage</div><div class="value">${escapeHtml(
+                      inspection?.returnMileage,
+                    )}</div></div>
+                    <div><div class="label">Return Fuel</div><div class="value">${escapeHtml(
+                      inspection?.returnFuelLevel,
+                    )}</div></div>
+                    <div><div class="label">Late Return</div><div class="value">${
+                      inspection?.lateReturn ? "Yes" : "No"
+                    }${
+                      inspection?.lateMinutes
+                        ? ` (${escapeHtml(inspection.lateMinutes)} minutes)`
+                        : ""
+                    }</div></div>
+                    <div><div class="label">Cleaning Issue</div><div class="value">${
+                      inspection?.cleaningIssue ? "Yes" : "No"
+                    }</div></div>
+                    <div><div class="label">New Damage</div><div class="value">${escapeHtml(
+                      inspection?.newDamages?.join(", ") || "None recorded",
+                    )}</div></div>
+                    <div><div class="label">Missing Equipment</div><div class="value">${escapeHtml(
+                      inspection?.missingEquipment?.join(", ") || "None recorded",
+                    )}</div></div>
+                    <div><div class="label">Staff</div><div class="value">${escapeHtml(
+                      inspection?.staff?.name || "-",
+                    )}</div></div>
+                    <div><div class="label">Completed</div><div class="value">${formatDateTime(
+                      inspection?.completedAt,
+                    )}</div></div>
+                  </div>
+                  ${
+                    inspection?.notes
+                      ? `<div class="status-note">Inspection notes: ${escapeHtml(
+                          inspection.notes,
+                        )}</div>`
+                      : ""
+                  }
+                  ${customFieldRows(inspection?.customFields)}
+                </div>
+              </section>`
+            : ""
+        }
+
+        ${
+          hasMeaningfulData(refund)
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Refund Summary</h3>
+                <div class="panel">
+                  <div class="price-row"><span>Deposit paid</span><strong>${formatCurrency(
+                    refund?.depositPaid,
+                  )}</strong></div>
+                  ${refundChargeRows || '<div class="price-row"><span>Deductions</span><strong>£0.00</strong></div>'}
+                  <div class="price-row"><span>Total deductions</span><strong>-${formatCurrency(
+                    refund?.deductionsTotal,
+                  )}</strong></div>
+                  <div class="price-row"><span>Refund amount</span><strong>${formatCurrency(
+                    refund?.refundAmount,
+                  )}</strong></div>
+                  <div class="price-row"><span>Status</span><strong>${escapeHtml(
+                    humanize(refund?.status),
+                  )}</strong></div>
+                  <div class="price-row"><span>Authorization number</span><strong>${escapeHtml(
+                    refund?.reference || "-",
+                  )}</strong></div>
+                  <div class="price-row"><span>Expected by</span><strong>${formatDateTime(
+                    refund?.expectedBy,
+                  )}</strong></div>
+                  <div class="price-row"><span>Processed</span><strong>${formatDateTime(
+                    refund?.processedAt,
+                  )}</strong></div>
+                </div>
+              </section>`
+            : ""
+        }
+
+        ${
+          statusHistoryRows
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Activity Timeline</h3>
+                <table>
+                  <thead><tr><th>Status</th><th>Date</th><th>Changed by</th><th>Note</th></tr></thead>
+                  <tbody>${statusHistoryRows}</tbody>
+                </table>
+              </section>`
+            : ""
+        }
+
+        ${
+          reservation.cancelReason
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Cancellation</h3>
+                <div class="status-note">${escapeHtml(
+                  reservation.cancelReason,
+                )}</div>
+              </section>`
+            : ""
+        }
 
         ${
           reservation.messege

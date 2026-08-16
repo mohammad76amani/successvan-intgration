@@ -9,10 +9,12 @@ const developmentCardNumber =
     : "";
 
 export const DEPOSIT_PAYMENT_DETAILS = {
+  bankName:
+    process.env.NEXT_PUBLIC_DEPOSIT_BANK_NAME || "Lloyds Business Bank",
   accountName:
-    process.env.NEXT_PUBLIC_DEPOSIT_ACCOUNT_NAME || "Success Van Hire Ltd",
+    process.env.NEXT_PUBLIC_DEPOSIT_ACCOUNT_NAME || "Diba Cooperation Ltd",
   cardNumber: configuredCardNumber || developmentCardNumber,
-  sortCode: process.env.NEXT_PUBLIC_DEPOSIT_SORT_CODE || "",
-  accountNumber: process.env.NEXT_PUBLIC_DEPOSIT_ACCOUNT_NUMBER || "",
+  sortCode: process.env.NEXT_PUBLIC_DEPOSIT_SORT_CODE || "30-99-09",
+  accountNumber: process.env.NEXT_PUBLIC_DEPOSIT_ACCOUNT_NUMBER || "44761060",
   isTestCard: Boolean(developmentCardNumber),
 };

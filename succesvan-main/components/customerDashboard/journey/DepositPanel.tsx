@@ -514,13 +514,23 @@ export default function DepositPanel({
                 </span>{" "}
                 using the details below, then upload your receipt.
               </p>
-              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-                <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
-                  Account holder
-                </p>
-                <p className="mt-0.5 text-sm font-semibold text-white">
-                  {DEPOSIT_PAYMENT_DETAILS.accountName}
-                </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                    Bank
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-white">
+                    {DEPOSIT_PAYMENT_DETAILS.bankName}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+                    Account holder
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-white">
+                    {DEPOSIT_PAYMENT_DETAILS.accountName}
+                  </p>
+                </div>
               </div>
               {hasCardNumber && (
                 <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">

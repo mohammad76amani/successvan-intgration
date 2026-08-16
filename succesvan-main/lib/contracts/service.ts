@@ -5,6 +5,10 @@ import connect from "@/lib/data";
 import Contract from "@/model/contract";
 import Reservation from "@/model/reservation";
 import AddOn from "@/model/addOn";
+import {
+  createLondonDateTime,
+  formatDateInputInLondon,
+} from "@/lib/englandTime";
 import { generateRentalAgreementPdf } from "./pdf";
 import { getContractStorage } from "./storage";
 import { sha256Hex } from "./hash";
@@ -54,6 +58,13 @@ type ContractQuery = {
   limit?: number;
 };
 
+type ContractCreationOptions = {
+  recreateEnvelope?: boolean;
+  insuranceProvider?: "diba" | "customer";
+  insuranceOtherExcess?: string;
+  handoverDepositAmount?: number;
+};
+
 function objectId(value: string, code = "CONTRACT_NOT_FOUND") {
   if (!Types.ObjectId.isValid(value)) {
     throw new ContractIntegrationError(
@@ -65,9 +76,56 @@ function objectId(value: string, code = "CONTRACT_NOT_FOUND") {
   return new Types.ObjectId(value);
 }
 
-function contractNumberFromId(id: Types.ObjectId) {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  return `SVH-${date}-${id.toString().slice(-6).toUpperCase()}`;
+function contractNumberDateParts(date: Date) {
+  const [year, month, day] = formatDateInputInLondon(date).split("-");
+  const prefix = `${year.slice(-1)}${Number(month)}${day}`;
+  const calendarDate = new Date(Number(year), Number(month) - 1, Number(day));
+  const followingDate = new Date(Number(year), Number(month) - 1, Number(day) + 1);
+
+  return {
+    prefix,
+    dayStart: new Date(createLondonDateTime(calendarDate, "00:00")),
+    dayEnd: new Date(createLondonDateTime(followingDate, "00:00")),
+  };
+}
+
+async function nextContractNumber(date = new Date()) {
+  const { prefix, dayStart, dayEnd } = contractNumberDateParts(date);
+  const [contractsCreatedToday, numberedToday] = await Promise.all([
+    Contract.countDocuments({
+      createdAt: { $gte: dayStart, $lt: dayEnd },
+    }),
+    Contract.find({
+      contractNumber: { $regex: `^${prefix}-\\d+$` },
+    })
+      .select("contractNumber")
+      .lean(),
+  ]);
+
+  const highestSequence = numberedToday.reduce((highest, contract) => {
+    const sequence = Number(String(contract.contractNumber).split("-").at(-1));
+    return Number.isFinite(sequence) ? Math.max(highest, sequence) : highest;
+  }, 0);
+  const nextSequence = Math.max(contractsCreatedToday, highestSequence) + 1;
+
+  return `${prefix}-${String(nextSequence).padStart(2, "0")}`;
+}
+
+function isDuplicateContractNumber(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const duplicateError = error as {
+    code?: number;
+    keyPattern?: Record<string, unknown>;
+    keyValue?: Record<string, unknown>;
+    message?: string;
+  };
+
+  return (
+    duplicateError.code === 11000 &&
+    (Boolean(duplicateError.keyPattern?.contractNumber) ||
+      Boolean(duplicateError.keyValue?.contractNumber) ||
+      duplicateError.message?.includes("contractNumber") === true)
+  );
 }
 
 function addAudit(
@@ -107,6 +165,56 @@ async function loadReservation(bookingId: string) {
   }
 
   return reservation;
+}
+
+function requireInsuranceArrangement(reservation: {
+  insuranceArrangement?: { provider?: string; otherExcess?: string };
+}) {
+  if (
+    !["diba", "customer"].includes(
+      reservation.insuranceArrangement?.provider || "",
+    )
+  ) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "Select who arranges the insurance before creating the contract.",
+      400,
+    );
+  }
+}
+
+function applyContractInsuranceOptions(
+  reservation: Record<string, unknown>,
+  options: ContractCreationOptions,
+) {
+  if (!options.insuranceProvider && options.handoverDepositAmount === undefined) {
+    return reservation;
+  }
+
+  const currentArrangement =
+    reservation.insuranceArrangement &&
+    typeof reservation.insuranceArrangement === "object"
+      ? (reservation.insuranceArrangement as Record<string, unknown>)
+      : {};
+
+  return {
+    ...reservation,
+    ...(options.handoverDepositAmount !== undefined
+      ? { handoverDepositAmount: options.handoverDepositAmount }
+      : {}),
+    insuranceArrangement: {
+      ...currentArrangement,
+      ...(options.insuranceProvider
+        ? {
+            provider: options.insuranceProvider,
+            otherExcess:
+              options.insuranceProvider === "diba"
+                ? options.insuranceOtherExcess?.trim() || undefined
+                : undefined,
+          }
+        : {}),
+    },
+  };
 }
 
 function reservationCustomer(reservation: {
@@ -309,10 +417,37 @@ export async function createContractForBooking(
   bookingId: string,
   actor: ActorInput,
   sendNow = false,
-  options: { recreateEnvelope?: boolean } = {},
+  options: ContractCreationOptions = {},
 ) {
   await connect();
   objectId(bookingId, "BOOKING_NOT_FOUND");
+
+  if (
+    options.insuranceProvider ||
+    options.handoverDepositAmount !== undefined
+  ) {
+    const updateFields: Record<string, unknown> = {};
+    if (options.insuranceProvider) {
+      updateFields.insuranceArrangement = {
+        provider: options.insuranceProvider,
+        otherExcess:
+          options.insuranceProvider === "diba"
+            ? options.insuranceOtherExcess?.trim()
+            : undefined,
+        selectedAt: new Date(),
+        selectedBy:
+          actor.actorId && Types.ObjectId.isValid(actor.actorId)
+            ? new Types.ObjectId(actor.actorId)
+            : undefined,
+      };
+    }
+    if (options.handoverDepositAmount !== undefined) {
+      updateFields.handoverDepositAmount = options.handoverDepositAmount;
+    }
+    await Reservation.findByIdAndUpdate(bookingId, {
+      $set: updateFields,
+    });
+  }
 
   const existing = await Contract.findOne({
     bookingId,
@@ -362,7 +497,12 @@ export async function createContractForBooking(
 
     if (!existing.sourceDocument?.storageKey || options.recreateEnvelope) {
       const reservation = await loadReservation(bookingId);
-      await generateAndStoreSourcePdf(existing, reservation.toObject(), actor);
+      const contractReservation = applyContractInsuranceOptions(
+        reservation.toObject(),
+        options,
+      );
+      requireInsuranceArrangement(contractReservation);
+      await generateAndStoreSourcePdf(existing, contractReservation, actor);
     }
     if (sendNow && !existing.docusign?.envelopeId) {
       await sendContract(existing._id.toString(), actor);
@@ -371,35 +511,56 @@ export async function createContractForBooking(
   }
 
   const reservation = await loadReservation(bookingId);
+  const contractReservation = applyContractInsuranceOptions(
+    reservation.toObject(),
+    options,
+  );
+  requireInsuranceArrangement(contractReservation);
   const customer = reservationCustomer(reservation.toObject());
   const id = new Types.ObjectId();
 
-  const contract = await Contract.create({
-    _id: id,
-    bookingId: reservation._id,
-    customerId: customer.customerId,
-    customerName: customer.customerName,
-    customerEmail: customer.customerEmail,
-    customerPhone: customer.customerPhone,
-    contractNumber: contractNumberFromId(id),
-    contractType: "rental_agreement",
-    status: "generating",
-    docusign: {
-      signerRecipientId: "1",
-      signerClientUserId: makeSignerClientUserId(id),
-    },
-    createdBy: actor.actorId,
-    auditTrail: [
-      {
-        action: "contract_created",
-        source: actor.source,
-        actorId: actor.actorId,
-        createdAt: new Date(),
-      },
-    ],
-  });
+  let contract;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      contract = await Contract.create({
+        _id: id,
+        bookingId: reservation._id,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerEmail: customer.customerEmail,
+        customerPhone: customer.customerPhone,
+        contractNumber: await nextContractNumber(),
+        contractType: "rental_agreement",
+        status: "generating",
+        docusign: {
+          signerRecipientId: "1",
+          signerClientUserId: makeSignerClientUserId(id),
+        },
+        createdBy: actor.actorId,
+        auditTrail: [
+          {
+            action: "contract_created",
+            source: actor.source,
+            actorId: actor.actorId,
+            createdAt: new Date(),
+          },
+        ],
+      });
+      break;
+    } catch (error) {
+      if (!isDuplicateContractNumber(error)) throw error;
+    }
+  }
 
-  await generateAndStoreSourcePdf(contract, reservation.toObject(), actor);
+  if (!contract) {
+    throw new ContractIntegrationError(
+      "CONTRACT_NUMBER_GENERATION_FAILED",
+      "Could not generate a unique contract number. Please try again.",
+      409,
+    );
+  }
+
+  await generateAndStoreSourcePdf(contract, contractReservation, actor);
   await Contract.findByIdAndUpdate(contract._id, {
     $set: { status: "ready" },
     $push: {
@@ -490,6 +651,7 @@ export async function listAdminContracts(query: ContractQuery) {
   }
   if (query.customer) {
     dbQuery.$or = [
+      { contractNumber: { $regex: query.customer, $options: "i" } },
       { customerName: { $regex: query.customer, $options: "i" } },
       { customerEmail: { $regex: query.customer, $options: "i" } },
       { customerPhone: { $regex: query.customer, $options: "i" } },

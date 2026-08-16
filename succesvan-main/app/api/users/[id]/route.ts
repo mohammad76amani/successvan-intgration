@@ -76,6 +76,12 @@ export async function PUT(
     if (body.licenceDetails) {
       updateData.licenceDetails = {
         ...body.licenceDetails,
+        // Accept scans created by the short-lived combined-side client value
+        // while storing the schema-compatible primary identity side.
+        sourceSide:
+          body.licenceDetails.sourceSide === "both"
+            ? "front"
+            : body.licenceDetails.sourceSide,
         extractedAt: new Date(),
       };
     }

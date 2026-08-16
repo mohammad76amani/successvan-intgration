@@ -205,7 +205,12 @@ function ReservationStepManagerModal({
   selectedVehicle: string;
   setSelectedVehicle: (value: string) => void;
   loadingVehicles: boolean;
-  onAssignVehicle: (reservation: Reservation) => Promise<void>;
+  onAssignVehicle: (
+    reservation: Reservation,
+    insuranceProvider: "diba" | "customer",
+    insuranceOtherExcess?: string,
+    handoverDepositAmount?: number,
+  ) => Promise<void>;
   onReservationUpdated: (reservation: Reservation) => void;
   isSubmitting: boolean;
 }) {
@@ -218,6 +223,41 @@ function ReservationStepManagerModal({
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(
     null,
   );
+  const [insuranceProvider, setInsuranceProvider] = useState<
+    "" | "diba" | "customer"
+  >("");
+  const [insuranceOtherExcess, setInsuranceOtherExcess] = useState("");
+  const categoryHandoverDeposit = (
+    reservation?.category as
+      | { deposit?: { handoverDepositPrice?: number } }
+      | undefined
+  )?.deposit?.handoverDepositPrice;
+  const [handoverDepositAmount, setHandoverDepositAmount] = useState("");
+
+  useEffect(() => {
+    if (!isOpen || !reservation?._id) {
+      setInsuranceProvider("");
+      setInsuranceOtherExcess("");
+      setHandoverDepositAmount("");
+      return;
+    }
+    setInsuranceProvider(reservation.insuranceArrangement?.provider || "");
+    setInsuranceOtherExcess(
+      reservation.insuranceArrangement?.otherExcess || "",
+    );
+    setHandoverDepositAmount(
+      String(
+        reservation.handoverDepositAmount ?? categoryHandoverDeposit ?? 0,
+      ),
+    );
+  }, [
+    isOpen,
+    reservation?._id,
+    reservation?.insuranceArrangement?.provider,
+    reservation?.insuranceArrangement?.otherExcess,
+    reservation?.handoverDepositAmount,
+    categoryHandoverDeposit,
+  ]);
 
   useEffect(() => {
     if (!isOpen || !reservation?._id) {
@@ -743,14 +783,117 @@ function ReservationStepManagerModal({
                       }
                       disabled={isSubmitting}
                     />
+                    <fieldset className="space-y-2">
+                      <legend className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        Who arranges the insurance?
+                      </legend>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            {
+                              value: "diba",
+                              title: "Diba Cooperation Ltd",
+                              description: "Insurance arranged by the lessor",
+                            },
+                            {
+                              value: "customer",
+                              title: "Customer's own insurance",
+                              description: "Uses the name on the driving licence",
+                            },
+                          ] as const
+                        ).map((option) => {
+                          const selected = insuranceProvider === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              disabled={isSubmitting}
+                              onClick={() => setInsuranceProvider(option.value)}
+                              className={`rounded-xl border p-3 text-left transition ${
+                                selected
+                                  ? "border-[#fe9a00]/60 bg-[#fe9a00]/15 ring-1 ring-[#fe9a00]/20"
+                                  : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.06]"
+                              } disabled:opacity-50`}
+                            >
+                              <span className="flex items-center gap-2 text-sm font-bold text-white">
+                                <span
+                                  className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                                    selected
+                                      ? "border-[#fe9a00] bg-[#fe9a00]"
+                                      : "border-slate-500"
+                                  }`}
+                                >
+                                  {selected && <FiCheck className="text-[10px] text-white" />}
+                                </span>
+                                {option.title}
+                              </span>
+                              <span className="mt-1 block pl-6 text-xs text-slate-400">
+                                {option.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {insuranceProvider === "diba" && (
+                        <label className="block">
+                          <span className="mb-1.5 block text-xs font-semibold text-slate-300">
+                            Other Excess <span className="font-normal text-slate-500">(optional)</span>
+                          </span>
+                          <input
+                            value={insuranceOtherExcess}
+                            onChange={(event) =>
+                              setInsuranceOtherExcess(event.target.value)
+                            }
+                            disabled={isSubmitting}
+                            placeholder="e.g. £1,250 or N/A"
+                            className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10 disabled:opacity-50"
+                          />
+                        </label>
+                      )}
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold text-slate-300">
+                          Refundable handover deposit (£)
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={handoverDepositAmount}
+                          onChange={(event) =>
+                            setHandoverDepositAmount(event.target.value)
+                          }
+                          disabled={isSubmitting}
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10 disabled:opacity-50"
+                        />
+                        <span className="mt-1.5 block text-[10px] leading-4 text-slate-500">
+                          Category default; change it here for this booking before generating the contract.
+                        </span>
+                      </label>
+                    </fieldset>
                     {!loadingVehicles && vehicles.length === 0 && (
                       <p className="text-xs text-yellow-300">
                         No vehicles found for this category.
                       </p>
                     )}
                     <button
-                      disabled={isSubmitting || !selectedVehicle}
-                      onClick={() => onAssignVehicle(reservation)}
+                      disabled={
+                        isSubmitting ||
+                        !selectedVehicle ||
+                        !insuranceProvider ||
+                        handoverDepositAmount === "" ||
+                        Number(handoverDepositAmount) < 0
+                      }
+                      onClick={() => {
+                        if (insuranceProvider) {
+                          void onAssignVehicle(
+                            reservation,
+                            insuranceProvider,
+                            insuranceOtherExcess.trim(),
+                            Number(handoverDepositAmount),
+                          );
+                        }
+                      }}
                       className="min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-3 text-sm font-black text-white shadow-[0_10px_28px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(254,154,0,0.25)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                     >
                       {isSubmitting
@@ -1720,7 +1863,12 @@ export default function ReservationsManagement() {
     }
   };
 
-  const handleStepAssignVehicle = async (reservation: Reservation) => {
+  const handleStepAssignVehicle = async (
+    reservation: Reservation,
+    insuranceProvider: "diba" | "customer",
+    insuranceOtherExcess?: string,
+    handoverDepositAmount?: number,
+  ) => {
     if (isSubmitting || !reservation?._id || !newVehicle) return;
 
     setIsSubmitting(true);
@@ -1731,6 +1879,9 @@ export default function ReservationsManagement() {
         body: JSON.stringify({
           vehicle: newVehicle,
           status: "contract_pending",
+          insuranceProvider,
+          insuranceOtherExcess,
+          handoverDepositAmount,
         }),
       });
       const data = await res.json();

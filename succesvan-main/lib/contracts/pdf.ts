@@ -4,6 +4,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { sha256Hex } from "./hash";
+import { contractMileageAllowance } from "./mileage";
+import {
+  contractInsuranceAddOns,
+  contractInsuranceValues,
+} from "./insurance";
 
 export type ContractPdfReservation = {
   _id?: unknown;
@@ -41,9 +46,14 @@ export type ContractPdfReservation = {
     requiredLicense?: string;
     seats?: number;
     doors?: number;
+    deposit?: {
+      depositFee?: number;
+      handoverDepositPrice?: number;
+    };
   };
   vehicle?: {
     title?: string;
+    make?: string;
     number?: string | number;
     brand?: string;
     color?: string;
@@ -52,11 +62,12 @@ export type ContractPdfReservation = {
   };
   vehicleSnapshot?: {
     title?: string;
+    make?: string;
     number?: string | number;
     color?: string;
   };
   addOns?: Array<{
-    addOn?: { name?: string; pricingType?: string };
+    addOn?: { name?: string; type?: string; pricingType?: string };
     quantity?: number;
     selectedTierIndex?: number;
   }>;
@@ -86,6 +97,10 @@ export type ContractPdfReservation = {
   manualPricePerDay?: number;
   manualPriceNote?: string;
   reservationType?: string;
+  insuranceArrangement?: {
+    provider?: "diba" | "customer";
+    otherExcess?: string;
+  };
   createdAt?: string | Date;
 };
 
@@ -199,15 +214,20 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     .filter(Boolean)
     .join(", ");
   const term = rentalHours(reservation);
-  const insuranceExcess = vehicleProperty(reservation, [
-    "insurance excess",
-    "excess cost",
-  ]);
-  const insuranceExcessLabel = insuranceExcess
-    ? /^[£$€]/.test(insuranceExcess)
-      ? insuranceExcess
-      : `£${insuranceExcess}`
-    : "-";
+  const insuranceValues = contractInsuranceValues({
+    provider: reservation.insuranceArrangement?.provider,
+    licenceHolderName: name,
+    selectedInsuranceAddOns: contractInsuranceAddOns(reservation.addOns),
+    otherExcess: reservation.insuranceArrangement?.otherExcess,
+  });
+  // The agreement deposit is the refundable return/handover deposit configured
+  // independently for each category. It is not the customer's payment amount
+  // or the category's separate deposit fee.
+  const refundableDeposit = Number(
+    reservation.handoverDepositAmount ??
+      reservation.category?.deposit?.handoverDepositPrice ??
+      0,
+  );
   const page = doc.getPage(0);
   const page2 = doc.getPage(1);
   const page3 = doc.getPage(2);
@@ -360,6 +380,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
       .toLowerCase()
       .includes("additional driver"),
   );
+  const mileageAllowance = contractMileageAllowance(reservation.addOns);
 
   // Agreement references.
   cellText(page, input.contractNumber, 172.8, 124, 133.2, 10.4);
@@ -397,7 +418,9 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   );
   cellText(
     page,
-    reservation.vehicle?.brand ||
+    reservation.vehicle?.make ||
+      reservation.vehicleSnapshot?.make ||
+      reservation.vehicle?.brand ||
       vehicleProperty(reservation, ["make", "brand"]) ||
       "Not provided",
     433.8,
@@ -437,25 +460,39 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
 
   // Rental fee, deposit and payment details.
   cellText(page, money(reservation.totalPrice), 167.4, 425.1, 133.2);
-  cellText(page, money(reservation.deposit?.amount), 433.8, 425.1, 133.2);
+  cellText(page, money(refundableDeposit), 433.8, 425.1, 133.2);
   cellText(page, depositPaymentMethod, 167.4, 436.1, 133.2, 21.1);
   cellText(page, extensionTotal > 0 ? money(extensionTotal) : money(0), 167.4, 457.2, 133.2);
-  cellText(page, money(reservation.handoverDepositAmount), 433.8, 457.2, 133.2);
+  cellText(page, money(0), 433.8, 457.2, 133.2);
+
+  // Mileage allowance. Mileage add-ons are sold per rental day, so their
+  // stated mileage increases the daily allowance and seven times that amount
+  // increases the weekly allowance. Unlimited mileage removes both limits.
+  cellText(page, mileageAllowance.weeklyLabel, 300.6, 487.2, 266.4, 10.5);
+  cellText(page, mileageAllowance.dailyLabel, 300.6, 497.7, 266.4, 10.5);
+  cellText(page, mileageAllowance.excessChargeLabel, 300.6, 508.2, 266.4, 10.5);
 
   // Insurance details.
-  cellText(page, "Subject to approval", 167.4, 584, 133.2, 10.4);
+  cellText(page, insuranceValues.arrangedBy, 167.4, 584, 133.2, 10.4);
   cellText(
     page,
-    insuranceExcessLabel === "-" ? "See applicable policy" : insuranceExcessLabel,
+    insuranceValues.insuranceExcess,
     433.8,
     584,
     133.2,
     10.4,
   );
-  cellText(page, "See applicable policy", 167.4, 594.4, 133.2, 10.2);
-  cellText(page, "See applicable policy", 433.8, 594.4, 133.2, 10.2);
-  cellText(page, "See applicable policy", 167.4, 604.6, 133.2, 10.9);
-  cellText(page, "See applicable policy", 433.8, 604.6, 133.2, 10.9);
+  cellText(page, insuranceValues.glassWindscreenExcess, 167.4, 594.4, 133.2, 10.2);
+  cellText(page, insuranceValues.otherExcess, 433.8, 594.4, 133.2, 10.2);
+  // Remove the unused Insurer / Policy Ref and Cover Notes row from the
+  // source template, then close the shortened two-row insurance table.
+  cover(page, 33.7, 604.2, 533.8, 11.7);
+  page.drawLine({
+    start: { x: 34.2, y: page.getHeight() - 604.6 },
+    end: { x: 567, y: page.getHeight() - 604.6 },
+    thickness: 0.65,
+    color: ink,
+  });
 
   // Page 3 has ample space, so rebuild both signing blocks with proper room
   // for DocuSign's handwritten signature stamp instead of one-line rows.

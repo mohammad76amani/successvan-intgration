@@ -183,7 +183,7 @@ export async function PATCH(
       String(body.vehicle) !== String(oldReservation.vehicle || "")
     ) {
       const assignedVehicle = await Vehicle.findById(body.vehicle).select(
-        "title number keyNumber color",
+        "title make number keyNumber color",
       );
       if (!assignedVehicle) {
         return errorResponse("Vehicle not found", 404);
@@ -191,6 +191,7 @@ export async function PATCH(
       body.vehicleSnapshot = {
         vehicleId: assignedVehicle._id,
         title: assignedVehicle.title,
+        make: assignedVehicle.make,
         number: assignedVehicle.number,
         keyNumber: assignedVehicle.keyNumber,
         color: assignedVehicle.color,
@@ -211,6 +212,57 @@ export async function PATCH(
       body.status === "contract_pending" &&
       typeof body.vehicle === "string" &&
       Boolean(body.vehicle.trim());
+
+    const submittedInsuranceProvider =
+      typeof body.insuranceProvider === "string"
+        ? body.insuranceProvider.trim().toLowerCase()
+        : "";
+    const submittedInsuranceOtherExcess =
+      typeof body.insuranceOtherExcess === "string"
+        ? body.insuranceOtherExcess.trim()
+        : "";
+    delete body.insuranceProvider;
+    delete body.insuranceOtherExcess;
+
+    let contractInsuranceProvider: "diba" | "customer" | undefined;
+    let contractInsuranceOtherExcess: string | undefined;
+    let contractHandoverDepositAmount: number | undefined;
+
+    if (adminRequestedContractGeneration) {
+      const insuranceProvider =
+        submittedInsuranceProvider ||
+        String(oldReservation.insuranceArrangement?.provider || "");
+      if (!["diba", "customer"].includes(insuranceProvider)) {
+        return errorResponse(
+          "Select whether Diba Cooperation Ltd or the customer arranges the insurance.",
+          400,
+        );
+      }
+      const insuranceOtherExcess =
+        submittedInsuranceOtherExcess ||
+        String(oldReservation.insuranceArrangement?.otherExcess || "").trim();
+      contractInsuranceProvider = insuranceProvider as "diba" | "customer";
+      contractInsuranceOtherExcess = insuranceOtherExcess || undefined;
+      body.insuranceArrangement = {
+        provider: contractInsuranceProvider,
+        otherExcess:
+          insuranceProvider === "diba" ? insuranceOtherExcess : undefined,
+        selectedAt: new Date(),
+        selectedBy: auth.userId,
+      };
+
+      if (Object.prototype.hasOwnProperty.call(body, "handoverDepositAmount")) {
+        const handoverDepositAmount = Number(body.handoverDepositAmount);
+        if (!Number.isFinite(handoverDepositAmount) || handoverDepositAmount < 0) {
+          return errorResponse(
+            "Enter a valid refundable handover deposit amount.",
+            400,
+          );
+        }
+        body.handoverDepositAmount = handoverDepositAmount;
+        contractHandoverDepositAmount = handoverDepositAmount;
+      }
+    }
 
     const depositAllowsVehicleAssignment =
       oldReservation.status === "deposit_paid" ||
@@ -325,7 +377,7 @@ export async function PATCH(
       .populate("category")
       .populate({
         path: "vehicle",
-        select: "title number keyNumber color",
+        select: "title make number keyNumber color",
       })
       .populate("addOns.addOn");
 
@@ -450,7 +502,12 @@ export async function PATCH(
           id,
           { actorId: auth.userId, source: "admin" },
           true,
-          { recreateEnvelope: true },
+          {
+            recreateEnvelope: true,
+            insuranceProvider: contractInsuranceProvider,
+            insuranceOtherExcess: contractInsuranceOtherExcess,
+            handoverDepositAmount: contractHandoverDepositAmount,
+          },
         );
 
         const latestReservation = await Reservation.findById(id)
@@ -459,7 +516,7 @@ export async function PATCH(
           .populate("category")
           .populate({
             path: "vehicle",
-            select: "title number keyNumber color",
+            select: "title make number keyNumber color",
           })
           .populate("addOns.addOn");
 

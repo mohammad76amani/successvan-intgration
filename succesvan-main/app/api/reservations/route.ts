@@ -336,15 +336,25 @@ export async function POST(req: NextRequest) {
       reservationData?.deposit && typeof reservationData.deposit === "object"
         ? reservationData.deposit
         : undefined;
+    const initialStatus = isDashboardUser ? "confirmed" : "pending";
 
     const reservation = await Reservation.create({
       ...reservationData,
       user: user._id,
       totalPrice: reservationData.totalPrice || 0,
-      // Dashboard-created bookings have already been reviewed by staff and
-      // begin at the customer deposit-payment step. Website bookings still
-      // enter the normal pending-review flow.
-      status: isDashboardUser ? "deposit_pending" : "pending",
+      // Dashboard-created bookings have already been reviewed by staff.
+      // Website bookings still enter the normal pending-review flow.
+      status: initialStatus,
+      statusHistory: [
+        {
+          status: initialStatus,
+          changedAt: new Date(),
+          source: isDashboardUser ? "admin" : "system",
+          note: isDashboardUser
+            ? "Reservation created and confirmed by staff."
+            : "Reservation submitted for review.",
+        },
+      ],
       vehicle: undefined,
       vehicleSnapshot: undefined,
       contract: undefined,
@@ -374,7 +384,7 @@ export async function POST(req: NextRequest) {
       await sendSMS(
         user.phoneData.phoneNumber.replace("+", ""),
         isDashboardUser
-          ? `Dear ${user.name}, your reservation is ready for deposit payment.${licenceMessage} SuccessVanHire.co.uk/register`
+          ? `Dear ${user.name}, your reservation has been confirmed and is ready for deposit payment.${licenceMessage} SuccessVanHire.co.uk/register`
           : `Dear ${user.name}, reservation created, pending review.${licenceMessage} SuccessVanHire.co.uk/register`,
       );
     } catch (error) {

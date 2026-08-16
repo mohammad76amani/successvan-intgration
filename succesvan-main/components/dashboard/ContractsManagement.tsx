@@ -29,8 +29,12 @@ type ReservationOption = {
   startDate?: string;
   endDate?: string;
   totalPrice?: number;
+  handoverDepositAmount?: number;
   user?: { name?: string; lastName?: string; emaildata?: { emailAddress?: string } };
-  category?: { name?: string };
+  category?: {
+    name?: string;
+    deposit?: { handoverDepositPrice?: number };
+  };
 };
 
 const statusStyles: Record<ContractStatus, string> = {
@@ -222,7 +226,7 @@ export default function ContractsManagement() {
               setPage(1);
               setCustomerSearch(e.target.value);
             }}
-            placeholder="Search customer name, email or phone..."
+            placeholder="Search contract number, customer, email or phone..."
             className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#fe9a00]"
           />
         </div>
@@ -255,7 +259,8 @@ export default function ContractsManagement() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/10 text-left text-gray-400">
-                <th className="px-4 py-3 font-semibold">Contract</th>
+                <th className="px-4 py-3 font-semibold">Contract Number</th>
+                <th className="px-4 py-3 font-semibold">Booking</th>
                 <th className="px-4 py-3 font-semibold">Customer</th>
                 <th className="px-4 py-3 font-semibold">Vehicle</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
@@ -267,14 +272,14 @@ export default function ContractsManagement() {
             <tbody>
               {loading && contracts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                     Loading contracts...
                   </td>
                 </tr>
               )}
               {!loading && contracts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                     No contracts found. Create one from a booking to get
                     started.
                   </td>
@@ -297,9 +302,9 @@ export default function ContractsManagement() {
                   >
                     <td className="px-4 py-3">
                       <p className="text-white font-bold">{contract.contractNumber}</p>
-                      <p className="text-gray-500 text-xs">
-                        Booking ...{contract.bookingReference}
-                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">
+                      {contract.bookingReference || "-"}
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-white">{contract.customerName}</p>
@@ -508,6 +513,11 @@ function CreateContractModal({
   const [selected, setSelected] = useState<ReservationOption | null>(null);
   const [bookingIdInput, setBookingIdInput] = useState("");
   const [sendNow, setSendNow] = useState(true);
+  const [insuranceProvider, setInsuranceProvider] = useState<
+    "" | "diba" | "customer"
+  >("");
+  const [insuranceOtherExcess, setInsuranceOtherExcess] = useState("");
+  const [handoverDepositAmount, setHandoverDepositAmount] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -537,6 +547,20 @@ function CreateContractModal({
 
   const bookingId = selected?._id || bookingIdInput.trim();
 
+  useEffect(() => {
+    if (!selected) {
+      setHandoverDepositAmount("");
+      return;
+    }
+    setHandoverDepositAmount(
+      String(
+        selected.handoverDepositAmount ??
+          selected.category?.deposit?.handoverDepositPrice ??
+          0,
+      ),
+    );
+  }, [selected]);
+
   const handleCreate = async () => {
     if (!bookingId) {
       showToast.error("Select a booking or paste a booking ID.");
@@ -547,7 +571,15 @@ function CreateContractModal({
       const res = await fetch("/api/admin/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ bookingId, sendNow }),
+        body: JSON.stringify({
+          bookingId,
+          sendNow,
+          insuranceProvider,
+          insuranceOtherExcess: insuranceOtherExcess.trim(),
+          ...(handoverDepositAmount !== "" && {
+            handoverDepositAmount: Number(handoverDepositAmount),
+          }),
+        }),
       });
       const payload = await res.json();
       if (!payload.success) throw new Error(apiError(payload));
@@ -647,6 +679,60 @@ function CreateContractModal({
           className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#fe9a00] mb-4"
         />
 
+        <label className="text-white text-sm font-semibold mb-2 block">
+          Who arranges the insurance?
+        </label>
+        <select
+          value={insuranceProvider}
+          onChange={(event) =>
+            setInsuranceProvider(
+              event.target.value as "" | "diba" | "customer",
+            )
+          }
+          className="mb-4 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:border-[#fe9a00] focus:outline-none [&>option]:bg-[#1a2847]"
+        >
+          <option value="">Select insurance provider</option>
+          <option value="diba">Diba Cooperation Ltd</option>
+          <option value="customer">Customer&apos;s own insurance</option>
+        </select>
+        {insuranceProvider === "diba" && (
+          <label className="mb-4 block">
+            <span className="mb-2 block text-sm font-semibold text-white">
+              Other Excess <span className="font-normal text-gray-400">(optional)</span>
+            </span>
+            <input
+              value={insuranceOtherExcess}
+              onChange={(event) => setInsuranceOtherExcess(event.target.value)}
+              placeholder="e.g. £1,250 or N/A"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-[#fe9a00]"
+            />
+          </label>
+        )}
+        {insuranceProvider === "customer" && (
+          <p className="-mt-2 mb-4 text-xs text-gray-400">
+            The contract will use the customer&apos;s name from their driving
+            licence.
+          </p>
+        )}
+
+        <label className="mb-4 block">
+          <span className="mb-2 block text-sm font-semibold text-white">
+            Refundable handover deposit (£)
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={handoverDepositAmount}
+            onChange={(event) => setHandoverDepositAmount(event.target.value)}
+            placeholder="Uses category default when empty"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-gray-500 focus:border-[#fe9a00]"
+          />
+          <span className="mt-1.5 block text-xs text-gray-400">
+            Optional booking override. Leave empty to use the category default.
+          </span>
+        </label>
+
         <label className="flex items-center gap-3 mb-6 cursor-pointer">
           <input
             type="checkbox"
@@ -668,7 +754,11 @@ function CreateContractModal({
           </button>
           <button
             onClick={handleCreate}
-            disabled={creating || !bookingId}
+            disabled={
+              creating ||
+              !bookingId ||
+              !insuranceProvider
+            }
             className="flex-1 px-4 py-3 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg font-bold transition-colors disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create Contract"}

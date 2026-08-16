@@ -22,6 +22,7 @@ const vehicleSchema = new mongoose.Schema(
     },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
      brand:{type:String},
+    make: { type: String, required: true, trim: true },
      keyNumber:{type:String},
     reservation: {
       type: mongoose.Schema.Types.ObjectId,

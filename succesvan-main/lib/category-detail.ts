@@ -25,6 +25,7 @@ export interface CategoryServicesPeriod {
 
 export interface CategoryDeposit {
     amount?: number;
+    depositFee?: number;
     fullPayDiscountPercent?: number;
     securePayPrice?: number;
     officePayPrice?: number;

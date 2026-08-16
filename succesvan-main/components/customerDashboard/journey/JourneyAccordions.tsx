@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import {
   FiMapPin,
@@ -10,6 +10,8 @@ import {
   FiAlertCircle,
   FiDownload,
   FiUploadCloud,
+  FiLoader,
+  FiX,
 } from "react-icons/fi";
 import type { Reservation } from "@/types/type";
 import type { ReservationJourneyViewModel } from "@/types/reservation-journey";
@@ -89,6 +91,23 @@ const countValue = (count?: number, singular = "photo") => {
     : "No photos";
 };
 
+const normalizeInspectionFieldLabel = (value?: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const isPreviewableImage = (url: string) =>
+  url.startsWith("data:image/") ||
+  /\.(png|jpe?g|webp|gif|avif)(?:[?#].*)?$/i.test(url);
+
+type InspectionFileGroup = {
+  key: string;
+  label: string;
+  before: string[];
+  after: string[];
+};
+
 const statusPill = (
   active: boolean | undefined,
   activeLabel: string,
@@ -116,6 +135,10 @@ function InspectionComparisonTable({
   pickupDateTime?: string;
   returnDateTime?: string;
 }) {
+  const [previewImage, setPreviewImage] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
   const mileageDifference =
     typeof handover?.startMileage === "number" &&
     typeof inspection?.returnMileage === "number"
@@ -173,6 +196,112 @@ function InspectionComparisonTable({
         : plainValue(undefined),
     },
   ];
+
+  const beforeFileFields = (handover?.customFields || []).filter(
+    (field) => field.fieldType === "file" && (field.files?.length || 0) > 0,
+  );
+  const afterFileFields = (inspection?.customFields || []).filter(
+    (field) => field.fieldType === "file" && (field.files?.length || 0) > 0,
+  );
+  const matchedAfterFields = new Set<number>();
+  const customFileGroups: InspectionFileGroup[] = beforeFileFields.map(
+    (beforeField, beforeIndex) => {
+      const afterIndex = afterFileFields.findIndex((afterField, index) => {
+        if (matchedAfterFields.has(index)) return false;
+        if (
+          beforeField.templateFieldId &&
+          afterField.templateFieldId &&
+          String(beforeField.templateFieldId) ===
+            String(afterField.templateFieldId)
+        ) {
+          return true;
+        }
+        return (
+          normalizeInspectionFieldLabel(beforeField.label) ===
+          normalizeInspectionFieldLabel(afterField.label)
+        );
+      });
+      const afterField =
+        afterIndex >= 0 ? afterFileFields[afterIndex] : undefined;
+      if (afterIndex >= 0) matchedAfterFields.add(afterIndex);
+      return {
+        key: `custom-before-${beforeField.templateFieldId || beforeIndex}`,
+        label: beforeField.label || afterField?.label || "Inspection images",
+        before: beforeField.files || [],
+        after: afterField?.files || [],
+      };
+    },
+  );
+  afterFileFields.forEach((afterField, afterIndex) => {
+    if (matchedAfterFields.has(afterIndex)) return;
+    customFileGroups.push({
+      key: `custom-after-${afterField.templateFieldId || afterIndex}`,
+      label: afterField.label || "Inspection images",
+      before: [],
+      after: afterField.files || [],
+    });
+  });
+
+  const inspectionFileGroups: InspectionFileGroup[] = [
+    ...((handover?.photos?.length || inspection?.photos?.length)
+      ? [
+          {
+            key: "vehicle-photos",
+            label: "Vehicle photos",
+            before: handover?.photos || [],
+            after: inspection?.photos || [],
+          },
+        ]
+      : []),
+    ...customFileGroups,
+  ];
+
+  const renderThumbnails = (
+    urls: string[],
+    title: string,
+    emptyLabel: string,
+  ) =>
+    urls.length > 0 ? (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {urls.map((url, index) =>
+          isPreviewableImage(url) ? (
+            <button
+              key={`${title}-${url}-${index}`}
+              type="button"
+              onClick={() =>
+                setPreviewImage({
+                  url,
+                  title: `${title} ${index + 1}`,
+                })
+              }
+              className="group relative h-16 w-20 overflow-hidden rounded-lg border border-white/10 bg-black/25 shadow-sm transition hover:border-[#fe9a00]/60 focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/50"
+              aria-label={`Open ${title} ${index + 1}`}
+            >
+              <Image
+                src={url}
+                alt={`${title} ${index + 1}`}
+                fill
+                sizes="80px"
+                className="object-cover transition duration-200 group-hover:scale-105"
+                unoptimized
+              />
+            </button>
+          ) : (
+            <a
+              key={`${title}-${url}-${index}`}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-16 w-20 items-center justify-center rounded-lg border border-white/10 bg-black/25 px-2 text-center text-[10px] font-bold text-[#fe9a00] transition hover:border-[#fe9a00]/60"
+            >
+              View file
+            </a>
+          ),
+        )}
+      </div>
+    ) : (
+      <p className="mt-2 text-xs font-medium text-slate-600">{emptyLabel}</p>
+    );
 
   if (!handover && !inspection) {
     return (
@@ -236,6 +365,90 @@ function InspectionComparisonTable({
           </div>
         ))}
       </div>
+
+      {inspectionFileGroups.length > 0 && (
+        <div className="border-t border-white/10 bg-black/10 p-4 sm:p-5">
+          <div className="mb-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#fe9a00]">
+              Inspection evidence
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-300">
+              Tap a thumbnail to view the full image.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {inspectionFileGroups.map((group) => (
+              <div
+                key={group.key}
+                className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
+              >
+                <p className="text-xs font-black text-white">{group.label}</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      Before handover
+                    </p>
+                    {renderThumbnails(
+                      group.before,
+                      `${group.label} before`,
+                      "No before images",
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#fe9a00]">
+                      After return
+                    </p>
+                    {renderThumbnails(
+                      group.after,
+                      `${group.label} after`,
+                      "No after images",
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-5"
+          onClick={() => setPreviewImage(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewImage.title}
+        >
+          <div
+            className="w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-[#0b1224] shadow-2xl shadow-black/50"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <p className="min-w-0 truncate text-sm font-bold text-white sm:text-base">
+                {previewImage.title}
+              </p>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Close image preview"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="relative h-[72dvh] max-h-[760px] w-full bg-black/30">
+              <Image
+                src={previewImage.url}
+                alt={previewImage.title}
+                fill
+                sizes="100vw"
+                className="object-contain"
+                unoptimized
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -371,9 +584,9 @@ export default function JourneyAccordions({
   type LicenceSide = "front" | "back";
   type LicenceState = { front?: string; back?: string };
   type PendingLicenceReview = {
-    file: File;
     previewUrl: string;
     details: LicenceDetailsReview;
+    licence: { front: string; back: string };
   };
 
   const getStoredLicence = (): LicenceState => {
@@ -398,6 +611,9 @@ export default function JourneyAccordions({
   const [pendingLicenceReview, setPendingLicenceReview] =
     useState<PendingLicenceReview | null>(null);
   const [licenceReviewSaving, setLicenceReviewSaving] = useState(false);
+  const licenceUploadLock = useRef(false);
+  const isAnyLicenceBusy =
+    uploadingLicence.front || uploadingLicence.back || licenceReviewSaving;
 
   const uploadImage = async (file: File) => {
     const maxSize = 15 * 1024 * 1024;
@@ -418,17 +634,22 @@ export default function JourneyAccordions({
     return uploadData.url as string;
   };
 
-  const extractLicenceDetails = async (file: File) => {
-    const formData = new FormData();
-    formData.append("image", file);
+  const extractLicenceDetails = async (nextLicence: {
+    front: string;
+    back: string;
+  }) => {
     const res = await fetch("/api/extract-license", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        frontImage: nextLicence.front,
+        backImage: nextLicence.back,
+      }),
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
       throw new Error(
-        payload?.error || "Could not scan the front licence image",
+        payload?.error || "Could not scan both licence images",
       );
     }
     return (await res.json()) as LicenceDetailsReview;
@@ -460,52 +681,59 @@ export default function JourneyAccordions({
   };
 
   const handleLicenceUpload = async (file: File, side: LicenceSide) => {
+    if (licenceUploadLock.current) return;
+    licenceUploadLock.current = true;
     setUploadingLicence((prev) => ({ ...prev, [side]: true }));
     try {
-      if (side === "front") {
-        const licenceDetails = await extractLicenceDetails(file);
+      const url = await uploadImage(file);
+      const nextLicence = { ...licence, [side]: url };
+      const updatedLicence = await updateUserLicence(nextLicence);
+      const savedLicence = updatedLicence || nextLicence;
+      setLicence(savedLicence);
+      onLicenceUpdated();
+
+      if (savedLicence.front && savedLicence.back) {
+        const completeLicence = {
+          front: savedLicence.front,
+          back: savedLicence.back,
+        };
+        const licenceDetails = await extractLicenceDetails(completeLicence);
         setPendingLicenceReview({
-          file,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: completeLicence.front,
           details: {
             ...licenceDetails,
             isFrontSide: true,
             sourceSide: "front",
           },
+          licence: completeLicence,
         });
-        showToast.success("Licence scanned. Please confirm the details.");
+        showToast.success("Both sides uploaded. Please confirm the scan.");
         return;
       }
 
-      const url = await uploadImage(file);
-      const nextLicence = { ...licence, [side]: url };
-      const updatedLicence = await updateUserLicence(nextLicence);
-      setLicence(updatedLicence || nextLicence);
-      onLicenceUpdated();
-      showToast.success(`Licence ${side} uploaded`);
+      showToast.success(
+        `Licence ${side} uploaded. Upload the other side to scan the details.`,
+      );
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : "Upload failed");
     } finally {
+      licenceUploadLock.current = false;
       setUploadingLicence((prev) => ({ ...prev, [side]: false }));
     }
   };
 
   const closeLicenceReview = () => {
-    if (pendingLicenceReview?.previewUrl) {
-      URL.revokeObjectURL(pendingLicenceReview.previewUrl);
-    }
     setPendingLicenceReview(null);
   };
 
   const confirmLicenceDetails = async (
     licenceDetails: LicenceDetailsReview,
   ) => {
-    if (!pendingLicenceReview) return;
+    if (!pendingLicenceReview || licenceUploadLock.current) return;
+    licenceUploadLock.current = true;
     setLicenceReviewSaving(true);
-    setUploadingLicence((prev) => ({ ...prev, front: true }));
     try {
-      const url = await uploadImage(pendingLicenceReview.file);
-      const nextLicence = { ...licence, front: url };
+      const nextLicence = pendingLicenceReview.licence;
       const updatedLicence = await updateUserLicence(nextLicence, {
         ...licenceDetails,
         isFrontSide: true,
@@ -513,7 +741,7 @@ export default function JourneyAccordions({
       });
       setLicence(updatedLicence || nextLicence);
       onLicenceUpdated();
-      showToast.success("Licence front and details saved");
+      showToast.success("Licence images and details saved");
       closeLicenceReview();
     } catch (error) {
       showToast.error(
@@ -522,8 +750,8 @@ export default function JourneyAccordions({
           : "Could not save licence details",
       );
     } finally {
+      licenceUploadLock.current = false;
       setLicenceReviewSaving(false);
-      setUploadingLicence((prev) => ({ ...prev, front: false }));
     }
   };
 
@@ -704,7 +932,7 @@ export default function JourneyAccordions({
           value: refund?.status?.replace(/_/g, " ") || "Under review",
         },
         {
-          label: refund?.expectedBy ? "Expected" : "Reference",
+          label: refund?.expectedBy ? "Expected" : "Authorization number",
           value: refund?.expectedBy
             ? compactDate(refund.expectedBy)
             : refund?.reference || "Pending",
@@ -718,8 +946,23 @@ export default function JourneyAccordions({
         {
           label: "Refund",
           value:
-            refund?.status === "completed" ? "Completed" : "Not applicable",
+            refund?.status === "completed"
+              ? money(journey.refund?.refundAmount)
+              : "Not applicable",
+          tone:
+            refund?.status === "completed"
+              ? ("refund" as const)
+              : undefined,
         },
+        ...(refund?.status === "completed"
+          ? [
+              {
+                label: "Authorization number",
+                value: refund.reference || "Pending",
+              },
+              { label: "Bank arrival", value: "Within 3 days" },
+            ]
+          : []),
       ];
     }
     return [
@@ -757,7 +1000,7 @@ export default function JourneyAccordions({
           )}
         </div>
         {imageUrl ? (
-          <div className="relative h-36 overflow-hidden rounded-lg border border-white/10 bg-black/20">
+          <div className={`relative h-36 overflow-hidden rounded-lg border border-white/10 bg-black/20 ${isAnyLicenceBusy ? "opacity-70" : ""}`}>
             <Image
               src={imageUrl}
               alt={`${title} licence`}
@@ -765,14 +1008,20 @@ export default function JourneyAccordions({
               sizes="(max-width: 768px) 100vw, 320px"
               className="object-cover"
             />
-            <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#e68a00]">
+            {busy && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
+                <FiLoader className="animate-spin text-2xl text-[#fe9a00]" />
+                <span className="text-xs font-bold">Uploading and checking…</span>
+              </div>
+            )}
+            <label className={`absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#e68a00]"}`}>
               <FiUpload />
               {busy ? "Uploading" : "Change"}
               <input
                 type="file"
                 accept="image/*"
                 className="hidden"
-                disabled={busy}
+                disabled={isAnyLicenceBusy}
                 onChange={(event) =>
                   event.target.files?.[0] &&
                   handleLicenceUpload(event.target.files[0], side)
@@ -781,8 +1030,12 @@ export default function JourneyAccordions({
             </label>
           </div>
         ) : (
-          <label className="flex h-36 w-full cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/20 text-center transition-colors hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5">
-            <FiUploadCloud className="mb-2 text-2xl text-[#fe9a00]" />
+          <label className={`flex h-36 w-full flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/20 text-center transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5"}`}>
+            {busy ? (
+              <FiLoader className="mb-2 animate-spin text-2xl text-[#fe9a00]" />
+            ) : (
+              <FiUploadCloud className="mb-2 text-2xl text-[#fe9a00]" />
+            )}
             <span className="text-sm font-semibold text-white">
               {busy ? "Uploading" : `Upload ${title}`}
             </span>
@@ -791,7 +1044,7 @@ export default function JourneyAccordions({
               type="file"
               accept="image/*"
               className="hidden"
-              disabled={busy}
+              disabled={isAnyLicenceBusy}
               onChange={(event) =>
                 event.target.files?.[0] &&
                 handleLicenceUpload(event.target.files[0], side)
@@ -1163,7 +1416,7 @@ export default function JourneyAccordions({
               {journey.refund.reference && (
                 <div className="min-w-0">
                   <p className="font-bold uppercase tracking-wide text-slate-500">
-                    Reference
+                    Authorization number
                   </p>
                   <p className="mt-1 break-all font-semibold text-white">
                     {journey.refund.reference}
@@ -1171,9 +1424,23 @@ export default function JourneyAccordions({
                 </div>
               )}
             </div>
-            <p className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-slate-500">
-              Refunds usually reach your account within 5–10 working days.
-            </p>
+            {refund.status === "completed" ? (
+              <div className="border-t border-emerald-400/20 bg-emerald-500/[0.07] px-4 py-3">
+                <p className="text-sm font-bold text-emerald-300">
+                  Your refund has been sent.
+                </p>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/75">
+                  It should reach your bank account within 3 days. Keep the
+                  authorization number above in case you need to contact your
+                  bank.
+                </p>
+              </div>
+            ) : (
+              <p className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-slate-500">
+                Once sent, your refund should reach your bank account within 3
+                days.
+              </p>
+            )}
           </div>
         ) : (
           <Placeholder text="Your deposit refund will be reviewed after the return inspection. Details will appear here." />

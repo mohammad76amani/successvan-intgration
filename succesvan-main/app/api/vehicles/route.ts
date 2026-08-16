@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50"); // higher limit for dropdown
     const title = searchParams.get("title");
+    const make = searchParams.get("make");
     const number = searchParams.get("number");
     const keyNumber = searchParams.get("keyNumber");
     const office = searchParams.get("office");
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
 
     // Text search
     if (title) query.title = { $regex: title, $options: "i" };
+    if (make) query.make = { $regex: make, $options: "i" };
     if (number) query.number = { $regex: number, $options: "i" };
     if (keyNumber) query.keyNumber = { $regex: keyNumber, $options: "i" };
     if (office) query.office = office;

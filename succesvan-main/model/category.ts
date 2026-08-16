@@ -41,6 +41,13 @@ const categorySchema = new mongoose.Schema(
       },
     ],
     extrahoursRate: { type: Number, required: true, min: 0 },
+    deposit: {
+      depositFee: { type: Number, min: 0, default: 0 },
+      fullPayDiscountPercent: { type: Number, min: 0, max: 100, default: 0 },
+      securePayPrice: { type: Number, min: 0, default: 0 },
+      officePayPrice: { type: Number, min: 0, default: 0 },
+      handoverDepositPrice: { type: Number, min: 0, default: 0 },
+    },
     fuel: {
       type: String,
       enum: ["gas", "diesel", "electric", "hybrid"],

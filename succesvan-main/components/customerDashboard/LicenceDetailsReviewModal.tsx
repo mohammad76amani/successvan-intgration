@@ -185,7 +185,7 @@ function LicenceDetailsReviewForm({
               Check your licence details
             </h3>
             <p className="mt-1 text-sm text-gray-400">
-              We scanned the front of your licence. Please correct anything
+              We scanned both sides of your licence. Please correct anything
               wrong before saving — these details are used on your rental
               agreement.
             </p>
@@ -219,8 +219,8 @@ function LicenceDetailsReviewForm({
               <div className="flex gap-2">
                 <FiAlertCircle className="mt-0.5 shrink-0" />
                 <p>
-                  For UK licences, DOB is field 3, expiry is 4b, and licence
-                  number is field 5.
+                  DOB, expiry and licence number come from the front. The issue
+                  date comes from field 10 on the f/k/q row on the back.
                 </p>
               </div>
             </div>

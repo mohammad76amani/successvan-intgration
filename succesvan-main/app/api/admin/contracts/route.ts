@@ -13,6 +13,9 @@ export const runtime = "nodejs";
 const createContractSchema = z.object({
   bookingId: z.string().min(1),
   sendNow: z.boolean().optional().default(false),
+  insuranceProvider: z.enum(["diba", "customer"]),
+  insuranceOtherExcess: z.string().trim().optional(),
+  handoverDepositAmount: z.number().min(0).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -40,6 +43,11 @@ export async function POST(req: NextRequest) {
       body.bookingId,
       { actorId: auth.userId, source: "admin" },
       body.sendNow,
+      {
+        insuranceProvider: body.insuranceProvider,
+        insuranceOtherExcess: body.insuranceOtherExcess,
+        handoverDepositAmount: body.handoverDepositAmount,
+      },
     );
     return successResponse(contract, 201);
   } catch (error) {
