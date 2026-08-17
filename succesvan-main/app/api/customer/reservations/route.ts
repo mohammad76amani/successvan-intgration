@@ -3,6 +3,7 @@ import connect from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
+import Office from "@/model/office";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +11,10 @@ export async function GET(req: NextRequest) {
     await connect();
 
     const reservations = await Reservation.find({ user: userId })
-      .populate("office")
+      .populate({
+        path: "office",
+        model: Office,
+      })
       .populate("category")
       .populate("vehicle")
       .populate("addOns.addOn")

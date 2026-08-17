@@ -41,9 +41,35 @@ const contractSchema = new mongoose.Schema(
     contractNumber: { type: String, required: true, unique: true },
     contractType: {
       type: String,
-      enum: ["rental_agreement"],
+      enum: ["rental_agreement", "reservation_extension"],
       default: "rental_agreement",
       required: true,
+    },
+    originalContractId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Contract",
+    },
+    extensionBookingKey: { type: String, select: false },
+    extension: {
+      previousReturnDateTime: { type: Date },
+      newReturnDateTime: { type: Date },
+      durationHours: { type: Number, min: 0 },
+      durationLabel: { type: String, trim: true },
+      calculatedPrice: { type: Number, min: 0 },
+      agreedPrice: { type: Number, min: 0 },
+      customPriceApplied: { type: Boolean, default: false },
+      customPriceReason: { type: String, trim: true },
+      priceBreakdown: [
+        {
+          label: { type: String, trim: true },
+          amount: { type: Number, min: 0 },
+        },
+      ],
+      paymentDueAt: { type: Date },
+      paymentMethod: { type: String, trim: true },
+      paymentReference: { type: String, trim: true },
+      lessorName: { type: String, trim: true },
+      appliedAt: { type: Date },
     },
     status: {
       type: String,
@@ -98,15 +124,44 @@ contractSchema.index(
     partialFilterExpression: { "docusign.envelopeId": { $type: "string" } },
   },
 );
+contractSchema.index({ bookingId: 1, contractType: 1, createdAt: -1 });
+contractSchema.index({ originalContractId: 1 });
 contractSchema.index(
-  { bookingId: 1, contractType: 1 },
+  { extensionBookingKey: 1 },
   {
     unique: true,
-    partialFilterExpression: {
-      status: { $nin: ["voided", "expired", "declined"] },
-    },
+    name: "one_extension_per_booking",
+    partialFilterExpression: { extensionBookingKey: { $type: "string" } },
   },
 );
 
-export default mongoose.models.Contract ||
-  mongoose.model("Contract", contractSchema);
+const existingContractModel = mongoose.models.Contract;
+
+// Next.js development reloads modules without clearing Mongoose's model cache.
+// Keep an already-compiled Contract model in sync when enum values are added,
+// otherwise the cached schema rejects reservation extension contracts until the
+// whole dev server is restarted.
+if (existingContractModel) {
+  if (!existingContractModel.schema.path("extensionBookingKey")) {
+    existingContractModel.schema.add({
+      extensionBookingKey: { type: String, select: false },
+    });
+  }
+  const contractTypePath = existingContractModel.schema.path(
+    "contractType",
+  ) as
+    | (mongoose.SchemaType & {
+        enumValues: string[];
+        enum: (...values: string[]) => unknown;
+      })
+    | undefined;
+
+  if (
+    contractTypePath &&
+    !contractTypePath.enumValues.includes("reservation_extension")
+  ) {
+    contractTypePath.enum("reservation_extension");
+  }
+}
+
+export default existingContractModel || mongoose.model("Contract", contractSchema);

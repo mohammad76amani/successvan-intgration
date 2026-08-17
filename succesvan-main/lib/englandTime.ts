@@ -171,12 +171,67 @@ const getTimeZoneOffsetMs = (date: Date, timeZone: string) => {
 };
 
 export const createLondonDateTime = (date: Date, time: string): string => {
-  const [year, month, day] = formatDateForStorage(date).split("-").map(Number);
-  const [hour, minute] = time.split(":").map(Number);
-  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
-  const londonOffset = getTimeZoneOffsetMs(utcGuess, "Europe/London");
+  return createLondonDateTimeFromStorage(formatDateForStorage(date), time);
+};
 
-  return new Date(utcGuess.getTime() - londonOffset).toISOString();
+/** Interpret a calendar date and clock time as Europe/London civil time. */
+export const createLondonDateTimeFromStorage = (
+  dateValue: string,
+  time: string,
+): string => {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  if (
+    !year ||
+    !month ||
+    !day ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    throw new Error("Invalid London date or time");
+  }
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
+  if (
+    utcGuess.getUTCFullYear() !== year ||
+    utcGuess.getUTCMonth() !== month - 1 ||
+    utcGuess.getUTCDate() !== day
+  ) {
+    throw new Error("Invalid London date or time");
+  }
+  const londonOffset = getTimeZoneOffsetMs(utcGuess, "Europe/London");
+  const result = new Date(utcGuess.getTime() - londonOffset);
+  const iso = result.toISOString();
+  if (
+    formatDateInputInLondon(iso) !== dateValue ||
+    formatTimeInLondon(iso) !== time
+  ) {
+    throw new Error("This London date and time is not available");
+  }
+  return iso;
+};
+
+export const formatDateLabelInLondon = (date: Date | string): string => {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(dateObj.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(dateObj);
+};
+
+export const formatDateTimeLabelInLondon = (
+  date: Date | string,
+  separator = " at ",
+): string => {
+  const dateLabel = formatDateLabelInLondon(date);
+  if (!dateLabel) return "";
+  return `${dateLabel}${separator}${formatTimeInLondon(date)}`;
 };
 
 export const formatDateTimeInLondon = (date: Date | string): string => {

@@ -5,14 +5,25 @@ import connect from "@/lib/data";
 import Contract from "@/model/contract";
 import Reservation from "@/model/reservation";
 import AddOn from "@/model/addOn";
+import User from "@/model/user";
+import Office from "@/model/office";
+import Category from "@/model/category";
+import Vehicle from "@/model/vehicle";
 import {
   createLondonDateTime,
   formatDateInputInLondon,
+  formatTimeInLondon,
+  parseStorageDate,
 } from "@/lib/englandTime";
 import { generateRentalAgreementPdf } from "./pdf";
+import { generateReservationExtensionPdf } from "./extension-pdf";
 import { getContractStorage } from "./storage";
 import { sha256Hex } from "./hash";
 import { serializeContract } from "./serialization";
+import {
+  contractNumberDatePrefix,
+  formatContractNumber,
+} from "./number";
 import {
   canDownloadSignedDocument,
   canGenerateSigningUrl,
@@ -32,6 +43,7 @@ import {
 } from "@/lib/docusign/errors";
 import {
   createRentalAgreementEnvelope,
+  createReservationExtensionEnvelope,
   makeSignerClientUserId,
   resendRentalAgreementEnvelope,
   voidRentalAgreementEnvelope,
@@ -41,6 +53,8 @@ import {
   downloadEnvelopeDocument,
   getEnvelopeMetadata,
 } from "@/lib/docusign/documents";
+import { calculateOfficeExtensionPrices } from "@/lib/specialDaySchedule";
+import { calculateReservationExtensionPrice } from "@/lib/reservation-extension-pricing";
 
 const contractDocumentSelect =
   "+sourceDocument.storageKey +signedDocument.storageKey +certificateDocument.storageKey";
@@ -65,6 +79,16 @@ type ContractCreationOptions = {
   handoverDepositAmount?: number;
 };
 
+export type ReservationExtensionCreationOptions = {
+  newReturnDateTime: Date | string;
+  customPrice?: number;
+  customPriceReason?: string;
+  paymentDueAt?: Date | string;
+  paymentMethod?: string;
+  paymentReference?: string;
+  lessorName?: string;
+};
+
 function objectId(value: string, code = "CONTRACT_NOT_FOUND") {
   if (!Types.ObjectId.isValid(value)) {
     throw new ContractIntegrationError(
@@ -78,7 +102,7 @@ function objectId(value: string, code = "CONTRACT_NOT_FOUND") {
 
 function contractNumberDateParts(date: Date) {
   const [year, month, day] = formatDateInputInLondon(date).split("-");
-  const prefix = `${year.slice(-1)}${Number(month)}${day}`;
+  const prefix = contractNumberDatePrefix(date);
   const calendarDate = new Date(Number(year), Number(month) - 1, Number(day));
   const followingDate = new Date(Number(year), Number(month) - 1, Number(day) + 1);
 
@@ -108,7 +132,7 @@ async function nextContractNumber(date = new Date()) {
   }, 0);
   const nextSequence = Math.max(contractsCreatedToday, highestSequence) + 1;
 
-  return `${prefix}-${String(nextSequence).padStart(2, "0")}`;
+  return formatContractNumber(prefix, nextSequence);
 }
 
 function isDuplicateContractNumber(error: unknown) {
@@ -125,6 +149,23 @@ function isDuplicateContractNumber(error: unknown) {
     (Boolean(duplicateError.keyPattern?.contractNumber) ||
       Boolean(duplicateError.keyValue?.contractNumber) ||
       duplicateError.message?.includes("contractNumber") === true)
+  );
+}
+
+function isDuplicateExtensionRevision(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const duplicateError = error as {
+    code?: number;
+    keyPattern?: Record<string, unknown>;
+    message?: string;
+  };
+  return (
+    duplicateError.code === 11000 &&
+    (Boolean(duplicateError.keyPattern?.extensionBookingKey) ||
+      duplicateError.message?.includes("one_extension_per_booking") === true ||
+      Boolean(duplicateError.keyPattern?.["extension.previousReturnDateTime"]) ||
+      duplicateError.message?.includes("one_extension_per_return_revision") ===
+        true)
   );
 }
 
@@ -150,10 +191,10 @@ function addAudit(
 
 async function loadReservation(bookingId: string) {
   const reservation = await Reservation.findById(bookingId)
-    .populate("user", "-password")
-    .populate("office")
-    .populate("category")
-    .populate("vehicle")
+    .populate({ path: "user", model: User, select: "-password" })
+    .populate({ path: "office", model: Office })
+    .populate({ path: "category", model: Category })
+    .populate({ path: "vehicle", model: Vehicle })
     .populate({ path: "addOns.addOn", model: AddOn });
 
   if (!reservation) {
@@ -165,6 +206,80 @@ async function loadReservation(bookingId: string) {
   }
 
   return reservation;
+}
+
+async function removeLegacySingleContractIndex() {
+  const indexes = await Contract.collection.indexes();
+  const legacyIndex = indexes.find(
+    (index) =>
+      index.unique === true &&
+      Object.keys(index.key || {}).length === 1 &&
+      index.key?.bookingId === 1,
+  );
+  if (legacyIndex?.name) {
+    await Contract.collection.dropIndex(legacyIndex.name);
+  }
+}
+
+let singleExtensionIndexPromise: Promise<void> | null = null;
+
+async function ensureSingleExtensionIndex() {
+  if (singleExtensionIndexPromise) return singleExtensionIndexPromise;
+  singleExtensionIndexPromise = (async () => {
+    const indexes = await Contract.collection.indexes();
+    const previousIndex = indexes.find(
+      (index) => index.name === "one_extension_per_return_revision",
+    );
+    if (previousIndex?.name) {
+      await Contract.collection.dropIndex(previousIndex.name);
+    }
+    await Contract.collection.createIndex(
+      { extensionBookingKey: 1 },
+      {
+        unique: true,
+        name: "one_extension_per_booking",
+        partialFilterExpression: {
+          extensionBookingKey: { $type: "string" },
+        },
+      },
+    );
+
+    // Backfill only unambiguous historical bookings. Development databases
+    // that already contain multiple extensions are preserved; the service
+    // guard below still prevents any further extension for those bookings.
+    const groups = await Contract.aggregate<{
+      _id: Types.ObjectId;
+      contractIds: Types.ObjectId[];
+      count: number;
+    }>([
+      { $match: { contractType: "reservation_extension" } },
+      {
+        $group: {
+          _id: "$bookingId",
+          contractIds: { $push: "$_id" },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: 1 } },
+    ]);
+    if (groups.length) {
+      await Contract.bulkWrite(
+        groups.map((group) => ({
+          updateOne: {
+            filter: {
+              _id: group.contractIds[0],
+              extensionBookingKey: { $exists: false },
+            },
+            update: { $set: { extensionBookingKey: group._id.toString() } },
+          },
+        })),
+      );
+    }
+  })().catch((error) => {
+    singleExtensionIndexPromise = null;
+    throw error;
+  });
+  return singleExtensionIndexPromise;
 }
 
 function requireInsuranceArrangement(reservation: {
@@ -379,17 +494,44 @@ async function generateAndStoreSourcePdf(
   contract: {
     _id: Types.ObjectId;
     contractNumber: string;
+    contractType?: "rental_agreement" | "reservation_extension";
+    originalContractId?: Types.ObjectId;
+    extension?: Record<string, unknown>;
     sourceDocument?: Record<string, unknown>;
     save: () => Promise<unknown>;
   },
   reservation: Record<string, unknown>,
   actor?: ActorInput,
 ) {
-  const pdf = await generateRentalAgreementPdf({
-    contractNumber: contract.contractNumber,
-    createdAt: new Date(),
-    reservation,
-  });
+  const createdAt = new Date();
+  const pdf =
+    contract.contractType === "reservation_extension"
+      ? await (async () => {
+          const originalContract = contract.originalContractId
+            ? await Contract.findById(contract.originalContractId)
+                .select("contractNumber createdAt")
+            : null;
+          if (!originalContract || !contract.extension) {
+            throw new ContractIntegrationError(
+              "BOOKING_MISSING_REQUIRED_DATA",
+              "The extension is missing its original agreement or extension details.",
+              422,
+            );
+          }
+          return generateReservationExtensionPdf({
+            contractNumber: contract.contractNumber,
+            createdAt,
+            originalContractNumber: originalContract.contractNumber,
+            originalContractCreatedAt: originalContract.createdAt,
+            reservation,
+            extension: contract.extension as never,
+          });
+        })()
+      : await generateRentalAgreementPdf({
+          contractNumber: contract.contractNumber,
+          createdAt,
+          reservation,
+        });
   const key = sourceStorageKey(contract._id.toString());
   await getContractStorage().put({
     key,
@@ -403,7 +545,10 @@ async function generateAndStoreSourcePdf(
 
   contract.sourceDocument = {
     storageKey: key,
-    fileName: "source-agreement.pdf",
+    fileName:
+      contract.contractType === "reservation_extension"
+        ? "extension-confirmation.pdf"
+        : "source-agreement.pdf",
     mimeType: pdf.mimeType,
     sha256: pdf.sha256,
   };
@@ -451,6 +596,7 @@ export async function createContractForBooking(
 
   const existing = await Contract.findOne({
     bookingId,
+    contractType: "rental_agreement",
     status: { $nin: ["voided", "expired", "declined"] },
   })
     .select(contractDocumentSelect)
@@ -582,6 +728,264 @@ export async function createContractForBooking(
   return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
 }
 
+async function extensionContext(
+  bookingId: string,
+  newReturnInput: Date | string,
+) {
+  await connect();
+  objectId(bookingId, "BOOKING_NOT_FOUND");
+  const reservation = await loadReservation(bookingId);
+  if (reservation.status !== "delivered") {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "A rental can only be extended while it is active.",
+      409,
+    );
+  }
+  const originalContract = await Contract.findOne({
+    bookingId,
+    contractType: "rental_agreement",
+    status: "completed",
+  }).sort({ createdAt: -1 });
+  if (!originalContract) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "The original rental agreement must be signed before creating an extension.",
+      409,
+    );
+  }
+  const existingExtension = await Contract.findOne({
+    bookingId,
+    contractType: "reservation_extension",
+  }).select("contractNumber status");
+  if (existingExtension) {
+    throw new ContractIntegrationError(
+      "CONTRACT_ALREADY_SENT",
+      "This reservation already has an extension agreement. Only one extension is allowed per reservation.",
+      409,
+    );
+  }
+
+  const currentReturn = new Date(reservation.endDate);
+  const newReturn = new Date(newReturnInput);
+  if (
+    Number.isNaN(newReturn.getTime()) ||
+    newReturn <= currentReturn
+  ) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "The new return date and time must be after the current return.",
+      400,
+    );
+  }
+
+  const vehicleId =
+    reservation.vehicle?._id ||
+    reservation.vehicleSnapshot?.vehicleId ||
+    reservation.vehicle;
+  if (vehicleId) {
+    const conflict = await Reservation.findOne({
+      _id: { $ne: reservation._id },
+      status: { $nin: ["canceled", "completed", "refund_completed"] },
+      startDate: { $lt: newReturn },
+      endDate: { $gt: currentReturn },
+      $or: [
+        { vehicle: vehicleId },
+        { "vehicleSnapshot.vehicleId": vehicleId },
+      ],
+    })
+      .select("reservationCode startDate endDate");
+    if (conflict) {
+      throw new ContractIntegrationError(
+        "BOOKING_MISSING_REQUIRED_DATA",
+        `The assigned vehicle is already reserved by ${conflict.reservationCode || "another booking"} during the requested extension.`,
+        409,
+      );
+    }
+  }
+
+  const category = reservation.category as {
+    pricingTiers?: Array<{
+      minDays: number;
+      maxDays: number;
+      pricePerDay: number;
+    }>;
+    extrahoursRate?: number;
+    selloffer?: number;
+    gear?: { automaticExtraCost?: number };
+  };
+  const office = reservation.office as Record<string, unknown>;
+  const newReturnDay = parseStorageDate(formatDateInputInLondon(newReturn));
+  const officePrices =
+    newReturnDay
+      ? calculateOfficeExtensionPrices({
+          office: office as never,
+          returnDate: newReturnDay,
+          returnTime: formatTimeInLondon(newReturn),
+        })
+      : { pickupExtension: 0, returnExtension: 0 };
+  const pricing = calculateReservationExtensionPrice({
+    currentReturn,
+    newReturn,
+    pricingTiers: category.pricingTiers || [],
+    extraHoursRate: category.extrahoursRate,
+    sellOfferPercent: category.selloffer,
+    gearExtraCostPerDay:
+      reservation.selectedGear === "automatic"
+        ? category.gear?.automaticExtraCost
+        : 0,
+    returnExtensionPrice: officePrices.returnExtension,
+    addOns: reservation.addOns as never,
+  });
+
+  return { reservation, originalContract, currentReturn, newReturn, pricing };
+}
+
+export async function previewReservationExtension(
+  bookingId: string,
+  newReturnDateTime: Date | string,
+) {
+  const context = await extensionContext(bookingId, newReturnDateTime);
+  return {
+    currentReturnDateTime: context.currentReturn.toISOString(),
+    newReturnDateTime: context.newReturn.toISOString(),
+    originalContractNumber: context.originalContract.contractNumber,
+    pricing: context.pricing,
+  };
+}
+
+export async function createReservationExtensionContract(
+  bookingId: string,
+  actor: ActorInput,
+  options: ReservationExtensionCreationOptions,
+  sendNow = true,
+) {
+  await removeLegacySingleContractIndex();
+  const context = await extensionContext(bookingId, options.newReturnDateTime);
+  await ensureSingleExtensionIndex();
+  const customPriceProvided = options.customPrice !== undefined;
+  const customPrice = Number(options.customPrice);
+  if (
+    customPriceProvided &&
+    (!Number.isFinite(customPrice) || customPrice < 0)
+  ) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "Enter a valid custom extension price.",
+      400,
+    );
+  }
+  const customPriceReason = options.customPriceReason?.trim() || "";
+  if (customPriceProvided && customPriceReason.length < 3) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "Explain why the calculated extension price was changed.",
+      400,
+    );
+  }
+  const paymentDueAt = options.paymentDueAt
+    ? new Date(options.paymentDueAt)
+    : undefined;
+  if (paymentDueAt && Number.isNaN(paymentDueAt.getTime())) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "Enter a valid payment due date.",
+      400,
+    );
+  }
+
+  const customer = reservationCustomer(context.reservation.toObject());
+  const id = new Types.ObjectId();
+  let contract;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      contract = await Contract.create({
+        _id: id,
+        bookingId: context.reservation._id,
+        customerId: customer.customerId,
+        customerName: customer.customerName,
+        customerEmail: customer.customerEmail,
+        customerPhone: customer.customerPhone,
+        contractNumber: await nextContractNumber(),
+        contractType: "reservation_extension",
+        extensionBookingKey: context.reservation._id.toString(),
+        originalContractId: context.originalContract._id,
+        status: "generating",
+        extension: {
+          previousReturnDateTime: context.currentReturn,
+          newReturnDateTime: context.newReturn,
+          durationHours: context.pricing.durationHours,
+          durationLabel: context.pricing.durationLabel,
+          calculatedPrice: context.pricing.totalPrice,
+          agreedPrice: customPriceProvided
+            ? Number(customPrice.toFixed(2))
+            : context.pricing.totalPrice,
+          customPriceApplied: customPriceProvided,
+          customPriceReason: customPriceProvided
+            ? customPriceReason
+            : undefined,
+          priceBreakdown: context.pricing.breakdown,
+          paymentDueAt,
+          paymentMethod: options.paymentMethod?.trim() || "Pay at office",
+          paymentReference: options.paymentReference?.trim(),
+          lessorName: options.lessorName?.trim() || "Success Van Hire",
+        },
+        docusign: {
+          signerRecipientId: "1",
+          signerClientUserId: makeSignerClientUserId(id),
+        },
+        createdBy: actor.actorId,
+        auditTrail: [
+          {
+            action: "reservation_extension_created",
+            source: actor.source,
+            actorId: actor.actorId,
+            metadata: {
+              previousReturnDateTime: context.currentReturn,
+              newReturnDateTime: context.newReturn,
+              calculatedPrice: context.pricing.totalPrice,
+              agreedPrice: customPriceProvided
+                ? Number(customPrice.toFixed(2))
+                : context.pricing.totalPrice,
+            },
+            createdAt: new Date(),
+          },
+        ],
+      });
+      break;
+    } catch (error) {
+      if (isDuplicateExtensionRevision(error)) {
+        throw new ContractIntegrationError(
+          "CONTRACT_ALREADY_SENT",
+          "This reservation already has an extension agreement. Only one extension is allowed per reservation.",
+          409,
+        );
+      }
+      if (!isDuplicateContractNumber(error)) throw error;
+    }
+  }
+  if (!contract) {
+    throw new ContractIntegrationError(
+      "CONTRACT_NUMBER_GENERATION_FAILED",
+      "Could not generate a unique extension number. Please try again.",
+      409,
+    );
+  }
+
+  await generateAndStoreSourcePdf(
+    contract,
+    context.reservation.toObject(),
+    actor,
+  );
+  contract.status = "ready";
+  addAudit(contract, "reservation_extension_ready", actor.source, actor.actorId);
+  await contract.save();
+  if (sendNow) await sendContract(contract._id.toString(), actor);
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
+}
+
 export async function supersedeContractForBooking(
   bookingId: string,
   reason: string,
@@ -592,6 +996,7 @@ export async function supersedeContractForBooking(
 
   const contract = await Contract.findOne({
     bookingId,
+    contractType: "rental_agreement",
     status: { $nin: ["voided", "expired", "declined"] },
   }).select(contractDocumentSelect);
   if (!contract) return null;
@@ -650,11 +1055,20 @@ export async function listAdminContracts(query: ContractQuery) {
     dbQuery.bookingId = query.bookingId;
   }
   if (query.customer) {
+    const searchTerm = query.customer.trim();
+    const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchingBookings = await Reservation.find({
+      reservationCode: { $regex: escapedSearch, $options: "i" },
+    })
+      .select("_id")
+      .limit(100)
+      .lean();
     dbQuery.$or = [
-      { contractNumber: { $regex: query.customer, $options: "i" } },
-      { customerName: { $regex: query.customer, $options: "i" } },
-      { customerEmail: { $regex: query.customer, $options: "i" } },
-      { customerPhone: { $regex: query.customer, $options: "i" } },
+      { contractNumber: { $regex: escapedSearch, $options: "i" } },
+      { customerName: { $regex: escapedSearch, $options: "i" } },
+      { customerEmail: { $regex: escapedSearch, $options: "i" } },
+      { customerPhone: { $regex: escapedSearch, $options: "i" } },
+      { bookingId: { $in: matchingBookings.map((booking) => booking._id) } },
     ];
   }
 
@@ -769,7 +1183,7 @@ export async function sendContract(contractId: string, actor: ActorInput) {
   }
 
   const sourcePdf = await getContractStorage().get(contract.sourceDocument.storageKey);
-  const envelope = await createRentalAgreementEnvelope({
+  const envelopeInput = {
     id: contract._id.toString(),
     bookingId: contract.bookingId.toString(),
     contractNumber: contract.contractNumber,
@@ -778,7 +1192,11 @@ export async function sendContract(contractId: string, actor: ActorInput) {
     sourcePdf,
     signerRecipientId: contract.docusign.signerRecipientId,
     signerClientUserId: contract.docusign.signerClientUserId,
-  });
+  };
+  const envelope =
+    contract.contractType === "reservation_extension"
+      ? await createReservationExtensionEnvelope(envelopeInput)
+      : await createRentalAgreementEnvelope(envelopeInput);
 
   contract.status = "sent";
   contract.docusign.envelopeId = envelope.envelopeId;
@@ -936,13 +1354,75 @@ async function storeCompletedDocuments(contract: {
 
 async function syncReservationFromContractStatus(
   contract: {
+    _id: Types.ObjectId;
     bookingId?: Types.ObjectId | string;
+    contractType?: "rental_agreement" | "reservation_extension";
   },
   contractStatus: ContractStatus,
   occurredAt: Date,
   actor: ActorInput,
 ) {
   if (!contract.bookingId || contractStatus !== "completed") return;
+
+  if (contract.contractType === "reservation_extension") {
+    const extensionContract = await Contract.findById(contract._id).select(
+      "contractNumber extension",
+    );
+    const extension = extensionContract?.extension;
+    if (
+      !extensionContract ||
+      !extension?.newReturnDateTime ||
+      !extension?.previousReturnDateTime ||
+      !Number.isFinite(extension.agreedPrice)
+    ) {
+      throw new ContractIntegrationError(
+        "BOOKING_MISSING_REQUIRED_DATA",
+        "The signed extension is missing its return date or agreed price.",
+        422,
+      );
+    }
+
+    const newReturn = new Date(extension.newReturnDateTime);
+    const updateResult = await Reservation.updateOne(
+      {
+        _id: contract.bookingId,
+        "rentalExtensions.contract": { $ne: contract._id },
+      },
+      {
+        $set: {
+          endDate: newReturn,
+          endDateDisplay: formatDateInputInLondon(newReturn),
+          returnTime: formatTimeInLondon(newReturn),
+        },
+        $inc: { totalPrice: Number(extension.agreedPrice) },
+        $push: {
+          rentalExtensions: {
+            contract: contract._id,
+            contractNumber: extensionContract.contractNumber,
+            previousReturnDateTime: extension.previousReturnDateTime,
+            newReturnDateTime: extension.newReturnDateTime,
+            calculatedPrice: extension.calculatedPrice,
+            agreedPrice: extension.agreedPrice,
+            customPriceApplied: extension.customPriceApplied,
+            customPriceReason: extension.customPriceReason,
+            signedAt: occurredAt,
+          },
+          statusHistory: {
+            status: "delivered",
+            changedAt: occurredAt,
+            source: actor.source === "customer" ? "customer" : "system",
+            note: `Rental extended to ${formatDateInputInLondon(newReturn)} ${formatTimeInLondon(newReturn)} under agreement ${extensionContract.contractNumber}.`,
+          },
+        },
+      },
+    );
+
+    if (updateResult.modifiedCount > 0 || !extension.appliedAt) {
+      extension.appliedAt = occurredAt;
+      await extensionContract.save();
+    }
+    return;
+  }
 
   const reservation = await Reservation.findById(contract.bookingId);
   if (!reservation) return;
@@ -985,6 +1465,16 @@ async function applyEnvelopeStatus(
 ) {
   const incomingStatus = mapDocuSignStatus(envelopeStatus);
   if (!shouldApplyIncomingStatus(contract.status, incomingStatus)) {
+    if (incomingStatus === "completed" && contract.status === "completed") {
+      await storeCompletedDocuments(contract);
+      await syncReservationFromContractStatus(
+        contract,
+        incomingStatus,
+        occurredAt,
+        actor,
+      );
+      return;
+    }
     addAudit(contract, "stale_status_ignored", actor.source, actor.actorId, {
       envelopeStatus,
       currentStatus: contract.status,

@@ -38,6 +38,7 @@ import {
   FiUser,
   FiArchive,
   FiShield,
+  FiDollarSign,
 } from "react-icons/fi";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import { HiOutlineSparkles } from "react-icons/hi2";
@@ -68,6 +69,7 @@ import TicketsManagement from "./TicketsManagement";
 import ContractsManagement from "./ContractsManagement";
 import ReservationHistory from "./ReservationHistory";
 import TrafficViolationsManagement from "./TrafficViolationsManagement";
+import DepositRefundsManagement from "./DepositRefundsManagement";
 import { useDueRefunds } from "@/hooks/useDueRefunds";
 import { FiFileText, FiFile } from "react-icons/fi";
 import { useAuth } from "@/context/AuthContext";
@@ -132,6 +134,12 @@ const menuItems: MenuItem[] = [
     label: "Reserves",
     icon: <FiClipboard />,
     color: "from-indigo-500 to-indigo-600",
+  },
+  {
+    id: "deposit-refunds",
+    label: "Deposit Refunds",
+    icon: <FiDollarSign />,
+    color: "from-blue-500 to-cyan-600",
   },
   {
     id: "traffic-violations",
@@ -453,6 +461,9 @@ export default function Dashboard() {
           {displayedActiveTab === "addons" && <AddOnsContent />}
           {displayedActiveTab === "discounts" && <DiscountManagement />}
           {displayedActiveTab === "reserves" && <ReservationsManagement />}
+          {displayedActiveTab === "deposit-refunds" && (
+            <DepositRefundsManagement />
+          )}
           {displayedActiveTab === "traffic-violations" && (
             <TrafficViolationsManagement />
           )}
@@ -2000,7 +2011,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             {dueRefundsCount > 0 && (
               <button
                 type="button"
-                onClick={() => handleTabChange("reserves")}
+                onClick={() => handleTabChange("deposit-refunds")}
                 className="group flex w-full items-center justify-between gap-3 rounded-xl border border-red-500/15 bg-red-500/[0.06] p-3 transition-all hover:border-red-500/30"
               >
                 <div className="flex items-center gap-3">
@@ -2097,10 +2108,10 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
             )}
             <button
               type="button"
-              onClick={() => handleTabChange("reserves")}
+              onClick={() => handleTabChange("deposit-refunds")}
               className="rounded-lg border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-3 py-1.5 text-xs font-bold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/15"
             >
-              View reserves
+              View refunds
             </button>
           </div>
         </div>
@@ -2155,7 +2166,7 @@ function DashboardContent({ handleTabChange }: DashboardContentProps) {
                   <button
                     key={reservation._id}
                     type="button"
-                    onClick={() => handleTabChange("reserves")}
+                    onClick={() => handleTabChange("deposit-refunds")}
                     className="group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 text-left transition-all hover:border-[#fe9a00]/20 hover:bg-white/[0.04]"
                   >
                     <div className="min-w-0">

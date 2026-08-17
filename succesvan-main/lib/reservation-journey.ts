@@ -159,7 +159,24 @@ const buildSteps = (
 const buildNextAction = (
   reservation: Reservation,
   status: ReservationStatus,
+  contract?: SafeContractSummary | null,
 ): ReservationNextAction => {
+  if (
+    contract?.contractType === "reservation_extension" &&
+    ["ready", "sent", "delivered", "viewed", "signing"].includes(
+      contract.status,
+    )
+  ) {
+    return {
+      type: "sign_contract",
+      title: "Sign your rental extension",
+      description:
+        "Review and sign the extension agreement to confirm your new return date.",
+      buttonLabel: "Review Extension",
+      href: "#contract",
+    };
+  }
+
   const officeDepositSelected = reservation.deposit?.option === "office";
   switch (status) {
     case "pending":
@@ -338,7 +355,7 @@ export function buildReservationJourney(
     publicStatusLabel: RESERVATION_STATUS_LABELS[status],
     mainStatus: status,
     steps: buildSteps(reservation, status),
-    nextAction: buildNextAction(reservation, status),
+    nextAction: buildNextAction(reservation, status, contract),
     deposit: (() => {
       // Fall back to the reservation total until the customer has chosen an
       // option. Full deposit is the booking total; secure/office amounts are

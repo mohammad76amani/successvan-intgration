@@ -90,6 +90,19 @@ const reservationSchema = new mongoose.Schema(
     messege: { type: String },
     pickupExtensionPrice: { type: Number, default: 0 },
     returnExtensionPrice: { type: Number, default: 0 },
+    rentalExtensions: [
+      {
+        contract: { type: mongoose.Schema.Types.ObjectId, ref: "Contract" },
+        contractNumber: { type: String, trim: true },
+        previousReturnDateTime: { type: Date },
+        newReturnDateTime: { type: Date },
+        calculatedPrice: { type: Number, min: 0 },
+        agreedPrice: { type: Number, min: 0 },
+        customPriceApplied: { type: Boolean, default: false },
+        customPriceReason: { type: String, trim: true },
+        signedAt: { type: Date },
+      },
+    ],
     addOns: [
       {
         addOn: {

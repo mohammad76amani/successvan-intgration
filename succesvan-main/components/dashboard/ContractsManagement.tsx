@@ -14,8 +14,17 @@ import {
   FiChevronRight,
   FiEye,
   FiRepeat,
+  FiUser,
+  FiTruck,
+  FiHash,
+  FiMail,
+  FiPhone,
+  FiCheck,
+  FiClock,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
+import { formatDateTimeInLondon } from "@/lib/englandTime";
 import type { SafeContractSummary, ContractStatus } from "@/lib/docusign/types";
 import { CONTRACT_STATUSES } from "@/lib/docusign/types";
 import { canVoidContract, isTerminalStatus } from "@/lib/docusign/status";
@@ -226,7 +235,7 @@ export default function ContractsManagement() {
               setPage(1);
               setCustomerSearch(e.target.value);
             }}
-            placeholder="Search contract number, customer, email or phone..."
+            placeholder="Search contract number, Order ID, customer, email or phone..."
             className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#fe9a00]"
           />
         </div>
@@ -260,7 +269,8 @@ export default function ContractsManagement() {
             <thead>
               <tr className="border-b border-white/10 text-left text-gray-400">
                 <th className="px-4 py-3 font-semibold">Contract Number</th>
-                <th className="px-4 py-3 font-semibold">Booking</th>
+                <th className="px-4 py-3 font-semibold">Type</th>
+                <th className="px-4 py-3 font-semibold">Order ID</th>
                 <th className="px-4 py-3 font-semibold">Customer</th>
                 <th className="px-4 py-3 font-semibold">Vehicle</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
@@ -272,14 +282,14 @@ export default function ContractsManagement() {
             <tbody>
               {loading && contracts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
                     Loading contracts...
                   </td>
                 </tr>
               )}
               {!loading && contracts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
                     No contracts found. Create one from a booking to get
                     started.
                   </td>
@@ -302,6 +312,11 @@ export default function ContractsManagement() {
                   >
                     <td className="px-4 py-3">
                       <p className="text-white font-bold">{contract.contractNumber}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-semibold text-gray-300">
+                      {contract.contractType === "reservation_extension"
+                        ? "Extension"
+                        : "Rental"}
                     </td>
                     <td className="px-4 py-3 text-gray-300">
                       {contract.bookingReference || "-"}
@@ -790,103 +805,328 @@ function ContractDetailModal({
     contract.status === "completed" &&
     (!contract.files.signed || !contract.files.certificate);
 
-  const rows: Array<[string, string]> = [
-    ["Contract number", contract.contractNumber],
-    ["Customer", `${contract.customerName} (${contract.customerEmail})`],
-    ["Phone", contract.customerPhone || "-"],
-    ["Vehicle", contract.vehicleLabel || "-"],
-    ["Booking ID", contract.bookingId],
-    ["Envelope ID", docusign?.envelopeId || "Not sent yet"],
-    ["Envelope status", docusign?.envelopeStatus || "-"],
-    ["Sent", formatDateTime(docusign?.sentAt)],
-    ["Delivered", formatDateTime(docusign?.deliveredAt)],
-    ["Viewed", formatDateTime(docusign?.viewedAt)],
-    ["Completed", formatDateTime(docusign?.completedAt)],
-    ["Created", formatDateTime(contract.createdAt)],
+  const timeline = [
+    { label: "Created", value: contract.createdAt },
+    { label: "Sent", value: docusign?.sentAt },
+    { label: "Delivered", value: docusign?.deliveredAt },
+    { label: "Viewed", value: docusign?.viewedAt },
+    { label: "Completed", value: docusign?.completedAt },
   ];
-  if (docusign?.declineReason)
-    rows.push(["Decline reason", docusign.declineReason]);
-  if (docusign?.voidReason) rows.push(["Void reason", docusign.voidReason]);
+
+  const documents = [
+    {
+      key: "source" as const,
+      title:
+        contract.contractType === "reservation_extension"
+          ? "Extension agreement"
+          : "Rental agreement",
+      description:
+        contract.contractType === "reservation_extension"
+          ? "Unsigned extension confirmation"
+          : "Unsigned source document",
+      available: contract.files.source,
+      completed: false,
+    },
+    {
+      key: "signed" as const,
+      title: "Signed agreement",
+      description: "Customer-signed contract",
+      available: contract.files.signed,
+      completed: true,
+    },
+    {
+      key: "certificate" as const,
+      title: "Completion certificate",
+      description: "DocuSign audit record",
+      available: contract.files.certificate,
+      completed: contract.files.certificate,
+    },
+  ];
+
+  const warningReason = docusign?.declineReason || docusign?.voidReason;
+  const warningLabel = docusign?.declineReason ? "Decline reason" : "Void reason";
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#1a2847] rounded-2xl border border-white/10 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h3 className="text-xl font-black text-white">
-              {contract.contractNumber}
-            </h3>
-            <StatusBadge status={contract.status} />
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white"
-          >
-            <FiX />
-          </button>
-        </div>
-
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4 space-y-2">
-          {rows.map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-4 text-sm">
-              <span className="text-gray-400 shrink-0">{label}</span>
-              <span className="text-white text-right break-all">{value}</span>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#050914]/80 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contract-detail-title"
+        className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-white/10 bg-[#111b32] shadow-2xl shadow-black/50 sm:max-w-3xl sm:rounded-2xl"
+      >
+        <header className="relative shrink-0 overflow-hidden border-b border-white/10 bg-[#17243f] px-5 py-4 sm:px-6">
+          <div className="absolute inset-y-0 left-0 w-1 bg-[#fe9a00]" />
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/10 text-xl text-[#fe9a00]">
+                <FiFileText />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  Contract details
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <h3
+                    id="contract-detail-title"
+                    className="break-all text-xl font-black tracking-tight text-white sm:text-2xl"
+                  >
+                    {contract.contractNumber}
+                  </h3>
+                  <StatusBadge status={contract.status} />
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-
-        <div className="space-y-2 mb-4">
-          <p className="text-white text-sm font-semibold">Documents</p>
-          <div className="flex flex-wrap gap-2">
-            {contract.files.source && (
-              <button
-                onClick={() => onDownload(contract, "source")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/15 border border-white/10 text-white rounded-lg text-sm font-semibold transition-colors"
-              >
-                <FiDownload /> Agreement (unsigned)
-              </button>
-            )}
-            {contract.files.signed && (
-              <button
-                onClick={() => onDownload(contract, "signed")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg text-sm font-semibold transition-colors"
-              >
-                <FiDownload /> Signed agreement
-              </button>
-            )}
-            {contract.files.certificate && (
-              <button
-                onClick={() => onDownload(contract, "certificate")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/15 border border-white/10 text-white rounded-lg text-sm font-semibold transition-colors"
-              >
-                <FiDownload /> Completion certificate
-              </button>
-            )}
-            {!contract.files.source &&
-              !contract.files.signed &&
-              !contract.files.certificate && (
-                <p className="text-gray-400 text-sm">No documents yet.</p>
-              )}
-          </div>
-          {missingCompletedFiles && (
             <button
-              onClick={onRetryDocuments}
-              disabled={busy}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-[#fe9a00]/20 hover:bg-[#fe9a00]/30 text-[#fe9a00] rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+              type="button"
+              aria-label="Close contract details"
+              onClick={onClose}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg text-slate-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#fe9a00]"
             >
-              <FiRefreshCw className={busy ? "animate-spin" : ""} />
-              Fetch signed documents from DocuSign
+              <FiX />
             </button>
+          </div>
+        </header>
+
+        <div className="overflow-y-auto px-4 py-5 sm:px-6">
+          {contract.contractType === "reservation_extension" &&
+            contract.extension && (
+              <section className="mb-4 rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/[0.06] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#fe9a00]">
+                      Rental extension
+                    </p>
+                    <h4 className="mt-1 text-base font-black text-white">
+                      Updated return agreement
+                    </h4>
+                  </div>
+                  <span className="text-lg font-black text-white">
+                    £{Number(contract.extension.agreedPrice || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-slate-500">Previous return</p>
+                    <p className="mt-1 font-semibold text-slate-100">
+                      {contract.extension.previousReturnDateTime
+                        ? formatDateTimeInLondon(
+                            contract.extension.previousReturnDateTime,
+                          )
+                        : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">New return</p>
+                    <p className="mt-1 font-semibold text-slate-100">
+                      {contract.extension.newReturnDateTime
+                        ? formatDateTimeInLondon(
+                            contract.extension.newReturnDateTime,
+                          )
+                        : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Duration</p>
+                    <p className="mt-1 font-semibold text-slate-100">
+                      {contract.extension.durationLabel || "-"}
+                    </p>
+                  </div>
+                </div>
+                {contract.extension.customPriceApplied && (
+                  <p className="mt-3 border-t border-white/10 pt-3 text-xs text-slate-400">
+                    Custom price: {contract.extension.customPriceReason || "No reason recorded"}
+                  </p>
+                )}
+              </section>
+            )}
+          <div className="grid gap-2.5 sm:grid-cols-3">
+            {[
+              {
+                label: "Order ID",
+                value: contract.bookingReference || "Not available",
+                icon: FiHash,
+              },
+              { label: "Customer", value: contract.customerName, icon: FiUser },
+              {
+                label: "Vehicle",
+                value: contract.vehicleLabel || "Not assigned",
+                icon: FiTruck,
+              },
+            ].map(({ label, value, icon: Icon }) => (
+              <div
+                key={label}
+                className="min-w-0 rounded-xl border border-white/10 bg-white/[0.045] p-3.5"
+              >
+                <div className="mb-2 flex items-center gap-2 text-[#fe9a00]">
+                  <Icon className="shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                    {label}
+                  </span>
+                </div>
+                <p className="break-words text-sm font-bold text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <section className="mt-4 rounded-xl border border-white/10 bg-[#0d1629]/70 p-4">
+            <h4 className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-300">
+              Contact & identifiers
+            </h4>
+            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {[
+                { label: "Email", value: contract.customerEmail, icon: FiMail },
+                {
+                  label: "Phone",
+                  value: contract.customerPhone || "Not provided",
+                  icon: FiPhone,
+                },
+                { label: "Booking ID", value: contract.bookingId, icon: FiHash },
+                {
+                  label: "Envelope ID",
+                  value: docusign?.envelopeId || "Not sent yet",
+                  icon: FiFileText,
+                },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} className="flex min-w-0 items-start gap-2.5">
+                  <Icon className="mt-0.5 shrink-0 text-slate-500" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-0.5 break-all text-sm font-medium text-slate-100">
+                      {value}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-4 border-t border-white/10 pt-3 text-sm">
+              <span className="text-slate-400">DocuSign envelope status</span>
+              <span className="font-bold capitalize text-white">
+                {docusign?.envelopeStatus || "Not available"}
+              </span>
+            </div>
+          </section>
+
+          <section className="mt-4">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-black text-white">DocuSign progress</h4>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Contract lifecycle and recorded timestamps
+                </p>
+              </div>
+            </div>
+            <div className="grid overflow-hidden rounded-xl border border-white/10 bg-white/[0.035] sm:grid-cols-5">
+              {timeline.map((step, index) => {
+                const complete = Boolean(step.value);
+                return (
+                  <div
+                    key={step.label}
+                    className="relative flex items-center gap-3 border-b border-white/10 px-3 py-3 last:border-b-0 sm:block sm:border-b-0 sm:border-r sm:last:border-r-0"
+                  >
+                    <div
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs ${
+                        complete
+                          ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-400"
+                          : "border-white/10 bg-white/5 text-slate-600"
+                      }`}
+                    >
+                      {complete ? <FiCheck /> : <FiClock />}
+                    </div>
+                    <div className="min-w-0 sm:mt-2">
+                      <p className={`text-xs font-bold ${complete ? "text-slate-100" : "text-slate-500"}`}>
+                        {step.label}
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                        {complete ? formatDateTime(step.value) : index === 0 ? "Unavailable" : "Pending"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {warningReason && (
+            <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-400/25 bg-red-500/10 p-4">
+              <FiAlertTriangle className="mt-0.5 shrink-0 text-red-400" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-red-300">
+                  {warningLabel}
+                </p>
+                <p className="mt-1 break-words text-sm text-red-100">{warningReason}</p>
+              </div>
+            </div>
           )}
+
+          <section className="mt-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="text-sm font-black text-white">Documents</h4>
+              <span className="text-xs text-slate-500">
+                {documents.filter((document) => document.available).length} of 3 available
+              </span>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-3">
+              {documents.map((document) => (
+                <button
+                  key={document.key}
+                  type="button"
+                  disabled={!document.available}
+                  onClick={() => onDownload(contract, document.key)}
+                  className={`group flex min-h-24 items-center gap-3 rounded-xl border p-3.5 text-left transition focus:outline-none focus:ring-2 focus:ring-[#fe9a00] disabled:cursor-not-allowed disabled:opacity-45 ${
+                    document.completed && document.available
+                      ? "border-emerald-400/25 bg-emerald-400/[0.07] hover:bg-emerald-400/[0.12]"
+                      : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
+                  }`}
+                >
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      document.completed && document.available
+                        ? "bg-emerald-400/15 text-emerald-400"
+                        : "bg-white/[0.07] text-slate-300"
+                    }`}
+                  >
+                    {document.available ? <FiDownload /> : <FiClock />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white">{document.title}</p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                      {document.available ? document.description : "Not available yet"}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {missingCompletedFiles && (
+              <button
+                type="button"
+                onClick={onRetryDocuments}
+                disabled={busy}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-4 py-3 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/15 focus:outline-none focus:ring-2 focus:ring-[#fe9a00] disabled:opacity-50"
+              >
+                <FiRefreshCw className={busy ? "animate-spin" : ""} />
+                {busy ? "Fetching documents…" : "Fetch signed documents from DocuSign"}
+              </button>
+            )}
+          </section>
         </div>
 
-        <button
-          onClick={onClose}
-          className="w-full px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-semibold transition-colors"
-        >
-          Close
-        </button>
-      </div>
+        <footer className="shrink-0 border-t border-white/10 bg-[#111b32]/95 px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-white/[0.07] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/[0.12] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]"
+          >
+            Close details
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }

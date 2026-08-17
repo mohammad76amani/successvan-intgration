@@ -8,6 +8,7 @@ import { showToast } from "@/lib/toast";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import type { Reservation } from "@/types/type";
 import SearchableStaffSelect from "@/components/ui/SearchableStaffSelect";
+import ReservationExtensionPanel from "./ReservationExtensionPanel";
 
 type CategoryHandoverField = {
   _id?: string;
@@ -84,6 +85,27 @@ const lines = (value: string) =>
 const listText = (value?: string[]) =>
   value && value.length > 0 ? value.join(", ") : "-";
 
+const extensionDateTime = (value?: Date | string) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/London",
+  }).format(date);
+};
+
+const extensionMoney = (value?: number) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(Number(value) || 0);
+
 const normalizeFieldLabel = (label?: string) =>
   String(label || "")
     .trim()
@@ -152,6 +174,10 @@ export default function ReservationOperationsPanel({
   );
   const returnFields = handoverFieldTemplates.filter(
     (field) => field.requiredAfter,
+  );
+  const rentalExtensions = useMemo(
+    () => [...(activeReservation.rentalExtensions || [])].reverse(),
+    [activeReservation.rentalExtensions],
   );
   const [handover, setHandover] = useState({
     startMileage: "",
@@ -1043,6 +1069,16 @@ export default function ReservationOperationsPanel({
   }
   return (
     <div className="space-y-5 rounded-2xl border border-white/[0.09] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 p-3 shadow-2xl shadow-black/15 sm:p-5 lg:p-6">
+      {activeReservation.status === "delivered" && (
+        <ReservationExtensionPanel
+          reservation={activeReservation}
+          onCreated={() => {
+            void loadReservation().then((refreshed) => {
+              if (refreshed) onUpdated(refreshed);
+            });
+          }}
+        />
+      )}
       {showHandover && (
         <div className="space-y-4">
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
@@ -1213,6 +1249,77 @@ export default function ReservationOperationsPanel({
               {returnMiniStep === "form" ? "Fill form" : "Compare"}
             </span>
           </div>
+          {rentalExtensions.length > 0 && (
+            <section
+              role="status"
+              aria-label="Rental extension warning"
+              className="overflow-hidden rounded-xl border border-amber-400/35 bg-amber-400/[0.08] shadow-lg shadow-amber-950/10"
+            >
+              <div className="flex items-start gap-3 border-b border-amber-400/20 px-3.5 py-3 sm:px-4">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#fe9a00]/15 text-base font-black text-[#fe9a00]">
+                  !
+                </span>
+                <div>
+                  <p className="text-sm font-black text-amber-100">
+                    This reservation was extended
+                  </p>
+                  <p className="mt-0.5 text-xs leading-5 text-amber-100/70">
+                    Check the latest agreed return time before completing the
+                    vehicle inspection.
+                  </p>
+                </div>
+              </div>
+              <div className="divide-y divide-amber-400/15">
+                {rentalExtensions.map((extension, index) => (
+                  <div
+                    key={
+                      extension.contract ||
+                      extension.contractNumber ||
+                      `${String(extension.newReturnDateTime)}-${index}`
+                    }
+                    className={`grid gap-2 px-3.5 py-3 text-xs sm:grid-cols-[0.75fr_1fr_1fr_0.65fr] sm:items-center sm:px-4 ${
+                      index === 0
+                        ? "bg-[#fe9a00]/[0.09] text-white"
+                        : "text-slate-300"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-amber-300/75">
+                        {index === 0 ? "Latest extension" : "Extension"}
+                      </p>
+                      <p className="mt-0.5 font-black">
+                        {extension.contractNumber || "Agreement pending"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        Previous return
+                      </p>
+                      <p className="mt-0.5 font-semibold">
+                        {extensionDateTime(extension.previousReturnDateTime)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        New return
+                      </p>
+                      <p className={`mt-0.5 font-black ${index === 0 ? "text-[#fe9a00]" : ""}`}>
+                        {extensionDateTime(extension.newReturnDateTime)}
+                      </p>
+                    </div>
+                    <div className="sm:text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        Agreed price
+                      </p>
+                      <p className="mt-0.5 font-black text-amber-100">
+                        {extensionMoney(extension.agreedPrice)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="flex flex-col items-start justify-between gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-3.5 py-3 sm:flex-row sm:items-center">
             <p className="text-xs font-medium leading-5 text-slate-400">
               Loaded from{" "}

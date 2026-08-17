@@ -21,6 +21,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
+import { formatDateTimeInLondon } from "@/lib/englandTime";
 import type { Category, Reservation, Vehicle } from "@/types/type";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import { buildReservationJourney } from "@/lib/reservation-journey";
@@ -56,7 +57,7 @@ const DEFAULT_SECTION: Partial<Record<ReservationStatus, JourneySectionId>> = {
   deposit_pending: "deposit",
   contract_pending: "contract",
   ready_for_collection: "collection",
-  handover_in_progress: "collection",
+  handover_in_progress: "handover",
   delivered: "collection",
   vehicle_returned: "inspection",
   return_inspection: "inspection",
@@ -299,7 +300,11 @@ export default function ReservationJourneyPage({
       if (initialSection) return normalizeSectionId(initialSection);
       const fromHash = embedded ? "" : window.location.hash.slice(1);
       if (fromHash) return normalizeSectionId(fromHash);
-      const defaultSection = DEFAULT_SECTION[journey.mainStatus] ?? "summary";
+      const defaultSection =
+        contract?.contractType === "reservation_extension" &&
+        journey.contract?.status === "awaiting_customer_signature"
+          ? "contract"
+          : DEFAULT_SECTION[journey.mainStatus] ?? "summary";
       return reservation?.deposit?.option === "office" &&
         defaultSection === "deposit"
         ? "summary"
@@ -311,6 +316,8 @@ export default function ReservationJourneyPage({
     initialSection,
     embedded,
     reservation?.deposit?.option,
+    contract?.contractType,
+    journey?.contract?.status,
   ]);
 
   useEffect(() => {
@@ -704,6 +711,38 @@ export default function ReservationJourneyPage({
                             : money(finalTotal)}
                         </span>
                       </div>
+                      {(reservation.rentalExtensions?.length || 0) > 0 && (
+                        <div className="mt-3 border-t border-white/[0.08] pt-3">
+                          <p className="mb-2 text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">
+                            Signed rental extensions · included in total
+                          </p>
+                          <div className="space-y-2">
+                            {reservation.rentalExtensions?.map(
+                              (extension, index) => (
+                                <div
+                                  key={`${extension.contractNumber || "extension"}-${index}`}
+                                  className="flex items-start justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 text-xs"
+                                >
+                                  <span className="min-w-0 text-slate-400">
+                                    <strong className="block text-slate-200">
+                                      {extension.contractNumber ||
+                                        `Extension ${index + 1}`}
+                                    </strong>
+                                    New return: {extension.newReturnDateTime
+                                      ? formatDateTimeInLondon(
+                                          extension.newReturnDateTime,
+                                        )
+                                      : "-"}
+                                  </span>
+                                  <strong className="shrink-0 text-[#fe9a00]">
+                                    {money(extension.agreedPrice)}
+                                  </strong>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {journey.mainStatus === "pending" && (
                       <button

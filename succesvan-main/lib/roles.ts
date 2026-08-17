@@ -3,6 +3,7 @@ export const ADMIN_DASHBOARD_TAB_IDS = [
   "vehicles",
   "holidays",
   "reserves",
+  "deposit-refunds",
   "traffic-violations",
   "reservation-history",
   "contracts",

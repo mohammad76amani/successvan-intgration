@@ -288,6 +288,17 @@ export interface Reservation {
   selectedGear?: "manual" | "automatic";
   pickupExtensionPrice?: number;
   returnExtensionPrice?: number;
+  rentalExtensions?: Array<{
+    contract?: string;
+    contractNumber?: string;
+    previousReturnDateTime?: Date | string;
+    newReturnDateTime?: Date | string;
+    calculatedPrice?: number;
+    agreedPrice?: number;
+    customPriceApplied?: boolean;
+    customPriceReason?: string;
+    signedAt?: Date | string;
+  }>;
   isManualPrice?: boolean;
   manualPricePerDay?: number;
   manualPriceNote?: string;

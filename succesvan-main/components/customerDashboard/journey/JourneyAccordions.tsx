@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import {
   FiMapPin,
@@ -11,6 +12,8 @@ import {
   FiDownload,
   FiUploadCloud,
   FiLoader,
+  FiLock,
+  FiExternalLink,
   FiX,
 } from "react-icons/fi";
 import type { Reservation } from "@/types/type";
@@ -18,6 +21,7 @@ import type { ReservationJourneyViewModel } from "@/types/reservation-journey";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import { statusLabel } from "@/lib/reservation-status";
 import { showToast } from "@/lib/toast";
+import { formatDateTimeInLondon } from "@/lib/englandTime";
 import DepositPanel from "./DepositPanel";
 import LicenceDetailsReviewModal, {
   type LicenceDetailsReview,
@@ -611,6 +615,9 @@ export default function JourneyAccordions({
   const [pendingLicenceReview, setPendingLicenceReview] =
     useState<PendingLicenceReview | null>(null);
   const [licenceReviewSaving, setLicenceReviewSaving] = useState(false);
+  const [acceptedContractId, setAcceptedContractId] = useState<string | null>(
+    null,
+  );
   const licenceUploadLock = useRef(false);
   const isAnyLicenceBusy =
     uploadingLicence.front || uploadingLicence.back || licenceReviewSaving;
@@ -757,7 +764,10 @@ export default function JourneyAccordions({
 
   const handover = reservation.handover;
   const inspection = reservation.inspection;
-  const hasInspectionComparison = Boolean(handover || inspection);
+  const displayedContractId = contract?._id ? String(contract._id) : null;
+  const hasAcceptedCurrentContract = Boolean(
+    displayedContractId && acceptedContractId === displayedContractId,
+  );
   const refund = reservation.refund;
   const refundDeductions = refundDeductionItems(refund);
   const compactRefundDeductions = refundDeductions.slice(0, 3);
@@ -850,7 +860,7 @@ export default function JourneyAccordions({
           : []),
       ];
     }
-    if (["ready_for_collection", "handover_in_progress"].includes(status)) {
+    if (status === "ready_for_collection") {
       return [
         { label: "Pickup", value: journey.pickupDateTime },
         { label: "Location", value: journey.collection?.location || "-" },
@@ -858,10 +868,15 @@ export default function JourneyAccordions({
           label: "Collection code",
           value: journey.collection?.collectionCode || "Not issued",
         },
-        {
-          label: "Handover",
-          value: handover?.completedAt ? "Completed" : "Pending",
-        },
+        { label: "Next", value: "Bring your licence and booking reference" },
+      ];
+    }
+    if (status === "handover_in_progress") {
+      return [
+        { label: "Reference", value: journey.bookingReference },
+        { label: "Stage", value: "Vehicle handover" },
+        { label: "Status", value: "Checklist in progress" },
+        { label: "Next", value: "Staff will complete the collection checks" },
       ];
     }
     if (status === "delivered") {
@@ -876,20 +891,16 @@ export default function JourneyAccordions({
     }
     if (["vehicle_returned", "return_inspection"].includes(status)) {
       return [
-        { label: "Vehicle", value: "Returned" },
-        { label: "Received", value: compactDate(inspection?.receivedAt) },
+        { label: "Reference", value: journey.bookingReference },
+        { label: "Stage", value: "Return inspection" },
         {
-          label: "Inspection",
-          value: inspection?.completedAt ? "Completed" : "In progress",
+          label: "Status",
+          value:
+            status === "vehicle_returned"
+              ? "Vehicle received"
+              : "Inspection in progress",
         },
-        ...(inspection?.returnMileage !== undefined
-          ? [
-              {
-                label: "Return mileage",
-                value: String(inspection.returnMileage),
-              },
-            ]
-          : []),
+        { label: "Next", value: "Open this step for inspection details" },
       ];
     }
     if (
@@ -1116,17 +1127,6 @@ export default function JourneyAccordions({
       </div>
 
       {/* ── Documents ───────────────────────────────────────── */}
-      {hasInspectionComparison && openSection !== "inspection" && (
-        <div className="mt-5">
-          <InspectionComparisonTable
-            handover={handover}
-            inspection={inspection}
-            pickupDateTime={journey.pickupDateTime}
-            returnDateTime={journey.returnDateTime}
-          />
-        </div>
-      )}
-
       <Section id="documents" open={openSection === "documents"}>
         <div className="space-y-2">
           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
@@ -1184,6 +1184,14 @@ export default function JourneyAccordions({
       <Section id="contract" open={openSection === "contract"}>
         {contract ? (
           <>
+            <Row
+              label="Agreement"
+              value={
+                contract.contractType === "reservation_extension"
+                  ? "Rental extension"
+                  : "Rental agreement"
+              }
+            />
             <Row label="Contract number" value={contract.contractNumber} />
             <Row
               label="Status"
@@ -1202,7 +1210,44 @@ export default function JourneyAccordions({
             {journey.contract?.signedAt && (
               <Row label="Signed" value={journey.contract.signedAt} />
             )}
-            <div className="flex flex-wrap gap-2 mt-3">
+            {contract.contractType === "reservation_extension" &&
+              contract.extension && (
+                <div className="my-3 grid grid-cols-1 gap-2 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/[0.05] p-3 sm:grid-cols-2">
+                  <Row
+                    label="Previous return"
+                    value={
+                      contract.extension.previousReturnDateTime
+                        ? formatDateTimeInLondon(
+                            contract.extension.previousReturnDateTime,
+                          )
+                        : "-"
+                    }
+                  />
+                  <Row
+                    label="New return"
+                    value={
+                      contract.extension.newReturnDateTime
+                        ? formatDateTimeInLondon(
+                            contract.extension.newReturnDateTime,
+                          )
+                        : "-"
+                    }
+                  />
+                  <Row
+                    label="Extension"
+                    value={contract.extension.durationLabel}
+                  />
+                  <Row
+                    label="Extension price"
+                    value={`£${Number(contract.extension.agreedPrice || 0).toFixed(2)}`}
+                  />
+                  <Row
+                    label="Payment"
+                    value="Pay at the office"
+                  />
+                </div>
+              )}
+            <div className="mt-3 flex flex-wrap gap-2">
               {contract.files?.source && (
                 <button
                   type="button"
@@ -1210,16 +1255,6 @@ export default function JourneyAccordions({
                   className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
                 >
                   <FiDownload /> Download contract
-                </button>
-              )}
-              {journey.contract?.status === "awaiting_customer_signature" && (
-                <button
-                  type="button"
-                  onClick={onSignContract}
-                  disabled={signBusy}
-                  className="px-4 py-2 bg-[#fe9a00] hover:bg-[#e68a00] text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  {signBusy ? "Opening..." : "Review & Sign"}
                 </button>
               )}
               {contract.files?.signed && (
@@ -1232,6 +1267,86 @@ export default function JourneyAccordions({
                 </button>
               )}
             </div>
+            {journey.contract?.status === "awaiting_customer_signature" && (
+              <div
+                className={`mt-4 overflow-hidden rounded-xl border transition-colors duration-300 ${
+                  hasAcceptedCurrentContract
+                    ? "border-[#fe9a00]/45 bg-[#fe9a00]/[0.07]"
+                    : "border-white/10 bg-[#07101f]/70"
+                }`}
+              >
+                <div className="p-4 sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                        hasAcceptedCurrentContract
+                          ? "border-[#fe9a00]/40 bg-[#fe9a00]/15 text-[#fe9a00]"
+                          : "border-white/10 bg-white/[0.05] text-slate-400"
+                      }`}
+                    >
+                      <FiLock aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-black text-white">
+                        Confirm before signing
+                      </h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-400 sm:text-[13px]">
+                        Review the {contract.contractType === "reservation_extension" ? "extension agreement" : "agreement"}, then confirm your acceptance to
+                        continue securely in DocuSign.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-white/[0.08] bg-black/20 p-3 transition hover:border-white/15">
+                    <input
+                      type="checkbox"
+                      checked={hasAcceptedCurrentContract}
+                      onChange={(event) =>
+                        setAcceptedContractId(
+                          event.target.checked ? displayedContractId : null,
+                        )
+                      }
+                      className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#fe9a00]"
+                    />
+                    <span className="text-[13px] font-semibold leading-5 text-slate-200">
+                      I have read the {contract.contractType === "reservation_extension" ? "rental extension agreement" : "rental agreement"} and agree to the{" "}
+                      <Link
+                        href="/terms-and-conditions"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                        className="inline-flex items-center gap-1 font-black text-[#fe9a00] underline decoration-[#fe9a00]/40 underline-offset-2 transition hover:text-[#ffb13b]"
+                      >
+                        Terms and Conditions
+                        <FiExternalLink className="text-xs" aria-hidden="true" />
+                      </Link>
+                      .
+                    </span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={onSignContract}
+                    disabled={!hasAcceptedCurrentContract || signBusy}
+                    className={`mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-black transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/50 focus:ring-offset-2 focus:ring-offset-[#07101f] ${
+                      hasAcceptedCurrentContract && !signBusy
+                        ? "cursor-pointer bg-[#fe9a00] text-white shadow-lg shadow-[#fe9a00]/15 hover:-translate-y-0.5 hover:bg-[#e68a00]"
+                        : "cursor-not-allowed border border-white/[0.06] bg-white/[0.05] text-slate-500"
+                    }`}
+                  >
+                    {signBusy ? (
+                      <FiLoader className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <FiLock aria-hidden="true" />
+                    )}
+                    {signBusy ? "Opening DocuSign..." : "Review & Sign"}
+                  </button>
+                  <p className="mt-2 text-center text-[11px] font-medium text-slate-500">
+                    You will continue to DocuSign to review and sign securely.
+                  </p>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <Placeholder text="Your rental agreement hasn't been created yet. It will appear here when it's ready to sign." />

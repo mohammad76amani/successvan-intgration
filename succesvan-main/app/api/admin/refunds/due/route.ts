@@ -16,27 +16,61 @@ export async function GET(req: NextRequest) {
 
     await connect();
     const now = new Date();
-    const reservations = await Reservation.find({
+    const includeAll = req.nextUrl.searchParams.get("all") === "true";
+    const query: Record<string, unknown> = {
       status: "refund_processing",
       "refund.status": { $in: ["approved", "processing"] },
-      "refund.expectedBy": { $lte: now },
-    })
+    };
+
+    if (!includeAll) {
+      query["refund.expectedBy"] = { $lte: now };
+    }
+
+    const reservations = await Reservation.find(query)
       .populate({
         path: "user",
         model: User,
-        select: "name lastName phoneData",
+        select: "name lastName phoneData emaildata",
       })
       .populate({
         path: "vehicle",
         model: Vehicle,
-        select: "title number keyNumber color",
+        select: "title make number keyNumber color",
       })
-      .sort({ "refund.expectedBy": 1 })
       .lean();
+
+    reservations.sort((first, second) => {
+      const firstDue = first.refund?.expectedBy
+        ? new Date(first.refund.expectedBy).getTime()
+        : Number.POSITIVE_INFINITY;
+      const secondDue = second.refund?.expectedBy
+        ? new Date(second.refund.expectedBy).getTime()
+        : Number.POSITIVE_INFINITY;
+
+      if (firstDue !== secondDue) return firstDue - secondDue;
+
+      const firstCreated = new Date(
+        first.refund?.approvedAt || first.updatedAt || first.createdAt || 0,
+      ).getTime();
+      const secondCreated = new Date(
+        second.refund?.approvedAt || second.updatedAt || second.createdAt || 0,
+      ).getTime();
+      return firstCreated - secondCreated;
+    });
 
     const totalRefundAmount = reservations.reduce(
       (total, reservation) =>
         total + Number(reservation.refund?.refundAmount || 0),
+      0,
+    );
+    const totalDepositAmount = reservations.reduce(
+      (total, reservation) =>
+        total + Number(reservation.refund?.depositPaid || 0),
+      0,
+    );
+    const totalDeductions = reservations.reduce(
+      (total, reservation) =>
+        total + Number(reservation.refund?.deductionsTotal || 0),
       0,
     );
 
@@ -44,6 +78,8 @@ export async function GET(req: NextRequest) {
       reservations,
       count: reservations.length,
       totalRefundAmount,
+      totalDepositAmount,
+      totalDeductions,
       generatedAt: now,
     });
   } catch (error) {

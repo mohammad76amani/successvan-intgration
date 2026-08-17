@@ -158,6 +158,96 @@ export async function createRentalAgreementEnvelope(
   }
 }
 
+export function buildReservationExtensionEnvelope(
+  input: EnvelopeContractInput,
+) {
+  const docusign = getDocuSignSdk();
+  const document = fromObject(docusign.Document, {
+    documentBase64: input.sourcePdf.toString("base64"),
+    name: `Hire Extension Confirmation ${input.contractNumber}`,
+    fileExtension: "pdf",
+    documentId: "1",
+  });
+  const signer = fromObject(docusign.Signer, {
+    email: input.customerEmail,
+    name: input.customerName,
+    recipientId: input.signerRecipientId,
+    clientUserId: input.signerClientUserId,
+    routingOrder: "1",
+    tabs: fromObject(docusign.Tabs, {
+      signHereTabs: [
+        fromObject(docusign.SignHere, {
+          documentId: "1",
+          pageNumber: "2",
+          xPosition: "315",
+          yPosition: "184",
+          scaleValue: "0.38",
+        }),
+      ],
+    }),
+  });
+
+  return fromObject(docusign.EnvelopeDefinition, {
+    emailSubject: `Success Van Hire extension confirmation ${input.contractNumber}`,
+    emailBlurb:
+      "Please review and sign your Success Van Hire extension confirmation. Signing confirms the new return date and extension charge.",
+    documents: [document],
+    recipients: fromObject(docusign.Recipients, { signers: [signer] }),
+    customFields: fromObject(docusign.CustomFields, {
+      textCustomFields: [
+        fromObject(docusign.TextCustomField, {
+          name: "contractId",
+          value: input.id,
+          show: "false",
+        }),
+        fromObject(docusign.TextCustomField, {
+          name: "bookingId",
+          value: input.bookingId,
+          show: "false",
+        }),
+        fromObject(docusign.TextCustomField, {
+          name: "contractNumber",
+          value: input.contractNumber,
+          show: "false",
+        }),
+        fromObject(docusign.TextCustomField, {
+          name: "contractType",
+          value: "reservation_extension",
+          show: "false",
+        }),
+      ],
+    }),
+    status: "sent",
+  });
+}
+
+export async function createReservationExtensionEnvelope(
+  input: EnvelopeContractInput,
+) {
+  const { accountId, envelopesApi } = await getDocuSignApiClient();
+  try {
+    const summary = await envelopesApi.createEnvelope(accountId, {
+      envelopeDefinition: buildReservationExtensionEnvelope(input),
+    });
+    if (!summary.envelopeId) {
+      throw new ContractIntegrationError(
+        "DOCUSIGN_ENVELOPE_CREATE_FAILED",
+        "DocuSign did not return an envelope ID.",
+        502,
+      );
+    }
+    return {
+      accountId,
+      envelopeId: summary.envelopeId,
+      envelopeStatus: summary.status || "sent",
+      statusDateTime: summary.statusDateTime,
+    };
+  } catch (error) {
+    if (error instanceof ContractIntegrationError) throw error;
+    throw normalizeDocuSignSdkError(error);
+  }
+}
+
 export async function resendRentalAgreementEnvelope(
   envelopeId: string,
   reason?: string,

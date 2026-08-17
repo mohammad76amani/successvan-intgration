@@ -49,6 +49,8 @@ export type SafeContractSummary = {
   customerEmail: string;
   customerPhone?: string;
   contractNumber: string;
+  contractType: "rental_agreement" | "reservation_extension";
+  originalContractId?: string;
   status: ContractStatus;
   bookingReference?: string;
   vehicleLabel?: string;
@@ -69,6 +71,22 @@ export type SafeContractSummary = {
     source: boolean;
     signed: boolean;
     certificate: boolean;
+  };
+  extension?: {
+    previousReturnDateTime?: string;
+    newReturnDateTime?: string;
+    durationHours?: number;
+    durationLabel?: string;
+    calculatedPrice?: number;
+    agreedPrice?: number;
+    customPriceApplied?: boolean;
+    customPriceReason?: string;
+    priceBreakdown?: Array<{ label: string; amount: number }>;
+    paymentDueAt?: string;
+    paymentMethod?: string;
+    paymentReference?: string;
+    lessorName?: string;
+    appliedAt?: string;
   };
   createdAt?: string;
   updatedAt?: string;

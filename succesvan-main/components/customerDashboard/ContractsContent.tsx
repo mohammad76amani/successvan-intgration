@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import {
   FiFileText,
@@ -9,13 +8,12 @@ import {
   FiRefreshCw,
   FiCheckCircle,
   FiClock,
-  FiCalendar,
-  FiCreditCard,
-  FiHeadphones,
-  FiEye,
-  FiMoreVertical,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
+import {
+  formatDateLabelInLondon,
+  formatTimeInLondon,
+} from "@/lib/englandTime";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import {
   canGenerateSigningUrl,
@@ -45,33 +43,6 @@ function formatDate(value?: string) {
     month: "short",
     year: "numeric",
   });
-}
-
-function agreementDate(contract: SafeContractSummary) {
-  return (
-    contract.docusign?.completedAt ||
-    contract.docusign?.sentAt ||
-    contract.createdAt
-  );
-}
-
-function formatTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function splitVehicleLabel(value?: string) {
-  if (!value) return { title: "Rental vehicle", meta: "Vehicle details pending" };
-  const parts = value.split(" - ");
-  return {
-    title: parts[0]?.trim() || value,
-    meta: parts.slice(1).join(" - ").trim() || "Agreement vehicle",
-  };
 }
 
 const statusBadgeStyles: Record<string, string> = {
@@ -153,7 +124,7 @@ export default function ContractsContent() {
 
   const handleDownload = async (
     contract: SafeContractSummary,
-    kind: "signed" | "certificate",
+    kind: "source" | "signed" | "certificate",
   ) => {
     try {
       const res = await fetch(
@@ -171,7 +142,9 @@ export default function ContractsContent() {
       link.download =
         kind === "certificate"
           ? `${contract.contractNumber}-certificate.pdf`
-          : `${contract.contractNumber}-signed-agreement.pdf`;
+          : kind === "source"
+            ? `${contract.contractNumber}-agreement.pdf`
+            : `${contract.contractNumber}-signed-agreement.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -245,7 +218,11 @@ export default function ContractsContent() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rental agreement</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      {contract.contractType === "reservation_extension"
+                        ? "Rental extension"
+                        : "Rental agreement"}
+                    </p>
                     <h3 className="mt-1 break-words text-lg font-black tracking-tight text-white sm:text-xl">
                       {contract.contractNumber}
                     </h3>
@@ -276,6 +253,35 @@ export default function ContractsContent() {
                   </span>
                 </div>
 
+                {contract.contractType === "reservation_extension" &&
+                  contract.extension && (
+                    <div className="mt-3 grid gap-2 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/[0.05] p-3 text-xs sm:grid-cols-3">
+                      <span className="text-slate-400">
+                        New return<br />
+                        <strong className="text-white">
+                          {contract.extension.newReturnDateTime
+                            ? `${formatDateLabelInLondon(contract.extension.newReturnDateTime)} ${formatTimeInLondon(contract.extension.newReturnDateTime)}`
+                            : "-"}
+                        </strong>
+                      </span>
+                      <span className="text-slate-400">
+                        Duration<br />
+                        <strong className="text-white">
+                          {contract.extension.durationLabel || "-"}
+                        </strong>
+                      </span>
+                      <span className="text-slate-400">
+                        Extension price<br />
+                        <strong className="text-white">
+                          £{Number(contract.extension.agreedPrice || 0).toFixed(2)}
+                        </strong>
+                        <small className="mt-0.5 block text-[10px] font-semibold text-[#fe9a00]">
+                          Pay at the office
+                        </small>
+                      </span>
+                    </div>
+                  )}
+
                 <div className="mt-5 grid grid-cols-1 gap-2.5 sm:flex sm:flex-wrap">
                   {signable && (
                     <button
@@ -285,6 +291,16 @@ export default function ContractsContent() {
                     >
                       <FiEdit3 />
                       {busy ? "Opening DocuSign..." : "Review & Sign"}
+                    </button>
+                  )}
+
+                  {contract.files.source && (
+                    <button
+                      onClick={() => handleDownload(contract, "source")}
+                      className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-white transition duration-200 hover:border-white/20 hover:bg-white/[0.10] sm:w-auto"
+                    >
+                      <FiDownload />
+                      Download agreement
                     </button>
                   )}
 

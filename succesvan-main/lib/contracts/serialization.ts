@@ -8,6 +8,8 @@ type ContractLike = {
   customerEmail?: string;
   customerPhone?: string;
   contractNumber?: string;
+  contractType?: "rental_agreement" | "reservation_extension";
+  originalContractId?: unknown;
   status?: ContractStatus;
   docusign?: {
     envelopeId?: string;
@@ -25,6 +27,22 @@ type ContractLike = {
   sourceDocument?: { storageKey?: string; fileName?: string };
   signedDocument?: { storageKey?: string; fileName?: string };
   certificateDocument?: { storageKey?: string; fileName?: string };
+  extension?: {
+    previousReturnDateTime?: Date | string;
+    newReturnDateTime?: Date | string;
+    durationHours?: number;
+    durationLabel?: string;
+    calculatedPrice?: number;
+    agreedPrice?: number;
+    customPriceApplied?: boolean;
+    customPriceReason?: string;
+    priceBreakdown?: Array<{ label?: string; amount?: number }>;
+    paymentDueAt?: Date | string;
+    paymentMethod?: string;
+    paymentReference?: string;
+    lessorName?: string;
+    appliedAt?: Date | string;
+  };
   createdAt?: Date | string;
   updatedAt?: Date | string;
   toObject?: (options?: Record<string, unknown>) => ContractLike;
@@ -32,6 +50,7 @@ type ContractLike = {
 
 type BookingLike = {
   _id?: { toString(): string } | string;
+  reservationCode?: string;
   category?: { name?: string };
   vehicle?: { title?: string; number?: string | number };
 };
@@ -86,8 +105,14 @@ export function serializeContract(contractInput: ContractLike): SafeContractSumm
     customerEmail: contract.customerEmail || "",
     customerPhone: contract.customerPhone,
     contractNumber: contract.contractNumber || "",
+    contractType: contract.contractType || "rental_agreement",
+    originalContractId: contract.originalContractId
+      ? idToString(contract.originalContractId)
+      : undefined,
     status: contract.status || "draft",
-    bookingReference: idToString(booking?._id || contract.bookingId).slice(-8),
+    bookingReference:
+      booking?.reservationCode ||
+      idToString(booking?._id || contract.bookingId).slice(-8),
     vehicleLabel,
     docusign: {
       envelopeId: contract.docusign?.envelopeId,
@@ -110,6 +135,31 @@ export function serializeContract(contractInput: ContractLike): SafeContractSumm
           contract.certificateDocument?.storageKey,
       ),
     },
+    extension: contract.extension
+      ? {
+          previousReturnDateTime: dateToString(
+            contract.extension.previousReturnDateTime,
+          ),
+          newReturnDateTime: dateToString(contract.extension.newReturnDateTime),
+          durationHours: contract.extension.durationHours,
+          durationLabel: contract.extension.durationLabel,
+          calculatedPrice: contract.extension.calculatedPrice,
+          agreedPrice: contract.extension.agreedPrice,
+          customPriceApplied: contract.extension.customPriceApplied,
+          customPriceReason: contract.extension.customPriceReason,
+          priceBreakdown: (contract.extension.priceBreakdown || []).map(
+            (item) => ({
+              label: item.label || "Extension charge",
+              amount: Number(item.amount || 0),
+            }),
+          ),
+          paymentDueAt: dateToString(contract.extension.paymentDueAt),
+          paymentMethod: contract.extension.paymentMethod,
+          paymentReference: contract.extension.paymentReference,
+          lessorName: contract.extension.lessorName,
+          appliedAt: dateToString(contract.extension.appliedAt),
+        }
+      : undefined,
     createdAt: dateToString(contract.createdAt),
     updatedAt: dateToString(contract.updatedAt),
   };
