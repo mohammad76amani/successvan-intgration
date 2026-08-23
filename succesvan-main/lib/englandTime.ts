@@ -214,6 +214,27 @@ export const createLondonDateTimeFromStorage = (
   return iso;
 };
 
+/**
+ * Resolve a reservation instant from the London-local date and time selected
+ * by the customer. Older reservations may have a raw Date created in another
+ * device timezone, so the display fields are authoritative when complete.
+ */
+export const resolveStoredLondonDateTime = (
+  dateValue: string | undefined,
+  time: string | undefined,
+  fallback: Date | string,
+): Date => {
+  if (dateValue && time) {
+    try {
+      return new Date(createLondonDateTimeFromStorage(dateValue, time));
+    } catch {
+      // Fall back for legacy or incomplete records.
+    }
+  }
+
+  return new Date(fallback);
+};
+
 export const formatDateLabelInLondon = (date: Date | string): string => {
   const dateObj = typeof date === "string" ? new Date(date) : date;
   if (Number.isNaN(dateObj.getTime())) return "";

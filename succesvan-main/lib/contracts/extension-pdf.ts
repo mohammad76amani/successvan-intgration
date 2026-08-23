@@ -2,7 +2,13 @@ import "server-only";
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+  type PDFPage,
+} from "pdf-lib";
 import { formatDateInLondon, formatTimeInLondon } from "@/lib/englandTime";
 import { sha256Hex } from "./hash";
 import type { ContractPdfReservation } from "./pdf";
@@ -73,7 +79,8 @@ function drawSlot(
 ) {
   const white = rgb(1, 1, 1);
   const ink = rgb(0.04, 0.04, 0.04);
-  const selectedFont = options?.bold && options.boldFont ? options.boldFont : font;
+  const selectedFont =
+    options?.bold && options.boldFont ? options.boldFont : font;
   let size = options?.size ?? 8;
   while (size > 6 && selectedFont.widthOfTextAtSize(text, size) > width - 4) {
     size -= 0.25;
@@ -92,6 +99,165 @@ function drawSlot(
     font: selectedFont,
     color: ink,
     maxWidth: width - 4,
+  });
+}
+
+function drawTableSlot(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  x: number,
+  top: number,
+  width: number,
+  options?: { boldFont?: PDFFont; bold?: boolean; size?: number },
+) {
+  const white = rgb(1, 1, 1);
+  const ink = rgb(0.04, 0.04, 0.04);
+  const selectedFont =
+    options?.bold && options.boldFont ? options.boldFont : font;
+  const horizontalPadding = 4;
+  const rowHeight = 10.6;
+  const rowTop = top - 1.25;
+  let size = options?.size ?? 7.75;
+
+  while (
+    size > 5.5 &&
+    selectedFont.widthOfTextAtSize(text, size) > width - horizontalPadding * 2
+  ) {
+    size -= 0.25;
+  }
+
+  // Replace the complete placeholder cell, then redraw its border. The
+  // template rows are only about ten points high, so an inset redaction can
+  // leave placeholder ascenders/descenders visible while an oversized one
+  // erases the table grid.
+  page.drawRectangle({
+    x,
+    y: page.getHeight() - rowTop - rowHeight,
+    width,
+    height: rowHeight,
+    color: white,
+    borderColor: ink,
+    borderWidth: 0.45,
+  });
+  page.drawText(text, {
+    x: x + horizontalPadding,
+    y: page.getHeight() - top - size - 0.35,
+    size,
+    font: selectedFont,
+    color: ink,
+    maxWidth: width - horizontalPadding * 2,
+  });
+}
+
+function fittedFontSize(
+  font: PDFFont,
+  text: string,
+  width: number,
+  preferredSize = 7.75,
+  minimumSize = 5.5,
+) {
+  let size = preferredSize;
+  while (size > minimumSize && font.widthOfTextAtSize(text, size) > width) {
+    size -= 0.25;
+  }
+  return size;
+}
+
+function drawExtensionSignatureTable(
+  page: PDFPage,
+  font: PDFFont,
+  boldFont: PDFFont,
+  values: { customerName: string; lessorName: string },
+) {
+  const white = rgb(1, 1, 1);
+  const ink = rgb(0.04, 0.04, 0.04);
+  const x = 45.5;
+  const top = 175;
+  const width = 520.5;
+  const labelWidth = 252.5;
+  const valueWidth = width - labelWidth;
+  const rowHeights = [11, 28, 11, 11];
+  const labels = [
+    "Hirer Full Name",
+    "Hirer Signature / Electronic Acceptance",
+    "Success Van Hire Representative",
+    "Success Van Hire Approval / Signature",
+  ];
+  const rowValues = [
+    values.customerName,
+    "",
+    values.lessorName,
+    "Approved electronically",
+  ];
+  const totalHeight = rowHeights.reduce((sum, height) => sum + height, 0);
+
+  // Replace the compact template table. DocuSign's signature widget is
+  // taller than the original ten-point row and otherwise overlaps staff data.
+  page.drawRectangle({
+    x: x - 1,
+    y: page.getHeight() - top - totalHeight - 10,
+    width: width + 2,
+    height: totalHeight + 12,
+    color: white,
+  });
+
+  let rowTop = top;
+  rowHeights.forEach((rowHeight, index) => {
+    const rowBottom = page.getHeight() - rowTop - rowHeight;
+    page.drawRectangle({
+      x,
+      y: rowBottom,
+      width,
+      height: rowHeight,
+      color: white,
+      borderColor: ink,
+      borderWidth: 0.55,
+    });
+    page.drawLine({
+      start: { x: x + labelWidth, y: rowBottom },
+      end: { x: x + labelWidth, y: rowBottom + rowHeight },
+      color: ink,
+      thickness: 0.55,
+    });
+
+    const labelSize = fittedFontSize(
+      boldFont,
+      labels[index],
+      labelWidth - 10,
+      8.5,
+      7,
+    );
+    page.drawText(labels[index], {
+      x: x + 6,
+      y: rowBottom + rowHeight - labelSize - 1.5,
+      size: labelSize,
+      font: boldFont,
+      color: ink,
+    });
+
+    if (rowValues[index]) {
+      const valueSize = fittedFontSize(font, rowValues[index], valueWidth - 10);
+      page.drawText(rowValues[index], {
+        x: x + labelWidth + 5,
+        y: rowBottom + rowHeight - valueSize - 1.5,
+        size: valueSize,
+        font,
+        color: ink,
+      });
+    }
+    rowTop += rowHeight;
+  });
+
+  const recordText =
+    "RECORD KEEPING: Retain this Extension Confirmation together with the Original Vehicle Hire Agreement.";
+  const recordSize = fittedFontSize(boldFont, recordText, width, 8.5, 7);
+  page.drawText(recordText, {
+    x: x + (width - boldFont.widthOfTextAtSize(recordText, recordSize)) / 2,
+    y: page.getHeight() - top - totalHeight - recordSize - 3,
+    size: recordSize,
+    font: boldFont,
+    color: ink,
   });
 }
 
@@ -132,145 +298,161 @@ export async function generateReservationExtensionPdf(
     boldFont,
   });
 
-  const tableWidth = 251;
-  drawSlot(page1, font, input.originalContractNumber, 311, 196, tableWidth);
-  drawSlot(
+  const detailsTableX = 298;
+  const detailsTableWidth = 268;
+  const paymentTableX = 292;
+  const paymentTableWidth = 268;
+  drawTableSlot(
+    page1,
+    font,
+    input.originalContractNumber,
+    detailsTableX,
+    196,
+    detailsTableWidth,
+  );
+  drawTableSlot(
     page1,
     font,
     reservation.reservationCode || value(reservation._id),
-    311,
+    detailsTableX,
     206,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     input.originalContractCreatedAt
       ? formatDateInLondon(input.originalContractCreatedAt)
       : "-",
-    311,
+    detailsTableX,
     216,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(page1, font, name, 311, 227, tableWidth);
-  drawSlot(page1, font, value(vehicleRegistration), 311, 261, tableWidth);
-  drawSlot(
+  drawTableSlot(page1, font, name, detailsTableX, 227, detailsTableWidth);
+  drawTableSlot(
+    page1,
+    font,
+    value(vehicleRegistration),
+    detailsTableX,
+    261,
+    detailsTableWidth,
+  );
+  drawTableSlot(
     page1,
     font,
     `${value(vehicleMake)} / ${value(vehicleModel)}`,
-    311,
+    detailsTableX,
     271,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(page1, font, reservation.category?.name || "Van", 311, 281, tableWidth);
-  drawSlot(page1, font, name, 311, 292, tableWidth);
-  drawSlot(page1, font, licenceNumber(reservation), 311, 302, tableWidth);
-  drawSlot(page1, font, phone, 311, 312, tableWidth);
+  drawTableSlot(
+    page1,
+    font,
+    reservation.category?.name || "Van",
+    detailsTableX,
+    281,
+    detailsTableWidth,
+  );
+  drawTableSlot(page1, font, name, detailsTableX, 292, detailsTableWidth);
+  drawTableSlot(
+    page1,
+    font,
+    licenceNumber(reservation),
+    detailsTableX,
+    302,
+    detailsTableWidth,
+  );
+  drawTableSlot(page1, font, phone, detailsTableX, 312, detailsTableWidth);
 
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     formatDateInLondon(extension.previousReturnDateTime),
-    311,
+    detailsTableX,
     346,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     formatTimeInLondon(extension.previousReturnDateTime),
-    311,
+    detailsTableX,
     357,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
-    formatDateInLondon(extension.previousReturnDateTime),
-    311,
+    `${formatDateInLondon(extension.previousReturnDateTime)} / ${formatTimeInLondon(extension.previousReturnDateTime)}`,
+    detailsTableX,
     367,
-    122,
+    detailsTableWidth,
   );
-  drawSlot(
-    page1,
-    font,
-    formatTimeInLondon(extension.previousReturnDateTime),
-    439,
-    367,
-    123,
-  );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     formatDateInLondon(extension.newReturnDateTime),
-    311,
+    detailsTableX,
     377,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     formatTimeInLondon(extension.newReturnDateTime),
-    311,
+    detailsTableX,
     388,
-    tableWidth,
+    detailsTableWidth,
   );
-  drawSlot(page1, font, extension.durationLabel, 311, 398, tableWidth);
+  drawTableSlot(
+    page1,
+    font,
+    extension.durationLabel,
+    detailsTableX,
+    398,
+    detailsTableWidth,
+  );
 
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     `£${extension.agreedPrice.toFixed(2)}`,
-    306,
+    paymentTableX,
     432,
-    256,
+    paymentTableWidth,
     { bold: true, boldFont },
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     extension.paymentDueAt
       ? formatDateInLondon(extension.paymentDueAt)
       : "Pay at office",
-    306,
+    paymentTableX,
     442,
-    256,
+    paymentTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     value(extension.paymentMethod || "Pay at office").replace(/_/g, " "),
-    306,
+    paymentTableX,
     453,
-    256,
+    paymentTableWidth,
   );
-  drawSlot(
+  drawTableSlot(
     page1,
     font,
     value(extension.paymentReference),
-    306,
+    paymentTableX,
     463,
-    256,
+    paymentTableWidth,
   );
 
-  drawSlot(page2, font, name, 311, 176, tableWidth);
-  drawSlot(page2, font, "", 311, 187, tableWidth);
-  drawSlot(
-    page2,
-    font,
-    extension.lessorName || "Success Van Hire",
-    311,
-    197,
-    tableWidth,
-  );
-  drawSlot(
-    page2,
-    font,
-    "Approved electronically",
-    311,
-    207,
-    tableWidth,
-  );
+  drawExtensionSignatureTable(page2, font, boldFont, {
+    customerName: name,
+    lessorName: extension.lessorName || "Success Van Hire",
+  });
 
   const bytes = await doc.save();
   const buffer = Buffer.from(bytes);

@@ -130,7 +130,7 @@ contractSchema.index(
   { extensionBookingKey: 1 },
   {
     unique: true,
-    name: "one_extension_per_booking",
+    name: "one_extension_per_return_revision",
     partialFilterExpression: { extensionBookingKey: { $type: "string" } },
   },
 );

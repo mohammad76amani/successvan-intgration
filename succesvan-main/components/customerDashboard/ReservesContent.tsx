@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -12,11 +12,13 @@ import {
   FiMapPin,
   FiShield,
   FiTruck,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { Reservation } from "@/types/type";
 import { buildReservationJourney } from "@/lib/reservation-journey";
 import { statusBadgeClasses } from "@/lib/reservation-status";
 import ReservationJourneyPage from "./journey/ReservationJourneyPage";
+import { useModalAccessibility } from "@/hooks/useModalAccessibility";
 
 type TrackingModalState = {
   reservationId: string;
@@ -30,17 +32,17 @@ export default function ReservesContent() {
   const [trackingModal, setTrackingModal] = useState<TrackingModalState | null>(
     null,
   );
+  const trackingDialogRef = useRef<HTMLDivElement>(null);
+  const closeTrackingModal = useCallback(() => setTrackingModal(null), []);
 
-  useEffect(() => {
-    if (!trackingModal) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [trackingModal]);
+  useModalAccessibility({
+    open: Boolean(trackingModal),
+    onClose: closeTrackingModal,
+    dialogRef: trackingDialogRef,
+  });
 
   const fetchReservations = useCallback(async (signal?: AbortSignal) => {
+    setError("");
     const token = localStorage.getItem("token");
     try {
       const res = await fetch("/api/customer/reservations", {
@@ -117,6 +119,17 @@ export default function ReservesContent() {
     return (
       <div className="rounded-3xl border border-red-400/20 bg-gradient-to-b from-red-500/[0.09] to-red-500/[0.03] p-5 text-center shadow-xl shadow-black/10 sm:p-7">
         <p className="text-sm font-bold leading-6 text-red-300 sm:text-base">{error}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            void fetchReservations();
+          }}
+          className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-300/25 bg-red-400/10 px-4 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/15 focus:outline-none focus:ring-2 focus:ring-red-300/50"
+        >
+          <FiRefreshCw aria-hidden="true" />
+          Try again
+        </button>
       </div>
     );
   }
@@ -153,6 +166,7 @@ export default function ReservesContent() {
           journey.nextAction.type !== "none" &&
           journey.nextAction.type !== "contact_support";
         const isDepositAction = journey.nextAction.type === "pay_deposit";
+        const isCompleted = journey.mainStatus === "completed";
         const openTracker = (initialSection?: string) =>
           setTrackingModal({
             reservationId: journey.reservationId,
@@ -162,7 +176,7 @@ export default function ReservesContent() {
         return (
           <div
             key={journey.reservationId}
-            className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 shadow-2xl shadow-black/15 backdrop-blur-xl transition duration-200 hover:border-[#fe9a00]/30 hover:shadow-black/25"
+            className={`group relative overflow-hidden rounded-3xl border bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 shadow-2xl shadow-black/15 backdrop-blur-xl transition duration-300 ${isCompleted ? "border-white/[0.07] grayscale opacity-70 saturate-0 hover:border-white/15 hover:opacity-85 hover:shadow-black/20" : "border-white/[0.08] hover:border-[#fe9a00]/30 hover:shadow-black/25"}`}
           >
             <div className="grid xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="flex flex-col gap-4 p-3.5 sm:gap-5 sm:p-5 md:flex-row lg:p-6">
@@ -318,18 +332,23 @@ export default function ReservesContent() {
       {trackingModal && (
         <div
           className="fixed inset-0 z-[80] flex items-end justify-center bg-black/80 p-0 backdrop-blur-md sm:items-center sm:p-4 lg:p-6"
-          role="dialog"
-          aria-modal="true"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setTrackingModal(null);
+            if (event.target === event.currentTarget) closeTrackingModal();
           }}
         >
-          <div className="relative max-h-[96dvh] w-full max-w-6xl overflow-hidden rounded-t-3xl border border-white/[0.10] bg-[#0f172b] shadow-2xl shadow-black/50 sm:max-h-[92dvh] sm:rounded-3xl">
+          <div
+            ref={trackingDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Track booking"
+            tabIndex={-1}
+            className="relative max-h-[96dvh] w-full max-w-6xl overflow-hidden rounded-t-3xl border border-white/[0.10] bg-[#0f172b] shadow-2xl shadow-black/50 outline-none sm:max-h-[92dvh] sm:rounded-3xl"
+          >
             <ReservationJourneyPage
               reservationId={trackingModal.reservationId}
               initialSection={trackingModal.initialSection}
               embedded
-              onClose={() => setTrackingModal(null)}
+              onClose={closeTrackingModal}
             />
           </div>
         </div>

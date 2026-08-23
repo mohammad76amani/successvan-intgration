@@ -159,7 +159,9 @@ export default function TimeSelect({
                     extensionTimes &&
                     (extensionTimes.normalStart === extensionTimes.normalEnd ||
                       slot < extensionTimes.normalStart ||
-                      slot > extensionTimes.normalEnd) && (
+                      slot > extensionTimes.normalEnd) &&
+                    slot >= extensionTimes.start &&
+                    slot <= extensionTimes.end && (
                       <>
                         <div className="w-1.5 h-1.5 absolute left-1 rounded-full bg-yellow-400"></div>
                         <span className="text-[9px] text-yellow-400">

@@ -11,10 +11,14 @@ import {
   FiTruck,
   FiX,
   FiRefreshCw,
+  FiImage,
+  FiLoader,
+  FiTrash2,
 } from "react-icons/fi";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import { showToast } from "@/lib/toast";
 import type { Reservation } from "@/types/type";
+import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
 
 const inputClass =
   "mt-1.5 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-[#fe9a00] focus:ring-2 focus:ring-[#fe9a00]/10";
@@ -58,6 +62,8 @@ export default function TrafficViolationsManagement() {
   const [ticketReference, setTicketReference] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const filterDateValue = dateInputValue(filterDate);
   const deductionDateValue = dateInputValue(deductionDate);
 
@@ -131,6 +137,37 @@ export default function TrafficViolationsManagement() {
     setDeductionDate(filterDate);
     setTicketReference("");
     setReason("");
+    setEvidenceUrl("");
+  };
+
+  const uploadEvidence = async (file: File) => {
+    if (uploadingEvidence) return;
+    if (!file.type.startsWith("image/")) {
+      showToast.error("Select an image file");
+      return;
+    }
+    setUploadingEvidence(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: clientAuthHeaders(),
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error || "Could not upload evidence");
+      }
+      setEvidenceUrl(payload.url);
+      showToast.success("Ticket evidence uploaded");
+    } catch (error) {
+      showToast.error(
+        error instanceof Error ? error.message : "Could not upload evidence",
+      );
+    } finally {
+      setUploadingEvidence(false);
+    }
   };
 
   const addDeduction = async (event: FormEvent) => {
@@ -165,6 +202,7 @@ export default function TrafficViolationsManagement() {
             reason: reason.trim(),
             vehicleNumber: registration(selected),
             violationDate: deductionDateValue,
+            evidenceUrl: evidenceUrl || undefined,
           }),
         },
       );
@@ -300,7 +338,8 @@ export default function TrafficViolationsManagement() {
           reservation.refund?.depositPaid ?? reservation.deposit?.amount ?? 0,
         );
         const deductions = Number(reservation.refund?.deductionsTotal || 0);
-        const refund = Math.max(0, deposit - deductions);
+        const refund = Math.round((deposit - deductions) * 100) / 100;
+        const customerOwes = refund < 0;
         const additionalDeductions =
           reservation.refund?.additionalCharges || [];
         const isSelected = selected?._id === reservation._id;
@@ -376,8 +415,12 @@ export default function TrafficViolationsManagement() {
                 <p className="font-black text-red-300">-{money(deductions)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Refund balance</p>
-                <p className="font-black text-emerald-400">{money(refund)}</p>
+                <p className="text-xs text-slate-500">
+                  {customerOwes ? "Customer debt" : "Refund balance"}
+                </p>
+                <p className={`font-black ${customerOwes ? "text-red-300" : "text-emerald-400"}`}>
+                  {money(refund)}
+                </p>
               </div>
             </div>
 
@@ -401,10 +444,21 @@ export default function TrafficViolationsManagement() {
                       key={`${deduction.reason}-${index}`}
                       className="grid gap-1 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4"
                     >
-                      <div className="min-w-0">
-                        <p className="break-words text-xs font-semibold leading-5 text-slate-200">
-                          {deduction.reason}
-                        </p>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <EvidenceThumbnail
+                          url={deduction.evidenceUrl}
+                          alt={`Evidence for ${deduction.ticketReference || deduction.reason}`}
+                        />
+                        <div className="min-w-0">
+                          <p className="break-words text-xs font-semibold leading-5 text-slate-200">
+                            {deduction.reason}
+                          </p>
+                          {deduction.ticketReference && (
+                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              {deduction.ticketReference}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <p className="shrink-0 text-sm font-black tabular-nums text-red-300">
                         -{money(deduction.amount)}
@@ -441,7 +495,7 @@ export default function TrafficViolationsManagement() {
                     <FiX />
                   </button>
                 </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[150px_170px_190px_minmax(0,1fr)_auto] xl:items-end">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[150px_170px_190px_minmax(0,1fr)] xl:items-end">
                   <label className="text-xs font-bold uppercase tracking-wide text-slate-400">
                     Violation date
                     <DatePicker
@@ -491,10 +545,56 @@ export default function TrafficViolationsManagement() {
                       placeholder="e.g. Parking in a restricted area"
                     />
                   </label>
+                  <div className="md:col-span-2 xl:col-span-4">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                      Ticket image <span className="font-medium normal-case text-slate-600">(optional)</span>
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      {evidenceUrl && (
+                        <EvidenceThumbnail
+                          url={evidenceUrl}
+                          alt="Selected traffic ticket evidence"
+                          size="md"
+                        />
+                      )}
+                      <label className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-white transition hover:border-[#fe9a00]/30 hover:bg-[#fe9a00]/10 ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}>
+                        {uploadingEvidence ? (
+                          <FiLoader className="animate-spin text-[#fe9a00]" />
+                        ) : (
+                          <FiImage className="text-[#fe9a00]" />
+                        )}
+                        {uploadingEvidence
+                          ? "Uploading image…"
+                          : evidenceUrl
+                            ? "Replace image"
+                            : "Upload ticket image"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingEvidence}
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void uploadEvidence(file);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                      {evidenceUrl && !uploadingEvidence && (
+                        <button
+                          type="button"
+                          onClick={() => setEvidenceUrl("")}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-400/20 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:bg-red-500/15"
+                        >
+                          <FiTrash2 /> Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <button
                     type="submit"
-                    disabled={saving}
-                    className="inline-flex h-[42px] items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={saving || uploadingEvidence}
+                    className="inline-flex h-[42px] items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2 xl:col-span-4"
                   >
                     {saving ? (
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

@@ -357,7 +357,7 @@ export function calculateOfficeExtensionPrices({
       pickupDate,
     );
 
-    if (pickupSpecialDay?.isOpen) {
+    if (pickupSpecialDay) {
       pickupExtension = pickupSpecialDay.extraPrice || 0;
     } else {
       const pickupDaySchedule = office.workingTime?.find(
@@ -379,13 +379,13 @@ export function calculateOfficeExtensionPrices({
       returnDate,
     );
 
-    if (returnSpecialDay?.isOpen) {
+    if (returnSpecialDay) {
       const pickupSpecialDay = pickupDate
         ? findSpecialDayForDate(office.specialDays, pickupDate)
         : undefined;
       const isSamePricedSpecialDay = Boolean(
         pickupDate &&
-          pickupSpecialDay?.isOpen &&
+          pickupSpecialDay &&
           pickupSpecialDay.month === returnSpecialDay.month &&
           pickupSpecialDay.day === returnSpecialDay.day &&
           isSameCalendarDate(pickupDate, returnDate),

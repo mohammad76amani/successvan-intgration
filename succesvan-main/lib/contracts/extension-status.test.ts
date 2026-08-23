@@ -15,13 +15,22 @@ describe("extension agreement status selection", () => {
     (status) => expect(isPendingExtensionStatus(status)).toBe(false),
   );
 
-  it("only offers creation when no extension exists", () => {
-    expect(extensionPanelState({ exists: false })).toBe("create");
+  it("allows sequential extensions after completion", () => {
+    expect(extensionPanelState({ extensions: [] })).toBe("create");
     expect(
-      extensionPanelState({ exists: true, sourceAvailable: true }),
-    ).toBe("download");
+      extensionPanelState({
+        extensions: [{ status: "sent", sourceAvailable: true }],
+      }),
+    ).toBe("awaiting_signature");
     expect(
-      extensionPanelState({ exists: true, sourceAvailable: false }),
+      extensionPanelState({
+        extensions: [{ status: "generating", sourceAvailable: false }],
+      }),
     ).toBe("agreement_preparing");
+    expect(
+      extensionPanelState({
+        extensions: [{ status: "completed", sourceAvailable: true }],
+      }),
+    ).toBe("create_another");
   });
 });

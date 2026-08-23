@@ -9,6 +9,7 @@ import { clientAuthHeaders } from "@/lib/client-auth";
 import type { Reservation } from "@/types/type";
 import SearchableStaffSelect from "@/components/ui/SearchableStaffSelect";
 import ReservationExtensionPanel from "./ReservationExtensionPanel";
+import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
 
 type CategoryHandoverField = {
   _id?: string;
@@ -24,6 +25,11 @@ type AdditionalChargeForm = {
   id: string;
   amount: string;
   reason: string;
+  evidenceUrl?: string;
+  ticketReference?: string;
+  violationDate?: Date | string;
+  vehicleNumber?: string;
+  source?: "traffic_violation" | "manual";
 };
 
 const HANDOVER_STATUSES = [
@@ -50,6 +56,11 @@ const additionalChargeRows = (reservation: Reservation) => {
       id: `saved-${index}`,
       amount: String(charge.amount),
       reason: charge.reason,
+      evidenceUrl: charge.evidenceUrl,
+      ticketReference: charge.ticketReference,
+      violationDate: charge.violationDate,
+      vehicleNumber: charge.vehicleNumber,
+      source: charge.source,
     }));
   }
 
@@ -361,7 +372,8 @@ export default function ReservationOperationsPanel({
     category?.deposit?.handoverDepositPrice ??
     activeReservation.deposit?.amount ??
     0;
-  const refundAmount = Math.max(0, depositPaid - totalDeductions);
+  const refundAmount = Math.round((depositPaid - totalDeductions) * 100) / 100;
+  const customerOwes = refundAmount < 0;
 
   const post = async (path: string, body: object) => {
     const response = await fetch(path, {
@@ -1002,6 +1014,11 @@ export default function ReservationOperationsPanel({
         additionalCharges: additionalCharges.map((charge) => ({
           amount: Number(charge.amount),
           reason: charge.reason.trim(),
+          evidenceUrl: charge.evidenceUrl,
+          ticketReference: charge.ticketReference,
+          violationDate: charge.violationDate,
+          vehicleNumber: charge.vehicleNumber,
+          source: charge.source || "manual",
         })),
         chargeReason: refund.chargeReason,
         reference: refund.reference,
@@ -1615,8 +1632,12 @@ export default function ReservationOperationsPanel({
                 {additionalCharges.map((charge, index) => (
                   <div
                     key={charge.id}
-                    className="grid grid-cols-1 gap-3 rounded-xl border border-white/[0.09] bg-white/[0.025] p-3 shadow-sm shadow-black/10 sm:grid-cols-[110px_minmax(0,1fr)_40px] sm:items-end"
+                    className="grid grid-cols-1 gap-3 rounded-xl border border-white/[0.09] bg-white/[0.025] p-3 shadow-sm shadow-black/10 sm:grid-cols-[auto_110px_minmax(0,1fr)_40px] sm:items-end"
                   >
+                    <EvidenceThumbnail
+                      url={charge.evidenceUrl}
+                      alt={`Evidence for ${charge.ticketReference || charge.reason}`}
+                    />
                     <label className="text-[11px] font-medium text-slate-400">
                       Amount (£)
                       <input
@@ -1685,10 +1706,10 @@ export default function ReservationOperationsPanel({
               </strong>
             </p>
             <p className="text-slate-400">
-              Refund
+              {customerOwes ? "Customer debt" : "Refund"}
               <br />
-              <strong className="text-emerald-300">
-                £{refundAmount.toFixed(2)}
+              <strong className={customerOwes ? "text-red-300" : "text-emerald-300"}>
+                {customerOwes ? "-£" : "£"}{Math.abs(refundAmount).toFixed(2)}
               </strong>
             </p>
           </div>

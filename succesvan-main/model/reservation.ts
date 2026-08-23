@@ -113,6 +113,12 @@ const reservationSchema = new mongoose.Schema(
         selectedTierIndex: { type: Number },
       },
     ],
+    additionalDriver: {
+      name: { type: String, trim: true },
+      licenceNumber: { type: String, trim: true },
+      capturedAt: { type: Date },
+      capturedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     discountCode: { type: String },
     isManualPrice: { type: Boolean, default: false },
     manualPricePerDay: { type: Number },
@@ -241,6 +247,15 @@ const reservationSchema = new mongoose.Schema(
         {
           amount: { type: Number, min: 0, required: true },
           reason: { type: String, trim: true, required: true },
+          evidenceUrl: { type: String, trim: true },
+          ticketReference: { type: String, trim: true },
+          violationDate: { type: Date },
+          vehicleNumber: { type: String, trim: true },
+          source: {
+            type: String,
+            enum: ["traffic_violation", "manual"],
+            default: "manual",
+          },
         },
       ],
       chargeReason: { type: String, trim: true },

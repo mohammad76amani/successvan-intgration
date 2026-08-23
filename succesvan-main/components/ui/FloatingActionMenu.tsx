@@ -23,14 +23,42 @@ const CHATBOT_DISMISSED_KEY = "chatbot_popup_dismissed";
 const CHAT_HISTORY_KEY = "chatbot_messages";
 const DEVICE_ID_KEY = "chatbot_device_id";
 
+function createBrowserDeviceId(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return `device_${cryptoApi.randomUUID()}`;
+  }
+
+  // randomUUID is unavailable on non-secure LAN origins such as
+  // http://192.168.x.x, while getRandomValues is still widely supported.
+  if (typeof cryptoApi?.getRandomValues === "function") {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return `device_${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  // This ID only separates local chat histories; it is not an auth token.
+  return `device_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 function getOrCreateDeviceId(): string {
   if (typeof window === "undefined") return "";
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = "device_" + crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  try {
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = createBrowserDeviceId();
+      localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    return deviceId;
+  } catch {
+    // Storage may be blocked by the browser; keep the chat usable for this load.
+    return createBrowserDeviceId();
   }
-  return deviceId;
 }
 
 function loadMessages(): Message[] {

@@ -14,16 +14,14 @@ import {
   formatDateInputInLondon,
   formatTimeInLondon,
   parseStorageDate,
+  resolveStoredLondonDateTime,
 } from "@/lib/englandTime";
 import { generateRentalAgreementPdf } from "./pdf";
 import { generateReservationExtensionPdf } from "./extension-pdf";
 import { getContractStorage } from "./storage";
 import { sha256Hex } from "./hash";
 import { serializeContract } from "./serialization";
-import {
-  contractNumberDatePrefix,
-  formatContractNumber,
-} from "./number";
+import { contractNumberDatePrefix, formatContractNumber } from "./number";
 import {
   canDownloadSignedDocument,
   canGenerateSigningUrl,
@@ -53,8 +51,12 @@ import {
   downloadEnvelopeDocument,
   getEnvelopeMetadata,
 } from "@/lib/docusign/documents";
-import { calculateOfficeExtensionPrices } from "@/lib/specialDaySchedule";
+import {
+  calculateOfficeExtensionPrices,
+  findSpecialDayForDate,
+} from "@/lib/specialDaySchedule";
 import { calculateReservationExtensionPrice } from "@/lib/reservation-extension-pricing";
+import { validateAdditionalDriver } from "@/lib/additional-driver";
 
 const contractDocumentSelect =
   "+sourceDocument.storageKey +signedDocument.storageKey +certificateDocument.storageKey";
@@ -77,10 +79,15 @@ type ContractCreationOptions = {
   insuranceProvider?: "diba" | "customer";
   insuranceOtherExcess?: string;
   handoverDepositAmount?: number;
+  additionalDriver?: {
+    name: string;
+    licenceNumber: string;
+  };
 };
 
 export type ReservationExtensionCreationOptions = {
   newReturnDateTime: Date | string;
+  manualReturnExtensionPrice?: number;
   customPrice?: number;
   customPriceReason?: string;
   paymentDueAt?: Date | string;
@@ -104,7 +111,11 @@ function contractNumberDateParts(date: Date) {
   const [year, month, day] = formatDateInputInLondon(date).split("-");
   const prefix = contractNumberDatePrefix(date);
   const calendarDate = new Date(Number(year), Number(month) - 1, Number(day));
-  const followingDate = new Date(Number(year), Number(month) - 1, Number(day) + 1);
+  const followingDate = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day) + 1,
+  );
 
   return {
     prefix,
@@ -163,7 +174,9 @@ function isDuplicateExtensionRevision(error: unknown) {
     duplicateError.code === 11000 &&
     (Boolean(duplicateError.keyPattern?.extensionBookingKey) ||
       duplicateError.message?.includes("one_extension_per_booking") === true ||
-      Boolean(duplicateError.keyPattern?.["extension.previousReturnDateTime"]) ||
+      Boolean(
+        duplicateError.keyPattern?.["extension.previousReturnDateTime"],
+      ) ||
       duplicateError.message?.includes("one_extension_per_return_revision") ===
         true)
   );
@@ -183,7 +196,10 @@ function addAudit(
   contract.auditTrail.push({
     action,
     source,
-    actorId: actorId && Types.ObjectId.isValid(actorId) ? new Types.ObjectId(actorId) : undefined,
+    actorId:
+      actorId && Types.ObjectId.isValid(actorId)
+        ? new Types.ObjectId(actorId)
+        : undefined,
     metadata,
     createdAt: new Date(),
   });
@@ -221,65 +237,63 @@ async function removeLegacySingleContractIndex() {
   }
 }
 
-let singleExtensionIndexPromise: Promise<void> | null = null;
+let extensionRevisionIndexPromise: Promise<void> | null = null;
 
-async function ensureSingleExtensionIndex() {
-  if (singleExtensionIndexPromise) return singleExtensionIndexPromise;
-  singleExtensionIndexPromise = (async () => {
+async function ensureExtensionRevisionIndex() {
+  if (extensionRevisionIndexPromise) return extensionRevisionIndexPromise;
+  extensionRevisionIndexPromise = (async () => {
     const indexes = await Contract.collection.indexes();
-    const previousIndex = indexes.find(
-      (index) => index.name === "one_extension_per_return_revision",
+    const legacyIndex = indexes.find(
+      (index) => index.name === "one_extension_per_booking",
     );
-    if (previousIndex?.name) {
-      await Contract.collection.dropIndex(previousIndex.name);
+    if (legacyIndex?.name) {
+      await Contract.collection.dropIndex(legacyIndex.name);
     }
-    await Contract.collection.createIndex(
-      { extensionBookingKey: 1 },
-      {
-        unique: true,
-        name: "one_extension_per_booking",
-        partialFilterExpression: {
-          extensionBookingKey: { $type: "string" },
-        },
-      },
-    );
 
-    // Backfill only unambiguous historical bookings. Development databases
-    // that already contain multiple extensions are preserved; the service
-    // guard below still prevents any further extension for those bookings.
-    const groups = await Contract.aggregate<{
-      _id: Types.ObjectId;
-      contractIds: Types.ObjectId[];
-      count: number;
-    }>([
-      { $match: { contractType: "reservation_extension" } },
-      {
-        $group: {
-          _id: "$bookingId",
-          contractIds: { $push: "$_id" },
-          count: { $sum: 1 },
-        },
-      },
-      { $match: { count: 1 } },
-    ]);
-    if (groups.length) {
+    const extensions = await Contract.find({
+      contractType: "reservation_extension",
+      "extension.previousReturnDateTime": { $type: "date" },
+    })
+      .select("bookingId extension.previousReturnDateTime")
+      .lean();
+    if (extensions.length) {
       await Contract.bulkWrite(
-        groups.map((group) => ({
+        extensions.map((extension) => ({
           updateOne: {
-            filter: {
-              _id: group.contractIds[0],
-              extensionBookingKey: { $exists: false },
+            filter: { _id: extension._id },
+            update: {
+              $set: {
+                extensionBookingKey: `${extension.bookingId.toString()}:${new Date(
+                  extension.extension?.previousReturnDateTime as Date,
+                ).toISOString()}`,
+              },
             },
-            update: { $set: { extensionBookingKey: group._id.toString() } },
           },
         })),
       );
     }
+    const currentIndexes = await Contract.collection.indexes();
+    if (
+      !currentIndexes.some(
+        (index) => index.name === "one_extension_per_return_revision",
+      )
+    ) {
+      await Contract.collection.createIndex(
+        { extensionBookingKey: 1 },
+        {
+          unique: true,
+          name: "one_extension_per_return_revision",
+          partialFilterExpression: {
+            extensionBookingKey: { $type: "string" },
+          },
+        },
+      );
+    }
   })().catch((error) => {
-    singleExtensionIndexPromise = null;
+    extensionRevisionIndexPromise = null;
     throw error;
   });
-  return singleExtensionIndexPromise;
+  return extensionRevisionIndexPromise;
 }
 
 function requireInsuranceArrangement(reservation: {
@@ -302,7 +316,11 @@ function applyContractInsuranceOptions(
   reservation: Record<string, unknown>,
   options: ContractCreationOptions,
 ) {
-  if (!options.insuranceProvider && options.handoverDepositAmount === undefined) {
+  if (
+    !options.insuranceProvider &&
+    options.handoverDepositAmount === undefined &&
+    !options.additionalDriver
+  ) {
     return reservation;
   }
 
@@ -317,6 +335,9 @@ function applyContractInsuranceOptions(
     ...(options.handoverDepositAmount !== undefined
       ? { handoverDepositAmount: options.handoverDepositAmount }
       : {}),
+    ...(options.additionalDriver
+      ? { additionalDriver: options.additionalDriver }
+      : {}),
     insuranceArrangement: {
       ...currentArrangement,
       ...(options.insuranceProvider
@@ -330,6 +351,23 @@ function applyContractInsuranceOptions(
         : {}),
     },
   };
+}
+
+function requireAdditionalDriverDetails(reservation: {
+  addOns?: Array<{ addOn?: { name?: string; type?: string } }>;
+  additionalDriver?: { name?: string; licenceNumber?: string };
+}) {
+  try {
+    validateAdditionalDriver(reservation.addOns, reservation.additionalDriver);
+  } catch (error) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      error instanceof Error
+        ? error.message
+        : "Enter the additional driver details.",
+      400,
+    );
+  }
 }
 
 function reservationCustomer(reservation: {
@@ -348,18 +386,14 @@ function reservationCustomer(reservation: {
   };
 }) {
   const user = reservation.user;
-  const licenceName =
-    user?.licenceDetails?.isFrontSide
-      ? (
-          user.licenceDetails.fullName ||
-          [
-            user.licenceDetails.firstName,
-            user.licenceDetails.lastName,
-          ]
-            .filter(Boolean)
-            .join(" ")
-        ).trim()
-      : "";
+  const licenceName = user?.licenceDetails?.isFrontSide
+    ? (
+        user.licenceDetails.fullName ||
+        [user.licenceDetails.firstName, user.licenceDetails.lastName]
+          .filter(Boolean)
+          .join(" ")
+      ).trim()
+    : "";
   const accountName = `${user?.name || ""} ${user?.lastName || ""}`.trim();
   const customerName = licenceName || accountName;
   const customerEmail = user?.emaildata?.emailAddress?.trim();
@@ -393,7 +427,9 @@ function certificateStorageKey(contractId: string) {
 }
 
 async function getContractWithFiles(contractId: string) {
-  const contract = await Contract.findById(contractId).select(contractDocumentSelect);
+  const contract = await Contract.findById(contractId).select(
+    contractDocumentSelect,
+  );
   if (!contract) {
     throw new ContractIntegrationError(
       "CONTRACT_NOT_FOUND",
@@ -508,8 +544,9 @@ async function generateAndStoreSourcePdf(
     contract.contractType === "reservation_extension"
       ? await (async () => {
           const originalContract = contract.originalContractId
-            ? await Contract.findById(contract.originalContractId)
-                .select("contractNumber createdAt")
+            ? await Contract.findById(contract.originalContractId).select(
+                "contractNumber createdAt",
+              )
             : null;
           if (!originalContract || !contract.extension) {
             throw new ContractIntegrationError(
@@ -552,9 +589,15 @@ async function generateAndStoreSourcePdf(
     mimeType: pdf.mimeType,
     sha256: pdf.sha256,
   };
-  addAudit(contract, "source_pdf_generated", actor?.source || "system", actor?.actorId, {
-    sha256: pdf.sha256,
-  });
+  addAudit(
+    contract,
+    "source_pdf_generated",
+    actor?.source || "system",
+    actor?.actorId,
+    {
+      sha256: pdf.sha256,
+    },
+  );
   await contract.save();
 }
 
@@ -569,7 +612,8 @@ export async function createContractForBooking(
 
   if (
     options.insuranceProvider ||
-    options.handoverDepositAmount !== undefined
+    options.handoverDepositAmount !== undefined ||
+    options.additionalDriver
   ) {
     const updateFields: Record<string, unknown> = {};
     if (options.insuranceProvider) {
@@ -588,6 +632,16 @@ export async function createContractForBooking(
     }
     if (options.handoverDepositAmount !== undefined) {
       updateFields.handoverDepositAmount = options.handoverDepositAmount;
+    }
+    if (options.additionalDriver) {
+      updateFields.additionalDriver = {
+        ...options.additionalDriver,
+        capturedAt: new Date(),
+        capturedBy:
+          actor.actorId && Types.ObjectId.isValid(actor.actorId)
+            ? new Types.ObjectId(actor.actorId)
+            : undefined,
+      };
     }
     await Reservation.findByIdAndUpdate(bookingId, {
       $set: updateFields,
@@ -648,12 +702,15 @@ export async function createContractForBooking(
         options,
       );
       requireInsuranceArrangement(contractReservation);
+      requireAdditionalDriverDetails(contractReservation as never);
       await generateAndStoreSourcePdf(existing, contractReservation, actor);
     }
     if (sendNow && !existing.docusign?.envelopeId) {
       await sendContract(existing._id.toString(), actor);
     }
-    return serializeContract(await Contract.findById(existing._id).populate("bookingId"));
+    return serializeContract(
+      await Contract.findById(existing._id).populate("bookingId"),
+    );
   }
 
   const reservation = await loadReservation(bookingId);
@@ -662,6 +719,7 @@ export async function createContractForBooking(
     options,
   );
   requireInsuranceArrangement(contractReservation);
+  requireAdditionalDriverDetails(contractReservation as never);
   const customer = reservationCustomer(reservation.toObject());
   const id = new Types.ObjectId();
 
@@ -713,9 +771,10 @@ export async function createContractForBooking(
       auditTrail: {
         action: "contract_ready",
         source: actor.source,
-        actorId: actor.actorId && Types.ObjectId.isValid(actor.actorId)
-          ? new Types.ObjectId(actor.actorId)
-          : undefined,
+        actorId:
+          actor.actorId && Types.ObjectId.isValid(actor.actorId)
+            ? new Types.ObjectId(actor.actorId)
+            : undefined,
         createdAt: new Date(),
       },
     },
@@ -725,12 +784,15 @@ export async function createContractForBooking(
     await sendContract(contract._id.toString(), actor);
   }
 
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 async function extensionContext(
   bookingId: string,
   newReturnInput: Date | string,
+  manualReturnExtensionPrice?: number,
 ) {
   await connect();
   objectId(bookingId, "BOOKING_NOT_FOUND");
@@ -754,24 +816,36 @@ async function extensionContext(
       409,
     );
   }
-  const existingExtension = await Contract.findOne({
+  const unfinishedExtension = await Contract.findOne({
     bookingId,
     contractType: "reservation_extension",
+    status: {
+      $in: [
+        "draft",
+        "generating",
+        "ready",
+        "sent",
+        "delivered",
+        "viewed",
+        "signing",
+      ],
+    },
   }).select("contractNumber status");
-  if (existingExtension) {
+  if (unfinishedExtension) {
     throw new ContractIntegrationError(
       "CONTRACT_ALREADY_SENT",
-      "This reservation already has an extension agreement. Only one extension is allowed per reservation.",
+      `Extension ${unfinishedExtension.contractNumber} is still awaiting completion. Sign or finish it before creating another extension.`,
       409,
     );
   }
 
-  const currentReturn = new Date(reservation.endDate);
+  const currentReturn = resolveStoredLondonDateTime(
+    reservation.endDateDisplay,
+    reservation.returnTime,
+    reservation.endDate,
+  );
   const newReturn = new Date(newReturnInput);
-  if (
-    Number.isNaN(newReturn.getTime()) ||
-    newReturn <= currentReturn
-  ) {
+  if (Number.isNaN(newReturn.getTime()) || newReturn <= currentReturn) {
     throw new ContractIntegrationError(
       "BOOKING_MISSING_REQUIRED_DATA",
       "The new return date and time must be after the current return.",
@@ -789,12 +863,8 @@ async function extensionContext(
       status: { $nin: ["canceled", "completed", "refund_completed"] },
       startDate: { $lt: newReturn },
       endDate: { $gt: currentReturn },
-      $or: [
-        { vehicle: vehicleId },
-        { "vehicleSnapshot.vehicleId": vehicleId },
-      ],
-    })
-      .select("reservationCode startDate endDate");
+      $or: [{ vehicle: vehicleId }, { "vehicleSnapshot.vehicleId": vehicleId }],
+    }).select("reservationCode startDate endDate");
     if (conflict) {
       throw new ContractIntegrationError(
         "BOOKING_MISSING_REQUIRED_DATA",
@@ -812,18 +882,45 @@ async function extensionContext(
     }>;
     extrahoursRate?: number;
     selloffer?: number;
-    gear?: { automaticExtraCost?: number };
+    gear?: {
+      availableTypes?: string[];
+      automaticExtraCost?: number;
+    };
   };
-  const office = reservation.office as Record<string, unknown>;
+  const office = reservation.office as {
+    specialDays?: Array<{
+      month: number;
+      day: number;
+      extraPrice?: number;
+      reason?: string;
+    }>;
+  };
+  if (
+    manualReturnExtensionPrice !== undefined &&
+    (!Number.isFinite(manualReturnExtensionPrice) ||
+      manualReturnExtensionPrice < 0)
+  ) {
+    throw new ContractIntegrationError(
+      "BOOKING_MISSING_REQUIRED_DATA",
+      "Enter a valid manual return extension fee.",
+      400,
+    );
+  }
   const newReturnDay = parseStorageDate(formatDateInputInLondon(newReturn));
-  const officePrices =
-    newReturnDay
-      ? calculateOfficeExtensionPrices({
-          office: office as never,
-          returnDate: newReturnDay,
-          returnTime: formatTimeInLondon(newReturn),
-        })
-      : { pickupExtension: 0, returnExtension: 0 };
+  const officePrices = newReturnDay
+    ? calculateOfficeExtensionPrices({
+        office: office as never,
+        returnDate: newReturnDay,
+        returnTime: formatTimeInLondon(newReturn),
+      })
+    : { pickupExtension: 0, returnExtension: 0 };
+  const returnSpecialDay = newReturnDay
+    ? findSpecialDayForDate(office.specialDays as never, newReturnDay)
+    : undefined;
+  const automaticReturnExtensionPrice = returnSpecialDay
+    ? 0
+    : officePrices.returnExtension;
+  const availableGearTypes = category.gear?.availableTypes || [];
   const pricing = calculateReservationExtensionPrice({
     currentReturn,
     newReturn,
@@ -831,10 +928,14 @@ async function extensionContext(
     extraHoursRate: category.extrahoursRate,
     sellOfferPercent: category.selloffer,
     gearExtraCostPerDay:
-      reservation.selectedGear === "automatic"
+      reservation.selectedGear === "automatic" &&
+      availableGearTypes.includes("automatic") &&
+      availableGearTypes.includes("manual")
         ? category.gear?.automaticExtraCost
         : 0,
-    returnExtensionPrice: officePrices.returnExtension,
+    returnExtensionPrice:
+      manualReturnExtensionPrice ?? automaticReturnExtensionPrice,
+    specialDays: office.specialDays,
     addOns: reservation.addOns as never,
   });
 
@@ -844,8 +945,13 @@ async function extensionContext(
 export async function previewReservationExtension(
   bookingId: string,
   newReturnDateTime: Date | string,
+  manualReturnExtensionPrice?: number,
 ) {
-  const context = await extensionContext(bookingId, newReturnDateTime);
+  const context = await extensionContext(
+    bookingId,
+    newReturnDateTime,
+    manualReturnExtensionPrice,
+  );
   return {
     currentReturnDateTime: context.currentReturn.toISOString(),
     newReturnDateTime: context.newReturn.toISOString(),
@@ -861,8 +967,12 @@ export async function createReservationExtensionContract(
   sendNow = true,
 ) {
   await removeLegacySingleContractIndex();
-  const context = await extensionContext(bookingId, options.newReturnDateTime);
-  await ensureSingleExtensionIndex();
+  const context = await extensionContext(
+    bookingId,
+    options.newReturnDateTime,
+    options.manualReturnExtensionPrice,
+  );
+  await ensureExtensionRevisionIndex();
   const customPriceProvided = options.customPrice !== undefined;
   const customPrice = Number(options.customPrice);
   if (
@@ -908,7 +1018,7 @@ export async function createReservationExtensionContract(
         customerPhone: customer.customerPhone,
         contractNumber: await nextContractNumber(),
         contractType: "reservation_extension",
-        extensionBookingKey: context.reservation._id.toString(),
+        extensionBookingKey: `${context.reservation._id.toString()}:${context.currentReturn.toISOString()}`,
         originalContractId: context.originalContract._id,
         status: "generating",
         extension: {
@@ -957,7 +1067,7 @@ export async function createReservationExtensionContract(
       if (isDuplicateExtensionRevision(error)) {
         throw new ContractIntegrationError(
           "CONTRACT_ALREADY_SENT",
-          "This reservation already has an extension agreement. Only one extension is allowed per reservation.",
+          "An extension agreement already exists for this return-date revision.",
           409,
         );
       }
@@ -978,7 +1088,12 @@ export async function createReservationExtensionContract(
     actor,
   );
   contract.status = "ready";
-  addAudit(contract, "reservation_extension_ready", actor.source, actor.actorId);
+  addAudit(
+    contract,
+    "reservation_extension_ready",
+    actor.source,
+    actor.actorId,
+  );
   await contract.save();
   if (sendNow) await sendContract(contract._id.toString(), actor);
   return serializeContract(
@@ -1035,9 +1150,15 @@ export async function supersedeContractForBooking(
   }
 
   contract.status = "expired";
-  addAudit(contract, "contract_superseded_after_booking_edit", actor.source, actor.actorId, {
-    reason,
-  });
+  addAudit(
+    contract,
+    "contract_superseded_after_booking_edit",
+    actor.source,
+    actor.actorId,
+    {
+      reason,
+    },
+  );
   await contract.save();
   return serializeContract(
     await Contract.findById(contract._id).populate("bookingId"),
@@ -1111,7 +1232,9 @@ export async function listCustomerContracts(
 
 export async function getAdminContract(contractId: string) {
   await connect();
-  const contract = await Contract.findById(objectId(contractId)).populate("bookingId");
+  const contract = await Contract.findById(objectId(contractId)).populate(
+    "bookingId",
+  );
   if (!contract) {
     throw new ContractIntegrationError(
       "CONTRACT_NOT_FOUND",
@@ -1122,13 +1245,19 @@ export async function getAdminContract(contractId: string) {
   return serializeContract(contract);
 }
 
-export async function getCustomerContract(contractId: string, customerId: string) {
+export async function getCustomerContract(
+  contractId: string,
+  customerId: string,
+) {
   await connect();
   const contract = await getContractForCustomer(contractId, customerId);
   return serializeContract(contract);
 }
 
-export async function generateContractPdf(contractId: string, actor: ActorInput) {
+export async function generateContractPdf(
+  contractId: string,
+  actor: ActorInput,
+) {
   await connect();
   const contract = await getContractWithFiles(contractId);
   if (contract.status === "completed") {
@@ -1141,24 +1270,34 @@ export async function generateContractPdf(contractId: string, actor: ActorInput)
   const reservation = await loadReservation(contract.bookingId.toString());
   const previousStatus = contract.status;
   contract.status = "generating";
-  addAudit(contract, "source_pdf_regeneration_started", actor.source, actor.actorId);
+  addAudit(
+    contract,
+    "source_pdf_regeneration_started",
+    actor.source,
+    actor.actorId,
+  );
   await contract.save();
   await generateAndStoreSourcePdf(contract, reservation.toObject(), actor);
-  const regeneratedStatus = contract.docusign?.envelopeId ? previousStatus : "ready";
+  const regeneratedStatus = contract.docusign?.envelopeId
+    ? previousStatus
+    : "ready";
   await Contract.findByIdAndUpdate(contract._id, {
     $set: { status: regeneratedStatus },
     $push: {
       auditTrail: {
         action: "source_pdf_regenerated",
         source: actor.source,
-        actorId: actor.actorId && Types.ObjectId.isValid(actor.actorId)
-          ? new Types.ObjectId(actor.actorId)
-          : undefined,
+        actorId:
+          actor.actorId && Types.ObjectId.isValid(actor.actorId)
+            ? new Types.ObjectId(actor.actorId)
+            : undefined,
         createdAt: new Date(),
       },
     },
   });
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 export async function sendContract(contractId: string, actor: ActorInput) {
@@ -1174,7 +1313,9 @@ export async function sendContract(contractId: string, actor: ActorInput) {
   }
 
   if (contract.docusign?.envelopeId) {
-    return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+    return serializeContract(
+      await Contract.findById(contract._id).populate("bookingId"),
+    );
   }
 
   if (!contract.sourceDocument?.storageKey) {
@@ -1182,7 +1323,9 @@ export async function sendContract(contractId: string, actor: ActorInput) {
     await generateAndStoreSourcePdf(contract, reservation.toObject(), actor);
   }
 
-  const sourcePdf = await getContractStorage().get(contract.sourceDocument.storageKey);
+  const sourcePdf = await getContractStorage().get(
+    contract.sourceDocument.storageKey,
+  );
   const envelopeInput = {
     id: contract._id.toString(),
     bookingId: contract.bookingId.toString(),
@@ -1211,7 +1354,9 @@ export async function sendContract(contractId: string, actor: ActorInput) {
   });
   await contract.save();
 
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 export async function createContractSigningUrl(
@@ -1254,7 +1399,10 @@ export async function createContractSigningUrl(
     if (!isUnknownEnvelopeRecipient(error)) throw error;
 
     await recreateEnvelopeForEmbeddedSigning(contract, customerId);
-    const repairedContract = await getContractForCustomer(contractId, customerId);
+    const repairedContract = await getContractForCustomer(
+      contractId,
+      customerId,
+    );
     if (!repairedContract.docusign?.envelopeId) {
       throw new ContractIntegrationError(
         "DOCUSIGN_ENVELOPE_NOT_FOUND",
@@ -1486,9 +1634,11 @@ async function applyEnvelopeStatus(
   contract.status = incomingStatus;
   contract.docusign.envelopeStatus = envelopeStatus;
   contract.docusign.statusChangedAt = occurredAt;
-  if (incomingStatus === "delivered") contract.docusign.deliveredAt = occurredAt;
+  if (incomingStatus === "delivered")
+    contract.docusign.deliveredAt = occurredAt;
   if (incomingStatus === "viewed") contract.docusign.viewedAt = occurredAt;
-  if (incomingStatus === "completed") contract.docusign.completedAt = occurredAt;
+  if (incomingStatus === "completed")
+    contract.docusign.completedAt = occurredAt;
   if (incomingStatus === "declined") {
     contract.docusign.declinedAt = occurredAt;
     contract.docusign.declineReason = reason?.declineReason;
@@ -1515,7 +1665,10 @@ async function applyEnvelopeStatus(
   }
 }
 
-export async function refreshContractStatus(contractId: string, actor: ActorInput) {
+export async function refreshContractStatus(
+  contractId: string,
+  actor: ActorInput,
+) {
   await connect();
   const contract = await getContractWithFiles(contractId);
   if (!contract.docusign?.envelopeId) {
@@ -1528,7 +1681,9 @@ export async function refreshContractStatus(contractId: string, actor: ActorInpu
 
   try {
     const metadata = await getEnvelopeMetadata(contract.docusign.envelopeId);
-    const status = String(metadata.status || contract.docusign.envelopeStatus || "sent");
+    const status = String(
+      metadata.status || contract.docusign.envelopeStatus || "sent",
+    );
     const occurredAt = metadata.statusChangedDateTime
       ? new Date(metadata.statusChangedDateTime)
       : new Date();
@@ -1537,7 +1692,9 @@ export async function refreshContractStatus(contractId: string, actor: ActorInpu
     throw normalizeDocuSignSdkError(error);
   }
 
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 export async function voidContract(
@@ -1567,9 +1724,13 @@ export async function voidContract(
   contract.docusign.envelopeStatus = "voided";
   contract.docusign.voidedAt = new Date();
   contract.docusign.voidReason = reason;
-  addAudit(contract, "contract_voided", actor.source, actor.actorId, { reason });
+  addAudit(contract, "contract_voided", actor.source, actor.actorId, {
+    reason,
+  });
   await contract.save();
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 export async function resendContract(contractId: string, actor: ActorInput) {
@@ -1592,10 +1753,15 @@ export async function resendContract(contractId: string, actor: ActorInput) {
   await resendRentalAgreementEnvelope(contract.docusign.envelopeId);
   addAudit(contract, "docusign_envelope_resent", actor.source, actor.actorId);
   await contract.save();
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
-export async function handleCompletedDocumentRetry(contractId: string, actor: ActorInput) {
+export async function handleCompletedDocumentRetry(
+  contractId: string,
+  actor: ActorInput,
+) {
   await connect();
   const contract = await getContractWithFiles(contractId);
   if (!canDownloadSignedDocument(contract.status)) {
@@ -1608,7 +1774,9 @@ export async function handleCompletedDocumentRetry(contractId: string, actor: Ac
   await storeCompletedDocuments(contract);
   addAudit(contract, "completed_documents_retry", actor.source, actor.actorId);
   await contract.save();
-  return serializeContract(await Contract.findById(contract._id).populate("bookingId"));
+  return serializeContract(
+    await Contract.findById(contract._id).populate("bookingId"),
+  );
 }
 
 export async function getContractDocument(
@@ -1633,14 +1801,6 @@ export async function getContractDocument(
       "CONTRACT_NOT_FOUND",
       "Contract document is not available yet.",
       404,
-    );
-  }
-
-  if (customerId && kind === "source" && contract.status !== "completed") {
-    throw new ContractIntegrationError(
-      "CONTRACT_ACCESS_DENIED",
-      "This document is not available to download yet.",
-      403,
     );
   }
 

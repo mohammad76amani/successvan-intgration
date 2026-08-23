@@ -10,8 +10,10 @@ import {
 } from "@/lib/notification-scheduler";
 import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
 import Vehicle from "@/model/vehicle";
+import { normalizeRefundAdditionalCharges } from "@/lib/refund-additional-charges";
 
 const money = (value: unknown) => Math.max(0, Number(value) || 0);
+const signedMoney = (value: number) => Math.round(value * 100) / 100;
 
 export async function POST(
   req: NextRequest,
@@ -51,6 +53,7 @@ export async function POST(
         .trim()
         .toUpperCase();
       const violationDate = String(body.violationDate || "").trim();
+      const evidenceUrl = String(body.evidenceUrl || "").trim();
       const violationDay = parseStorageDate(violationDate);
       if (amount <= 0)
         return errorResponse("A positive amount is required", 400);
@@ -108,14 +111,9 @@ export async function POST(
         return errorResponse("The deduction reason is too long", 400);
       }
 
-      const additionalCharges = [
-        ...(existing.refund?.additionalCharges || []).map(
-          (charge: { amount?: unknown; reason?: unknown }) => ({
-            amount: money(charge.amount),
-            reason: String(charge.reason || "").trim(),
-          }),
-        ),
-      ];
+      const additionalCharges = normalizeRefundAdditionalCharges(
+        existing.refund?.additionalCharges || [],
+      );
       const normalizeTicketText = (value: string) =>
         value.toUpperCase().replace(/[^A-Z0-9]/g, "");
       const normalizedTicketReference = normalizeTicketText(ticketReference);
@@ -132,7 +130,15 @@ export async function POST(
           409,
         );
       }
-      additionalCharges.push({ amount, reason: savedReason });
+      additionalCharges.push({
+        amount,
+        reason: savedReason,
+        evidenceUrl: evidenceUrl || undefined,
+        ticketReference,
+        violationDate: violationStart,
+        vehicleNumber,
+        source: "traffic_violation",
+      });
 
       const savedCharges = (existing.refund?.charges?.toObject?.() ||
         existing.refund?.charges ||
@@ -154,7 +160,7 @@ export async function POST(
       existing.set("refund.deductionsTotal", deductionsTotal);
       existing.set(
         "refund.refundAmount",
-        Math.max(0, depositPaid - deductionsTotal),
+        signedMoney(depositPaid - deductionsTotal),
       );
       existing.statusHistory.push({
         status: existing.status,
@@ -183,11 +189,8 @@ export async function POST(
         400,
       );
     }
-    const additionalCharges = submittedAdditionalCharges.map(
-      (item: { amount?: unknown; reason?: unknown }) => ({
-        amount: money(item?.amount),
-        reason: String(item?.reason || "").trim(),
-      }),
+    const additionalCharges = normalizeRefundAdditionalCharges(
+      submittedAdditionalCharges,
     );
     if (
       additionalCharges.some(
@@ -211,7 +214,7 @@ export async function POST(
     const depositPaid = money(
       existing.refund?.depositPaid ?? existing.deposit?.amount,
     );
-    const refundAmount = Math.max(0, depositPaid - deductionsTotal);
+    const refundAmount = signedMoney(depositPaid - deductionsTotal);
     const now = new Date();
     const status =
       body.action === "complete"

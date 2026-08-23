@@ -8,6 +8,7 @@ import {
   FiRefreshCw,
   FiCheckCircle,
   FiClock,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import {
@@ -61,18 +62,23 @@ const statusBadgeStyles: Record<string, string> = {
 export default function ContractsContent() {
   const [contracts, setContracts] = useState<SafeContractSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const fetchContracts = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch("/api/contracts", { headers: authHeaders() });
       const payload = await res.json();
-      if (!payload.success) throw new Error(apiError(payload));
+      if (!res.ok || !payload.success) throw new Error(apiError(payload));
       setContracts(payload.data || []);
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not load agreements";
+      setLoadError(message);
       showToast.error(
-        error instanceof Error ? error.message : "Could not load agreements",
+        message,
       );
     } finally {
       setLoading(false);
@@ -176,6 +182,26 @@ export default function ContractsContent() {
     );
   }
 
+  if (loadError && contracts.length === 0) {
+    return (
+      <div
+        role="alert"
+        className="rounded-2xl border border-red-400/20 bg-gradient-to-b from-red-500/[0.09] to-red-500/[0.03] p-5 text-center shadow-xl shadow-black/10 sm:p-7"
+      >
+        <FiAlertCircle className="mx-auto text-3xl text-red-300" aria-hidden="true" />
+        <h3 className="mt-3 text-lg font-black text-white">Could not load agreements</h3>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-red-200/80">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => void fetchContracts()}
+          className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-300/25 bg-red-400/10 px-4 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/15 focus:outline-none focus:ring-2 focus:ring-red-300/50"
+        >
+          <FiRefreshCw aria-hidden="true" /> Try again
+        </button>
+      </div>
+    );
+  }
+
   if (contracts.length === 0) {
     return (
       <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#0b1224]/95 to-[#07101f]/90 px-4 py-10 text-center shadow-xl shadow-black/15 sm:px-8 sm:py-14">
@@ -194,6 +220,24 @@ export default function ContractsContent() {
 
   return (
     <div className="space-y-4 sm:space-y-5">
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-red-400/20 bg-red-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2.5">
+            <FiAlertCircle className="mt-0.5 shrink-0 text-red-300" aria-hidden="true" />
+            <p className="text-sm leading-6 text-red-100">{loadError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchContracts()}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-red-300/25 bg-red-400/10 px-3 py-2 text-xs font-black text-red-100 transition hover:bg-red-400/15"
+          >
+            <FiRefreshCw aria-hidden="true" /> Try again
+          </button>
+        </div>
+      )}
       {contracts.map((contract) => {
         const busy = busyId === contract._id;
         const signable = canGenerateSigningUrl(contract.status);
@@ -300,7 +344,7 @@ export default function ContractsContent() {
                       className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-white transition duration-200 hover:border-white/20 hover:bg-white/[0.10] sm:w-auto"
                     >
                       <FiDownload />
-                      Download agreement
+                      Download unsigned agreement
                     </button>
                   )}
 
@@ -310,7 +354,7 @@ export default function ContractsContent() {
                       className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-300 transition duration-200 hover:border-emerald-400/35 hover:bg-emerald-500/20 sm:w-auto"
                     >
                       <FiDownload />
-                      Signed agreement
+                      Download signed agreement
                     </button>
                   )}
 

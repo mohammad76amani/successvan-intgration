@@ -237,7 +237,14 @@ export default function JourneyDetailCards({
                       },
                     ]
                   : []),
-                { label: "Refund", value: `£${refund.refundAmount}` },
+                {
+                  label: refund.refundAmount < 0 ? "Customer debt" : "Refund",
+                  value: new Intl.NumberFormat("en-GB", {
+                    style: "currency",
+                    currency: "GBP",
+                  }).format(refund.refundAmount),
+                  tone: refund.refundAmount < 0 ? ("bad" as const) : ("ok" as const),
+                },
               ]
             : [{ label: "Status", value: "Not started" }]
         }

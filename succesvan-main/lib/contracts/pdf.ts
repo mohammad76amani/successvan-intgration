@@ -9,6 +9,7 @@ import {
   contractInsuranceAddOns,
   contractInsuranceValues,
 } from "./insurance";
+import { hasAdditionalDriverAddOn } from "@/lib/additional-driver";
 
 export type ContractPdfReservation = {
   _id?: unknown;
@@ -71,6 +72,10 @@ export type ContractPdfReservation = {
     quantity?: number;
     selectedTierIndex?: number;
   }>;
+  additionalDriver?: {
+    name?: string;
+    licenceNumber?: string;
+  };
   startDate?: string | Date;
   endDate?: string | Date;
   startDateDisplay?: string;
@@ -270,7 +275,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   const fitTextSize = (value: unknown, width: number, preferred = 6.4) => {
     const label = valueOrDash(value);
     let size = preferred;
-    while (size > 4.2 && font.widthOfTextAtSize(label, size) > width) {
+    while (size > 2.8 && font.widthOfTextAtSize(label, size) > width) {
       size -= 0.2;
     }
     return size;
@@ -375,11 +380,15 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
         : reservation.deposit?.option === "office"
           ? "Pay at office"
           : "-";
-  const additionalDriverIncluded = (reservation.addOns || []).some((item) =>
-    String(item.addOn?.name || "")
-      .toLowerCase()
-      .includes("additional driver"),
+  const additionalDriverIncluded = hasAdditionalDriverAddOn(
+    reservation.addOns,
   );
+  const additionalDriverName = additionalDriverIncluded
+    ? reservation.additionalDriver?.name || "Included"
+    : "None";
+  const additionalDriverLicence = additionalDriverIncluded
+    ? reservation.additionalDriver?.licenceNumber || "Not provided"
+    : "Not applicable";
   const mileageAllowance = contractMileageAllowance(reservation.addOns);
 
   // Agreement references.
@@ -405,8 +414,8 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   cellText(page, contractDate(licence?.dateOfBirth || undefined), 433.8, 238.6, 133.2);
   cellText(page, reservation.user?.emaildata?.emailAddress, 167.4, 249.5, 133.2);
   cellText(page, reservation.user?.phoneData?.phoneNumber, 433.8, 249.5, 133.2);
-  cellText(page, additionalDriverIncluded ? "Included" : "None", 167.4, 260.4, 133.2);
-  cellText(page, additionalDriverIncluded ? "Not provided" : "Not applicable", 433.8, 260.4, 133.2);
+  cellText(page, additionalDriverName, 167.4, 260.4, 133.2);
+  cellText(page, additionalDriverLicence, 433.8, 260.4, 133.2);
 
   // Vehicle details.
   cellText(

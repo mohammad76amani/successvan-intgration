@@ -3,6 +3,7 @@
 // on server and client.
 
 import type { Reservation } from "@/types/type";
+import { calculateRefundBalance } from "@/lib/refund-balance";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import type {
   ReservationJourneyViewModel,
@@ -22,6 +23,23 @@ import {
   type PublicJourneyStep,
 } from "@/lib/reservation-status";
 import { formatDateTimeInLondon } from "@/lib/englandTime";
+
+export const threeCalendarDaysAfter = (
+  value?: Date | string,
+): string | undefined => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  date.setUTCDate(date.getUTCDate() + 3);
+  return date.toISOString();
+};
+
+const latestCompletedAt = (reservation: Reservation) => {
+  const entry = [...(reservation.statusHistory || [])]
+    .reverse()
+    .find((item) => normalizeReservationStatus(item.status) === "completed");
+  return entry?.changedAt ? new Date(entry.changedAt).toISOString() : undefined;
+};
 
 // Statuses where the customer must do something before the journey moves on.
 const ACTION_REQUIRED_STATUSES: ReservationStatus[] = [
@@ -259,7 +277,7 @@ const buildNextAction = (
         description:
           "We're completing the handover checks with you at the office.",
         buttonLabel: "View Collection Details",
-        href: "#handover",
+        href: "#inspection",
       };
     case "delivered":
       return {
@@ -298,11 +316,10 @@ const buildNextAction = (
       };
     case "completed":
       return {
-        type: "book_again",
+        type: "none",
         title: "Booking complete",
-        description: "Your booking has been completed successfully.",
-        buttonLabel: "Book Again",
-        href: "/reservation",
+        description:
+          "Your booking and deposit-refund journey have been completed.",
       };
     case "canceled":
     case "expired":
@@ -332,8 +349,7 @@ export function buildReservationJourney(
       }
     | undefined;
   const vehicle = reservation.vehicle as
-    | { title?: string; number?: string | number }
-    | undefined;
+    { title?: string; number?: string | number } | undefined;
   const office = reservation.office as
     { name?: string; address?: string } | undefined;
 
@@ -354,6 +370,7 @@ export function buildReservationJourney(
     durationLabel: durationLabel(reservation),
     publicStatusLabel: RESERVATION_STATUS_LABELS[status],
     mainStatus: status,
+    completedAt: latestCompletedAt(reservation),
     steps: buildSteps(reservation, status),
     nextAction: buildNextAction(reservation, status, contract),
     deposit: (() => {
@@ -396,12 +413,29 @@ export function buildReservationJourney(
         ? {
             depositPaid: refund.depositPaid ?? deposit?.amount ?? 0,
             deductionsTotal: refund.deductionsTotal ?? 0,
-            refundAmount: refund.refundAmount ?? 0,
+            refundAmount: calculateRefundBalance(refund, deposit?.amount),
             status: refund.status ?? "not_started",
             reference: refund.reference,
             expectedBy: refund.expectedBy
               ? new Date(refund.expectedBy).toISOString()
               : undefined,
+            processedAt: refund.processedAt
+              ? new Date(refund.processedAt).toISOString()
+              : undefined,
+            bankExpectedBy: threeCalendarDaysAfter(refund.processedAt),
+            additionalCharges: (refund.additionalCharges || []).map(
+              (charge) => ({
+                amount: Number(charge.amount || 0),
+                reason: charge.reason,
+                evidenceUrl: charge.evidenceUrl,
+                ticketReference: charge.ticketReference,
+                violationDate: charge.violationDate
+                  ? new Date(charge.violationDate).toISOString()
+                  : undefined,
+                vehicleNumber: charge.vehicleNumber,
+                source: charge.source,
+              }),
+            ),
           }
         : undefined,
   };

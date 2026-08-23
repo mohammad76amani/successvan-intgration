@@ -8,6 +8,29 @@ import {
 } from "@/lib/contracts/service";
 import { buildReservationJourney } from "@/lib/reservation-journey";
 import Reservation from "@/model/reservation";
+import type { SafeContractSummary } from "@/lib/docusign/types";
+
+const signableStatuses = new Set([
+  "ready",
+  "sent",
+  "delivered",
+  "viewed",
+  "signing",
+]);
+
+const selectActiveContract = (contracts: SafeContractSummary[]) =>
+  contracts.find(
+    (item) =>
+      item.contractType === "reservation_extension" &&
+      signableStatuses.has(item.status),
+  ) ||
+  contracts.find(
+    (item) =>
+      item.contractType === "rental_agreement" &&
+      signableStatuses.has(item.status),
+  ) ||
+  contracts[0] ||
+  null;
 
 export async function GET(
   req: NextRequest,
@@ -34,7 +57,7 @@ export async function GET(
     let contracts = await listCustomerContracts(userId, {
       bookingId: reservationId,
     });
-    let contract = contracts[0] ?? null;
+    let contract = selectActiveContract(contracts);
 
     if (
       contract?.docusign?.envelopeId &&
@@ -48,7 +71,7 @@ export async function GET(
         contracts = await listCustomerContracts(userId, {
           bookingId: reservationId,
         });
-        contract = contracts[0] ?? null;
+        contract = selectActiveContract(contracts);
         reservation = await Reservation.findOne({
           _id: reservationId,
           user: userId,
@@ -72,6 +95,7 @@ export async function GET(
     return successResponse({
       reservation,
       contract,
+      contracts,
       journey: buildReservationJourney(reservation as never, contract),
     });
   } catch (error) {

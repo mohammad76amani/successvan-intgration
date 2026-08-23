@@ -18,6 +18,10 @@ import {
   CUSTOMER_CANCELABLE_STATUSES,
   NOTIFIABLE_STATUS_MAP,
 } from "@/lib/reservation-status";
+import {
+  hasAdditionalDriverAddOn,
+  validateAdditionalDriver,
+} from "@/lib/additional-driver";
 
 export async function GET(
   req: NextRequest,
@@ -61,7 +65,9 @@ export async function PATCH(
     const { id } = await params;
     const body = (await req.json()) as Record<string, unknown>;
     
-    const oldReservation = await Reservation.findById(id);
+    const oldReservation = await Reservation.findById(id).populate(
+      "addOns.addOn",
+    );
     if (!oldReservation) return errorResponse("Reservation not found", 404);
     const isCustomerRequest = !canAccessDashboard(auth.role);
     const isAssignedPreHandoverAdminEdit =
@@ -221,12 +227,27 @@ export async function PATCH(
       typeof body.insuranceOtherExcess === "string"
         ? body.insuranceOtherExcess.trim()
         : "";
+    const submittedAdditionalDriver = {
+      name:
+        typeof body.additionalDriverName === "string"
+          ? body.additionalDriverName.trim()
+          : "",
+      licenceNumber:
+        typeof body.additionalDriverLicenceNumber === "string"
+          ? body.additionalDriverLicenceNumber.trim()
+          : "",
+    };
     delete body.insuranceProvider;
     delete body.insuranceOtherExcess;
+    delete body.additionalDriverName;
+    delete body.additionalDriverLicenceNumber;
 
     let contractInsuranceProvider: "diba" | "customer" | undefined;
     let contractInsuranceOtherExcess: string | undefined;
     let contractHandoverDepositAmount: number | undefined;
+    let contractAdditionalDriver:
+      | { name: string; licenceNumber: string }
+      | undefined;
 
     if (adminRequestedContractGeneration) {
       const insuranceProvider =
@@ -261,6 +282,32 @@ export async function PATCH(
         }
         body.handoverDepositAmount = handoverDepositAmount;
         contractHandoverDepositAmount = handoverDepositAmount;
+      }
+
+      if (hasAdditionalDriverAddOn(oldReservation.addOns as never)) {
+        try {
+          contractAdditionalDriver =
+            validateAdditionalDriver(oldReservation.addOns as never, {
+              name:
+                submittedAdditionalDriver.name ||
+                oldReservation.additionalDriver?.name,
+              licenceNumber:
+                submittedAdditionalDriver.licenceNumber ||
+                oldReservation.additionalDriver?.licenceNumber,
+            }) || undefined;
+        } catch (error) {
+          return errorResponse(
+            error instanceof Error
+              ? error.message
+              : "Enter the additional driver details.",
+            400,
+          );
+        }
+        body.additionalDriver = {
+          ...contractAdditionalDriver,
+          capturedAt: new Date(),
+          capturedBy: auth.userId,
+        };
       }
     }
 
@@ -507,6 +554,7 @@ export async function PATCH(
             insuranceProvider: contractInsuranceProvider,
             insuranceOtherExcess: contractInsuranceOtherExcess,
             handoverDepositAmount: contractHandoverDepositAmount,
+            additionalDriver: contractAdditionalDriver,
           },
         );
 

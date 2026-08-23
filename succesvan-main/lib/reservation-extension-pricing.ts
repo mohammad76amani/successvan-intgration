@@ -10,6 +10,12 @@ export type ReservationExtensionPricingInput = {
   sellOfferPercent?: number;
   gearExtraCostPerDay?: number;
   returnExtensionPrice?: number;
+  specialDays?: Array<{
+    month: number;
+    day: number;
+    extraPrice?: number;
+    reason?: string;
+  }>;
   addOns?: Array<{
     quantity?: number;
     selectedTierIndex?: number;
@@ -34,12 +40,72 @@ export type ReservationExtensionPricingResult = {
   gearPrice: number;
   addOnsPrice: number;
   returnExtensionPrice: number;
+  specialDaysPrice: number;
   totalPrice: number;
   durationLabel: string;
   breakdown: Array<{ label: string; amount: number }>;
 };
 
 const money = (value: unknown) => Math.max(0, Number(value) || 0);
+
+const londonWallClockTime = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  return Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+  );
+};
+
+export function getLondonSpecialDayCharges(
+  currentReturn: Date,
+  newReturn: Date,
+  specialDays: ReservationExtensionPricingInput["specialDays"] = [],
+) {
+  const start = new Date(londonWallClockTime(currentReturn));
+  const end = new Date(londonWallClockTime(newReturn));
+  start.setUTCHours(0, 0, 0, 0);
+  end.setUTCHours(0, 0, 0, 0);
+
+  const charges: Array<{ label: string; amount: number }> = [];
+  for (
+    const day = new Date(start);
+    day <= end;
+    day.setUTCDate(day.getUTCDate() + 1)
+  ) {
+    const specialDay = specialDays.find(
+      (item) =>
+        item.month === day.getUTCMonth() + 1 && item.day === day.getUTCDate(),
+    );
+    const amount = money(specialDay?.extraPrice);
+    if (amount <= 0) continue;
+    const dateLabel = new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+    }).format(day);
+    charges.push({
+      label: `${specialDay?.reason || "Special day"} (${dateLabel})`,
+      amount,
+    });
+  }
+  return charges;
+}
 
 export function calculateReservationExtensionPrice(
   input: ReservationExtensionPricingInput,
@@ -51,14 +117,17 @@ export function calculateReservationExtensionPrice(
     Number.isNaN(newReturn.getTime()) ||
     newReturn <= currentReturn
   ) {
-    throw new Error("The new return date must be after the current return date");
+    throw new Error(
+      "The new return date must be after the current return date",
+    );
   }
   if (!input.pricingTiers.length) {
     throw new Error("The reservation category does not have pricing tiers");
   }
 
   const exactMinutes =
-    (newReturn.getTime() - currentReturn.getTime()) / 60_000;
+    (londonWallClockTime(newReturn) - londonWallClockTime(currentReturn)) /
+    60_000;
   const wholeHours = Math.floor(exactMinutes / 60);
   const remainingMinutes = exactMinutes % 60;
   const billableHours = remainingMinutes > 15 ? wholeHours + 1 : wholeHours;
@@ -107,13 +176,23 @@ export function calculateReservationExtensionPrice(
     return sum + money(selectedTier?.price) * totalDays * quantity;
   }, 0);
   const returnExtensionPrice = money(input.returnExtensionPrice);
+  const specialDayCharges = getLondonSpecialDayCharges(
+    currentReturn,
+    newReturn,
+    input.specialDays,
+  );
+  const specialDaysPrice = specialDayCharges.reduce(
+    (total, charge) => total + charge.amount,
+    0,
+  );
   const totalPrice = Number(
     (
       daysPrice +
       extraHoursPrice +
       gearPrice +
       addOnsPrice +
-      returnExtensionPrice
+      returnExtensionPrice +
+      specialDaysPrice
     ).toFixed(2),
   );
   const durationHours = Number((exactMinutes / 60).toFixed(2));
@@ -134,18 +213,32 @@ export function calculateReservationExtensionPrice(
     gearPrice: Number(gearPrice.toFixed(2)),
     addOnsPrice: Number(addOnsPrice.toFixed(2)),
     returnExtensionPrice,
+    specialDaysPrice,
     totalPrice,
     durationLabel: durationParts.join(" and "),
     breakdown: [
-      { label: `${totalDays} day${totalDays === 1 ? "" : "s"} hire`, amount: daysPrice },
+      {
+        label: `${totalDays} day${totalDays === 1 ? "" : "s"} hire`,
+        amount: daysPrice,
+      },
       ...(extraHoursPrice > 0
-        ? [{ label: `${extraHours} additional hour${extraHours === 1 ? "" : "s"}`, amount: extraHoursPrice }]
+        ? [
+            {
+              label: `${extraHours} additional hour${extraHours === 1 ? "" : "s"}`,
+              amount: extraHoursPrice,
+            },
+          ]
         : []),
-      ...(gearPrice > 0 ? [{ label: "Automatic gear", amount: gearPrice }] : []),
-      ...(addOnsPrice > 0 ? [{ label: "Per-day add-ons", amount: addOnsPrice }] : []),
+      ...(gearPrice > 0
+        ? [{ label: "Automatic gear", amount: gearPrice }]
+        : []),
+      ...(addOnsPrice > 0
+        ? [{ label: "Per-day add-ons", amount: addOnsPrice }]
+        : []),
       ...(returnExtensionPrice > 0
         ? [{ label: "Out-of-hours return", amount: returnExtensionPrice }]
         : []),
+      ...specialDayCharges,
     ],
   };
 }

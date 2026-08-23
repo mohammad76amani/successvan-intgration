@@ -56,6 +56,7 @@ import {
   formatDateInputInLondon,
   parseStorageDate,
 } from "@/lib/englandTime";
+import { hasAdditionalDriverAddOn } from "@/lib/additional-driver";
 
 type MutateFn = () => Promise<void>;
 
@@ -210,14 +211,14 @@ function ReservationStepManagerModal({
     insuranceProvider: "diba" | "customer",
     insuranceOtherExcess?: string,
     handoverDepositAmount?: number,
+    additionalDriver?: { name: string; licenceNumber: string },
   ) => Promise<void>;
   onReservationUpdated: (reservation: Reservation) => void;
   isSubmitting: boolean;
 }) {
   const [isReservationDetailsOpen, setIsReservationDetailsOpen] =
     useState(false);
-  const [actionContract, setActionContract] =
-    useState<SafeContractSummary | null>(null);
+  const [actionContracts, setActionContracts] = useState<SafeContractSummary[]>([]);
   const [contractLoading, setContractLoading] = useState(false);
   const [contractDocumentBusy, setContractDocumentBusy] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(
@@ -233,12 +234,20 @@ function ReservationStepManagerModal({
       | undefined
   )?.deposit?.handoverDepositPrice;
   const [handoverDepositAmount, setHandoverDepositAmount] = useState("");
+  const [additionalDriverName, setAdditionalDriverName] = useState("");
+  const [additionalDriverLicenceNumber, setAdditionalDriverLicenceNumber] =
+    useState("");
+  const additionalDriverSelected = hasAdditionalDriverAddOn(
+    reservation?.addOns as never,
+  );
 
   useEffect(() => {
     if (!isOpen || !reservation?._id) {
       setInsuranceProvider("");
       setInsuranceOtherExcess("");
       setHandoverDepositAmount("");
+      setAdditionalDriverName("");
+      setAdditionalDriverLicenceNumber("");
       return;
     }
     setInsuranceProvider(reservation.insuranceArrangement?.provider || "");
@@ -250,6 +259,10 @@ function ReservationStepManagerModal({
         reservation.handoverDepositAmount ?? categoryHandoverDeposit ?? 0,
       ),
     );
+    setAdditionalDriverName(reservation.additionalDriver?.name || "");
+    setAdditionalDriverLicenceNumber(
+      reservation.additionalDriver?.licenceNumber || "",
+    );
   }, [
     isOpen,
     reservation?._id,
@@ -257,11 +270,13 @@ function ReservationStepManagerModal({
     reservation?.insuranceArrangement?.otherExcess,
     reservation?.handoverDepositAmount,
     categoryHandoverDeposit,
+    reservation?.additionalDriver?.name,
+    reservation?.additionalDriver?.licenceNumber,
   ]);
 
   useEffect(() => {
     if (!isOpen || !reservation?._id) {
-      setActionContract(null);
+      setActionContracts([]);
       return;
     }
 
@@ -272,7 +287,7 @@ function ReservationStepManagerModal({
       try {
         const params = new URLSearchParams({
           bookingId,
-          limit: "1",
+          limit: "100",
         });
         const res = await fetch(`/api/admin/contracts?${params.toString()}`, {
           headers: clientAuthHeaders(),
@@ -281,12 +296,10 @@ function ReservationStepManagerModal({
         const payload = await res.json();
         if (!payload.success)
           throw new Error(payload.error || "Request failed");
-        setActionContract(
-          Array.isArray(payload.data) ? payload.data[0] || null : null,
-        );
+        setActionContracts(Array.isArray(payload.data) ? payload.data : []);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          setActionContract(null);
+          setActionContracts([]);
         }
       } finally {
         if (!controller.signal.aborted) setContractLoading(false);
@@ -298,6 +311,13 @@ function ReservationStepManagerModal({
   }, [isOpen, reservation?._id, reservation?.status]);
 
   if (!isOpen || !reservation) return null;
+
+  const actionContract =
+    actionContracts.find((item) =>
+      ["ready", "sent", "delivered", "viewed", "signing"].includes(
+        item.status,
+      ),
+    ) || actionContracts[0] || null;
 
   const currentIndex = statusFlowIndex(reservation.status);
   const deposit = reservation.deposit;
@@ -376,21 +396,22 @@ function ReservationStepManagerModal({
     "refund_processing",
   ].includes(reservation.status);
   const downloadActionContract = (
+    selectedContract: SafeContractSummary,
     kind: "source" | "signed" | "certificate" = "source",
   ) => {
-    if (!actionContract) return;
     const token = localStorage.getItem("token") || "";
     window.open(
-      `/api/admin/contracts/${actionContract._id}/document?type=${kind}&token=${encodeURIComponent(token)}`,
+      `/api/admin/contracts/${selectedContract._id}/document?type=${kind}&token=${encodeURIComponent(token)}`,
       "_blank",
     );
   };
-  const fetchSignedContractDocuments = async () => {
-    if (!actionContract) return;
+  const fetchSignedContractDocuments = async (
+    selectedContract: SafeContractSummary,
+  ) => {
     setContractDocumentBusy(true);
     try {
       const response = await fetch(
-        `/api/admin/contracts/${actionContract._id}/retry-documents`,
+        `/api/admin/contracts/${selectedContract._id}/retry-documents`,
         {
           method: "POST",
           headers: clientAuthHeaders(true),
@@ -400,7 +421,13 @@ function ReservationStepManagerModal({
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "Could not fetch signed contract");
       }
-      setActionContract(payload.data as SafeContractSummary);
+      setActionContracts((current) =>
+        current.map((item) =>
+          item._id === selectedContract._id
+            ? (payload.data as SafeContractSummary)
+            : item,
+        ),
+      );
       showToast.success("Signed contract documents are ready");
     } catch (error) {
       showToast.error(
@@ -487,57 +514,59 @@ function ReservationStepManagerModal({
                 })}
               </div>
 
-              {(contractLoading || actionContract) && (
-                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#050a14]/45 p-4 shadow-inner ring-1 ring-inset ring-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
-                  <div>
+              {(contractLoading || actionContracts.length > 0) && (
+                <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#050a14]/45 shadow-inner ring-1 ring-inset ring-white/[0.025]">
+                  <div className="p-4">
                     <p className="text-sm font-bold text-white">
-                      Contract document
+                      Reservation agreements
                     </p>
                     <p className="mt-1 text-xs text-gray-400">
                       {contractLoading
-                        ? "Checking contract document..."
-                        : `Contract ${actionContract?.contractNumber || ""} is available for this reservation.`}
+                        ? "Checking contract documents..."
+                        : `${actionContracts.length} agreement${actionContracts.length === 1 ? "" : "s"} available for this reservation.`}
                     </p>
                   </div>
-                  {actionContract && (
-                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-                      {actionContract.files.signed && (
+                  <div className="divide-y divide-white/[0.07] border-t border-white/[0.07]">
+                    {actionContracts.map((item) => (
+                      <div key={item._id} className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-black text-white">
+                              {item.contractType === "reservation_extension" ? "Rental extension" : "Original rental agreement"} · {item.contractNumber}
+                            </p>
+                            {item.contractType === "reservation_extension" && (
+                              <span className="rounded-md border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#ffb340]">Pay at Office</span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[11px] font-semibold capitalize text-slate-500">{item.status.replaceAll("_", " ")}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
+                      {item.files.signed && (
                         <button
                           type="button"
-                          onClick={() => downloadActionContract("signed")}
-                          className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 active:bg-emerald-500/30 sm:w-auto"
+                          onClick={() => downloadActionContract(item, "signed")}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/20"
                         >
                           <FiEye />
-                          View signed contract
+                          Signed
                         </button>
                       )}
-                      {actionContract.files.source && (
+                      {item.files.source && (
                         <button
                           type="button"
-                          onClick={() => downloadActionContract("source")}
-                          className="inline-flex items-center justify-center gap-2 min-h-11 w-full touch-manipulation rounded-xl border border-[#fe9a00]/30 bg-[#fe9a00]/15 px-4 py-2.5 text-sm font-bold text-[#fe9a00] transition hover:bg-[#fe9a00]/25 active:bg-[#fe9a00]/30 sm:w-auto"
+                          onClick={() => downloadActionContract(item, "source")}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-white transition hover:bg-white/10"
                         >
                           <FiDownload />
-                          Unsigned contract
+                          Unsigned
                         </button>
                       )}
-                      {actionContract.files.certificate && (
-                        <button
-                          type="button"
-                          onClick={() => downloadActionContract("certificate")}
-                          className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 active:bg-white/25 sm:w-auto"
-                        >
-                          <FiDownload />
-                          Certificate
-                        </button>
-                      )}
-                      {actionContract.status === "completed" &&
-                        !actionContract.files.signed && (
+                      {item.status === "completed" && !item.files.signed && (
                           <button
                             type="button"
                             disabled={contractDocumentBusy}
-                            onClick={fetchSignedContractDocuments}
-                            className="inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/25 active:bg-emerald-500/30 sm:w-auto disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => void fetchSignedContractDocuments(item)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-300 disabled:opacity-50"
                           >
                             <FiRefreshCw
                               className={
@@ -549,8 +578,10 @@ function ReservationStepManagerModal({
                               : "Fetch signed contract"}
                           </button>
                         )}
-                    </div>
-                  )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -734,7 +765,7 @@ function ReservationStepManagerModal({
                     Assigning the van will create the contract automatically and
                     move the customer to the signing step.
                   </p>
-                  {savedPriceAdjustment && (
+                  {/* {savedPriceAdjustment && (
                     <div
                       className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
                         savedAdjustmentStatus === "payment_due"
@@ -770,7 +801,7 @@ function ReservationStepManagerModal({
                         £{savedAdjustmentAmount.toFixed(2)}
                       </p>
                     </div>
-                  )}
+                  )} */}
                   <div className="mt-4 space-y-4">
                     <CustomSelect
                       options={vehicles}
@@ -870,6 +901,50 @@ function ReservationStepManagerModal({
                           Category default; change it here for this booking before generating the contract.
                         </span>
                       </label>
+                      {additionalDriverSelected && (
+                        <div className="rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/[0.06] p-3 sm:p-4">
+                          <div className="mb-3">
+                            <p className="text-sm font-black text-white">
+                              Additional driver
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-slate-400">
+                              These details are written into this agreement only and do not change the main customer profile.
+                            </p>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="mb-1.5 block text-xs font-semibold text-slate-300">
+                                Driver full name
+                              </span>
+                              <input
+                                value={additionalDriverName}
+                                onChange={(event) =>
+                                  setAdditionalDriverName(event.target.value)
+                                }
+                                disabled={isSubmitting}
+                                placeholder="Name shown on licence"
+                                className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10 disabled:opacity-50"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="mb-1.5 block text-xs font-semibold text-slate-300">
+                                Driving licence number
+                              </span>
+                              <input
+                                value={additionalDriverLicenceNumber}
+                                onChange={(event) =>
+                                  setAdditionalDriverLicenceNumber(
+                                    event.target.value.toUpperCase(),
+                                  )
+                                }
+                                disabled={isSubmitting}
+                                placeholder="Licence number"
+                                className="min-h-11 w-full rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10 disabled:opacity-50"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
                     </fieldset>
                     {!loadingVehicles && vehicles.length === 0 && (
                       <p className="text-xs text-yellow-300">
@@ -882,7 +957,10 @@ function ReservationStepManagerModal({
                         !selectedVehicle ||
                         !insuranceProvider ||
                         handoverDepositAmount === "" ||
-                        Number(handoverDepositAmount) < 0
+                        Number(handoverDepositAmount) < 0 ||
+                        (additionalDriverSelected &&
+                          (!additionalDriverName.trim() ||
+                            !additionalDriverLicenceNumber.trim()))
                       }
                       onClick={() => {
                         if (insuranceProvider) {
@@ -891,6 +969,13 @@ function ReservationStepManagerModal({
                             insuranceProvider,
                             insuranceOtherExcess.trim(),
                             Number(handoverDepositAmount),
+                            additionalDriverSelected
+                              ? {
+                                  name: additionalDriverName.trim(),
+                                  licenceNumber:
+                                    additionalDriverLicenceNumber.trim(),
+                                }
+                              : undefined,
                           );
                         }
                       }}
@@ -917,7 +1002,7 @@ function ReservationStepManagerModal({
                 {actionContract?.files.source && (
                   <button
                     type="button"
-                    onClick={() => downloadActionContract("source")}
+                    onClick={() => downloadActionContract(actionContract, "source")}
                     className="mt-4 inline-flex min-h-11 w-full touch-manipulation items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 active:bg-white/25 sm:w-auto"
                   >
                     <FiDownload />
@@ -1868,6 +1953,7 @@ export default function ReservationsManagement() {
     insuranceProvider: "diba" | "customer",
     insuranceOtherExcess?: string,
     handoverDepositAmount?: number,
+    additionalDriver?: { name: string; licenceNumber: string },
   ) => {
     if (isSubmitting || !reservation?._id || !newVehicle) return;
 
@@ -1882,6 +1968,8 @@ export default function ReservationsManagement() {
           insuranceProvider,
           insuranceOtherExcess,
           handoverDepositAmount,
+          additionalDriverName: additionalDriver?.name,
+          additionalDriverLicenceNumber: additionalDriver?.licenceNumber,
         }),
       });
       const data = await res.json();

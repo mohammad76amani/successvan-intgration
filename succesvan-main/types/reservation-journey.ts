@@ -60,6 +60,7 @@ export interface ReservationJourneyViewModel {
   durationLabel: string;
   publicStatusLabel: string;
   mainStatus: ReservationMainStatus;
+  completedAt?: string;
   steps: ReservationJourneyStep[];
   nextAction: ReservationNextAction;
   deposit?: {
@@ -88,5 +89,16 @@ export interface ReservationJourneyViewModel {
     status: RefundStatus;
     reference?: string;
     expectedBy?: string;
+    processedAt?: string;
+    bankExpectedBy?: string;
+    additionalCharges?: Array<{
+      amount: number;
+      reason: string;
+      evidenceUrl?: string;
+      ticketReference?: string;
+      violationDate?: string;
+      vehicleNumber?: string;
+      source?: "traffic_violation" | "manual";
+    }>;
   };
 }

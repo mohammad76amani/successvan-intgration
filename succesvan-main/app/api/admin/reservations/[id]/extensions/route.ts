@@ -17,10 +17,18 @@ export const runtime = "nodejs";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+const extensionTime = z
+  .string()
+  .regex(timePattern, "Enter a valid return time")
+  .refine(
+    (value) => Number(value.slice(3, 5)) % 15 === 0,
+    "Choose a return time in 15-minute intervals",
+  );
 
 const extensionSchema = z.object({
   newReturnDate: z.string().regex(datePattern, "Enter a valid return date"),
-  newReturnTime: z.string().regex(timePattern, "Enter a valid return time"),
+  newReturnTime: extensionTime,
+  manualReturnExtensionPrice: z.number().min(0).optional(),
   customPrice: z.number().min(0).optional(),
   customPriceReason: z.string().trim().optional(),
   paymentDueAt: z.string().trim().optional(),
@@ -73,16 +81,28 @@ export async function GET(
     requireAdminAuth(req);
     const { id } = await params;
     const url = new URL(req.url);
-    const values = extensionSchema.pick({
-      newReturnDate: true,
-      newReturnTime: true,
-    }).parse({
-      newReturnDate: url.searchParams.get("newReturnDate"),
-      newReturnTime: url.searchParams.get("newReturnTime"),
-    });
+    const manualReturnExtensionPrice = url.searchParams.get(
+      "manualReturnExtensionPrice",
+    );
+    const values = extensionSchema
+      .pick({
+        newReturnDate: true,
+        newReturnTime: true,
+        manualReturnExtensionPrice: true,
+      })
+      .parse({
+        newReturnDate: url.searchParams.get("newReturnDate"),
+        newReturnTime: url.searchParams.get("newReturnTime"),
+        ...(manualReturnExtensionPrice !== null
+          ? {
+              manualReturnExtensionPrice: Number(manualReturnExtensionPrice),
+            }
+          : {}),
+      });
     const preview = await previewReservationExtension(
       id,
       returnDateTime(values.newReturnDate, values.newReturnTime),
+      values.manualReturnExtensionPrice,
     );
     return successResponse(preview);
   } catch (error) {
@@ -107,6 +127,7 @@ export async function POST(
           body.newReturnDate,
           body.newReturnTime,
         ),
+        manualReturnExtensionPrice: body.manualReturnExtensionPrice,
         customPrice: body.customPrice,
         customPriceReason: body.customPriceReason,
         paymentDueAt: paymentDueDateTime(body.paymentDueAt),

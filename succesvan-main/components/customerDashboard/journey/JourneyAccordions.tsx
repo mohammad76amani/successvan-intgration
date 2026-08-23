@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -15,6 +16,8 @@ import {
   FiLock,
   FiExternalLink,
   FiX,
+  FiChevronDown,
+  FiFileText,
 } from "react-icons/fi";
 import type { Reservation } from "@/types/type";
 import type { ReservationJourneyViewModel } from "@/types/reservation-journey";
@@ -26,6 +29,8 @@ import DepositPanel from "./DepositPanel";
 import LicenceDetailsReviewModal, {
   type LicenceDetailsReview,
 } from "../LicenceDetailsReviewModal";
+import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
+import { useModalAccessibility } from "@/hooks/useModalAccessibility";
 
 export type JourneySectionId =
   | "summary"
@@ -33,7 +38,6 @@ export type JourneySectionId =
   | "deposit"
   | "contract"
   | "collection"
-  | "handover"
   | "inspection"
   | "refund"
   | "timeline";
@@ -56,6 +60,7 @@ function Row({ label, value }: { label: string; value?: React.ReactNode }) {
 }
 
 type InspectionComparisonRow = {
+  key: string;
   label: string;
   before?: React.ReactNode;
   after?: React.ReactNode;
@@ -131,29 +136,42 @@ const statusPill = (
 function InspectionComparisonTable({
   handover,
   inspection,
-  pickupDateTime,
-  returnDateTime,
 }: {
   handover?: Reservation["handover"];
   inspection?: Reservation["inspection"];
-  pickupDateTime?: string;
-  returnDateTime?: string;
 }) {
   const [previewImage, setPreviewImage] = useState<{
     url: string;
     title: string;
   } | null>(null);
+  const previewDialogRef = useRef<HTMLDivElement>(null);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
+  useModalAccessibility({
+    open: Boolean(previewImage),
+    onClose: () => setPreviewImage(null),
+    dialogRef: previewDialogRef,
+    initialFocusRef: previewCloseRef,
+  });
   const mileageDifference =
     typeof handover?.startMileage === "number" &&
     typeof inspection?.returnMileage === "number"
       ? inspection.returnMileage - handover.startMileage
       : null;
+  const hasReturnInspection = Boolean(inspection?.completedAt);
+  const awaitingReturn = (
+    <span className="text-slate-500">Awaiting return inspection</span>
+  );
+  const afterValue = (value: unknown, emptyLabel = "Not recorded") =>
+    hasReturnInspection ? plainValue(value, emptyLabel) : awaitingReturn;
+  const afterListValue = (items?: string[], emptyLabel = "None recorded") =>
+    hasReturnInspection ? listValue(items, emptyLabel) : awaitingReturn;
 
-  const rows: InspectionComparisonRow[] = [
+  const baseRows: InspectionComparisonRow[] = [
     {
+      key: "mileage",
       label: "Mileage",
       before: plainValue(handover?.startMileage),
-      after: plainValue(inspection?.returnMileage),
+      after: afterValue(inspection?.returnMileage),
       note:
         mileageDifference !== null ? (
           <span className="rounded-full border border-[#fe9a00]/30 bg-[#fe9a00]/10 px-2.5 py-1 text-xs font-black text-[#fe9a00]">
@@ -163,43 +181,103 @@ function InspectionComparisonTable({
         ) : undefined,
     },
     {
+      key: "fuel-level",
       label: "Fuel level",
       before: plainValue(handover?.startFuelLevel),
-      after: plainValue(inspection?.returnFuelLevel),
+      after: afterValue(inspection?.returnFuelLevel),
     },
     {
+      key: "vehicle-condition",
       label: "Vehicle condition",
       before: plainValue(handover?.conditionNotes, "No notes"),
-      after: plainValue(inspection?.notes, "No notes"),
+      after: afterValue(inspection?.notes, "No notes"),
     },
     {
+      key: "damages",
       label: "Damages",
       before: listValue(handover?.existingDamages, "No existing damage"),
-      after: listValue(inspection?.newDamages, "No new damage"),
+      after: afterListValue(inspection?.newDamages, "No new damage"),
     },
     {
+      key: "equipment",
       label: "Equipment",
       before: listValue(handover?.equipment, "No equipment recorded"),
-      after: listValue(inspection?.missingEquipment, "Nothing missing"),
+      after: afterListValue(inspection?.missingEquipment, "Nothing missing"),
     },
     {
+      key: "photos",
       label: "Photos",
       before: countValue(handover?.photos?.length),
-      after: countValue(inspection?.photos?.length),
+      after: hasReturnInspection
+        ? countValue(inspection?.photos?.length)
+        : awaitingReturn,
     },
     {
+      key: "inspection-times",
       label: "Before/after timestamps",
-      before: plainValue(pickupDateTime),
-      after: plainValue(returnDateTime),
+      before: handover?.completedAt
+        ? formatDateTimeInLondon(handover.completedAt)
+        : plainValue(undefined),
+      after:
+        hasReturnInspection && inspection?.completedAt
+          ? formatDateTimeInLondon(inspection.completedAt)
+          : awaitingReturn,
     },
     {
+      key: "cleanliness",
       label: "Cleanliness",
       before: <span className="text-slate-500">Checked at handover</span>,
-      after: inspection
-        ? statusPill(inspection.cleaningIssue, "Issue found", "No issue")
-        : plainValue(undefined),
+      after: hasReturnInspection
+        ? statusPill(inspection?.cleaningIssue, "Issue found", "No issue")
+        : awaitingReturn,
     },
   ];
+
+  const beforeInputFields = (handover?.customFields || []).filter(
+    (field) => field.fieldType === "input",
+  );
+  const afterInputFields = (inspection?.customFields || []).filter(
+    (field) => field.fieldType === "input",
+  );
+  const matchedAfterInputFields = new Set<number>();
+  const customRows: InspectionComparisonRow[] = beforeInputFields.map(
+    (beforeField, beforeIndex) => {
+      const afterIndex = afterInputFields.findIndex((afterField, index) => {
+        if (matchedAfterInputFields.has(index)) return false;
+        if (
+          beforeField.templateFieldId &&
+          afterField.templateFieldId &&
+          String(beforeField.templateFieldId) ===
+            String(afterField.templateFieldId)
+        ) {
+          return true;
+        }
+        return (
+          normalizeInspectionFieldLabel(beforeField.label) ===
+          normalizeInspectionFieldLabel(afterField.label)
+        );
+      });
+      const afterField =
+        afterIndex >= 0 ? afterInputFields[afterIndex] : undefined;
+      if (afterIndex >= 0) matchedAfterInputFields.add(afterIndex);
+      return {
+        key: `custom-before-${beforeField.templateFieldId || beforeIndex}`,
+        label: beforeField.label || afterField?.label || "Inspection item",
+        before: plainValue(beforeField.value),
+        after: afterValue(afterField?.value),
+      };
+    },
+  );
+  afterInputFields.forEach((afterField, afterIndex) => {
+    if (matchedAfterInputFields.has(afterIndex)) return;
+    customRows.push({
+      key: `custom-after-${afterField.templateFieldId || afterIndex}`,
+      label: afterField.label || "Inspection item",
+      before: plainValue(undefined),
+      after: afterValue(afterField.value),
+    });
+  });
+  const rows = [...baseRows, ...customRows];
 
   const beforeFileFields = (handover?.customFields || []).filter(
     (field) => field.fieldType === "file" && (field.files?.length || 0) > 0,
@@ -247,7 +325,7 @@ function InspectionComparisonTable({
   });
 
   const inspectionFileGroups: InspectionFileGroup[] = [
-    ...((handover?.photos?.length || inspection?.photos?.length)
+    ...(handover?.photos?.length || inspection?.photos?.length
       ? [
           {
             key: "vehicle-photos",
@@ -309,7 +387,7 @@ function InspectionComparisonTable({
 
   if (!handover && !inspection) {
     return (
-      <Placeholder text="The handover and return inspection comparison will appear here once the vehicle checks are completed." />
+      <Placeholder text="The collection inspection will appear here after our staff complete the vehicle handover." />
     );
   }
 
@@ -341,7 +419,7 @@ function InspectionComparisonTable({
       <div className="divide-y divide-white/10">
         {rows.map((row) => (
           <div
-            key={row.label}
+            key={row.key}
             className="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[1.1fr_1.4fr_1.4fr_0.9fr] lg:items-center"
           >
             <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400 lg:text-sm lg:normal-case lg:tracking-normal lg:text-white">
@@ -415,13 +493,17 @@ function InspectionComparisonTable({
         </div>
       )}
 
-      {previewImage && (
+      {previewImage &&
+        typeof document !== "undefined" &&
+        createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-5"
+          ref={previewDialogRef}
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-5"
           onClick={() => setPreviewImage(null)}
           role="dialog"
           aria-modal="true"
           aria-label={previewImage.title}
+          tabIndex={-1}
         >
           <div
             className="w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-[#0b1224] shadow-2xl shadow-black/50"
@@ -432,6 +514,7 @@ function InspectionComparisonTable({
                 {previewImage.title}
               </p>
               <button
+                ref={previewCloseRef}
                 type="button"
                 onClick={() => setPreviewImage(null)}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition hover:bg-white/20"
@@ -451,7 +534,8 @@ function InspectionComparisonTable({
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -462,7 +546,12 @@ const compactDate = (value?: Date | string) =>
     ? new Date(value).toLocaleString("en-GB", { timeZone: "Europe/London" })
     : "-";
 
-const money = (value?: number) => `£${Number(value || 0).toFixed(2)}`;
+const money = (value?: number) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0));
 
 type RefundDeduction = {
   key: string;
@@ -470,6 +559,8 @@ type RefundDeduction = {
   amount: number;
   reason?: string;
   category: "standard" | "other" | "additional";
+  evidenceUrl?: string;
+  ticketReference?: string;
 };
 
 type CurrentFact = {
@@ -522,6 +613,8 @@ function refundDeductionItems(
       label: charge.reason?.trim() || "Additional charge",
       amount: Number(charge.amount),
       category: "additional",
+      evidenceUrl: charge.evidenceUrl,
+      ticketReference: charge.ticketReference,
     });
   });
 
@@ -549,18 +642,69 @@ function Placeholder({ text }: { text: string }) {
 function Section({
   id,
   open,
+  labelledBy,
   children,
 }: {
   id: JourneySectionId;
   open: boolean;
+  labelledBy?: string;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
-
   return (
-    <div id={id} className="pt-4">
-      {children}
+    <div
+      id={id}
+      role={labelledBy ? "region" : undefined}
+      aria-labelledby={labelledBy}
+      aria-hidden={!open}
+      inert={!open}
+      className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+    >
+      <div className="overflow-hidden">
+        <div className="px-4 pb-4 sm:px-5">{children}</div>
+      </div>
     </div>
+  );
+}
+
+function AccordionHeader({
+  id,
+  title,
+  subtitle,
+  icon,
+  open,
+  onToggle,
+}: {
+  id: JourneySectionId;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      id={`${id}-accordion-header`}
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={id}
+      className="group flex w-full items-center gap-3 border-t border-white/[0.07] px-4 py-3.5 text-left transition hover:bg-white/[0.035] sm:px-5"
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition ${open ? "border-[#fe9a00]/35 bg-[#fe9a00]/10 text-[#fe9a00]" : "border-white/[0.08] bg-white/[0.04] text-slate-400"}`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-black text-white">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+          {subtitle}
+        </span>
+      </span>
+      <FiChevronDown
+        className={`shrink-0 text-slate-400 transition-transform duration-300 ${open ? "rotate-180 text-[#fe9a00]" : ""}`}
+      />
+    </button>
   );
 }
 
@@ -568,7 +712,9 @@ export default function JourneyAccordions({
   reservation,
   journey,
   contract,
+  contracts,
   openSection,
+  onToggleSection,
   onSignContract,
   onDownloadContract,
   onDepositUpdated,
@@ -578,9 +724,14 @@ export default function JourneyAccordions({
   reservation: Reservation;
   journey: ReservationJourneyViewModel;
   contract: SafeContractSummary | null;
+  contracts: SafeContractSummary[];
   openSection: JourneySectionId | null;
+  onToggleSection: (id: JourneySectionId) => void;
   onSignContract: () => void;
-  onDownloadContract: (kind: "source" | "signed" | "certificate") => void;
+  onDownloadContract: (
+    contract: SafeContractSummary,
+    kind: "source" | "signed" | "certificate",
+  ) => void;
   onDepositUpdated: () => void;
   onLicenceUpdated: () => void;
   signBusy: boolean;
@@ -655,9 +806,7 @@ export default function JourneyAccordions({
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null);
-      throw new Error(
-        payload?.error || "Could not scan both licence images",
-      );
+      throw new Error(payload?.error || "Could not scan both licence images");
     }
     return (await res.json()) as LicenceDetailsReview;
   };
@@ -792,6 +941,26 @@ export default function JourneyAccordions({
         step.key === "deposit" &&
         ["current", "blocked", "failed"].includes(step.state),
     );
+  const showContracts = contracts.length > 0;
+  const showInspection = Boolean(
+    handover?.completedAt ||
+    inspection?.completedAt ||
+    [
+      "handover_in_progress",
+      "delivered",
+      "vehicle_returned",
+      "return_inspection",
+      "deposit_review",
+      "refund_processing",
+      "refund_completed",
+      "completed",
+    ].includes(journey.mainStatus),
+  );
+  const showRefund = [
+    "deposit_review",
+    "refund_processing",
+    "refund_completed",
+  ].includes(journey.mainStatus);
   const submittedAt =
     reservation.statusHistory?.find((entry) => entry.status === "pending")
       ?.changedAt ||
@@ -934,19 +1103,29 @@ export default function JourneyAccordions({
           tone: "deduction" as const,
         },
         {
-          label: "Refund",
+          label:
+            Number(journey.refund?.refundAmount || 0) < 0
+              ? "Customer debt"
+              : "Refund",
           value: money(journey.refund?.refundAmount),
-          tone: "refund" as const,
+          tone:
+            Number(journey.refund?.refundAmount || 0) < 0
+              ? ("deduction" as const)
+              : ("refund" as const),
         },
         {
           label: "Status",
           value: refund?.status?.replace(/_/g, " ") || "Under review",
         },
         {
-          label: refund?.expectedBy ? "Expected" : "Authorization number",
-          value: refund?.expectedBy
-            ? compactDate(refund.expectedBy)
-            : refund?.reference || "Pending",
+          label:
+            refund?.status !== "completed" && refund?.expectedBy
+              ? "Expected"
+              : "Authorization number",
+          value:
+            refund?.status !== "completed" && refund?.expectedBy
+              ? compactDate(refund.expectedBy)
+              : refund?.reference || "Pending",
         },
       ];
     }
@@ -954,15 +1133,21 @@ export default function JourneyAccordions({
       return [
         { label: "Booking", value: "Complete" },
         { label: "Reference", value: journey.bookingReference },
+        { label: "Completed", value: compactDate(journey.completedAt) },
         {
-          label: "Refund",
+          label:
+            Number(journey.refund?.refundAmount || 0) < 0
+              ? "Customer debt"
+              : "Refund",
           value:
             refund?.status === "completed"
               ? money(journey.refund?.refundAmount)
               : "Not applicable",
           tone:
             refund?.status === "completed"
-              ? ("refund" as const)
+              ? Number(journey.refund?.refundAmount || 0) < 0
+                ? ("deduction" as const)
+                : ("refund" as const)
               : undefined,
         },
         ...(refund?.status === "completed"
@@ -971,7 +1156,14 @@ export default function JourneyAccordions({
                 label: "Authorization number",
                 value: refund.reference || "Pending",
               },
-              { label: "Bank arrival", value: "Within 3 days" },
+              {
+                label: "Refund sent",
+                value: compactDate(journey.refund?.processedAt),
+              },
+              {
+                label: "Bank transfer",
+                value: "Expected in your account within 3 working days",
+              },
             ]
           : []),
       ];
@@ -1011,7 +1203,9 @@ export default function JourneyAccordions({
           )}
         </div>
         {imageUrl ? (
-          <div className={`relative h-36 overflow-hidden rounded-lg border border-white/10 bg-black/20 ${isAnyLicenceBusy ? "opacity-70" : ""}`}>
+          <div
+            className={`relative h-36 overflow-hidden rounded-lg border border-white/10 bg-black/20 ${isAnyLicenceBusy ? "opacity-70" : ""}`}
+          >
             <Image
               src={imageUrl}
               alt={`${title} licence`}
@@ -1022,10 +1216,14 @@ export default function JourneyAccordions({
             {busy && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
                 <FiLoader className="animate-spin text-2xl text-[#fe9a00]" />
-                <span className="text-xs font-bold">Uploading and checking…</span>
+                <span className="text-xs font-bold">
+                  Uploading and checking…
+                </span>
               </div>
             )}
-            <label className={`absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#e68a00]"}`}>
+            <label
+              className={`absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg bg-[#fe9a00] px-3 py-2 text-xs font-bold text-white transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-[#e68a00]"}`}
+            >
               <FiUpload />
               {busy ? "Uploading" : "Change"}
               <input
@@ -1041,7 +1239,9 @@ export default function JourneyAccordions({
             </label>
           </div>
         ) : (
-          <label className={`flex h-36 w-full flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/20 text-center transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5"}`}>
+          <label
+            className={`flex h-36 w-full flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/20 text-center transition-colors ${isAnyLicenceBusy ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#fe9a00]/70 hover:bg-[#fe9a00]/5"}`}
+          >
             {busy ? (
               <FiLoader className="mb-2 animate-spin text-2xl text-[#fe9a00]" />
             ) : (
@@ -1108,6 +1308,7 @@ export default function JourneyAccordions({
                 type="button"
                 onClick={() =>
                   onDownloadContract(
+                    contract,
                     contract?.files.signed ? "signed" : "source",
                   )
                 }
@@ -1116,7 +1317,7 @@ export default function JourneyAccordions({
                 <FiDownload />
                 {contract?.files.signed
                   ? "Download signed contract"
-                  : "Download contract"}
+                  : "Download unsigned agreement"}
               </button>
             )}
             <span className="inline-flex w-fit rounded-full bg-[#fe9a00]/15 px-3 py-1 text-xs font-bold text-[#fe9a00]">
@@ -1181,91 +1382,87 @@ export default function JourneyAccordions({
       )}
 
       {/* ── Contract ────────────────────────────────────────── */}
-      <Section id="contract" open={openSection === "contract"}>
-        {contract ? (
+      {showContracts && (
+        <AccordionHeader
+          id="contract"
+          title="Agreements"
+          subtitle={`${contracts.length} document${contracts.length === 1 ? "" : "s"} · original and extensions`}
+          icon={<FiFileText />}
+          open={openSection === "contract"}
+          onToggle={() => onToggleSection("contract")}
+        />
+      )}
+      <Section
+        id="contract"
+        open={openSection === "contract"}
+        labelledBy="contract-accordion-header"
+      >
+        {contracts.length > 0 ? (
           <>
-            <Row
-              label="Agreement"
-              value={
-                contract.contractType === "reservation_extension"
-                  ? "Rental extension"
-                  : "Rental agreement"
-              }
-            />
-            <Row label="Contract number" value={contract.contractNumber} />
-            <Row
-              label="Status"
-              value={
-                journey.contract
-                  ? journey.contract.status.replace(/_/g, " ")
-                  : contract.status
-              }
-            />
-            {contract.createdAt && (
-              <Row
-                label="Generated"
-                value={new Date(contract.createdAt).toLocaleDateString("en-GB")}
-              />
-            )}
-            {journey.contract?.signedAt && (
-              <Row label="Signed" value={journey.contract.signedAt} />
-            )}
-            {contract.contractType === "reservation_extension" &&
-              contract.extension && (
-                <div className="my-3 grid grid-cols-1 gap-2 rounded-xl border border-[#fe9a00]/20 bg-[#fe9a00]/[0.05] p-3 sm:grid-cols-2">
-                  <Row
-                    label="Previous return"
-                    value={
-                      contract.extension.previousReturnDateTime
-                        ? formatDateTimeInLondon(
-                            contract.extension.previousReturnDateTime,
-                          )
-                        : "-"
-                    }
-                  />
-                  <Row
-                    label="New return"
-                    value={
-                      contract.extension.newReturnDateTime
-                        ? formatDateTimeInLondon(
-                            contract.extension.newReturnDateTime,
-                          )
-                        : "-"
-                    }
-                  />
-                  <Row
-                    label="Extension"
-                    value={contract.extension.durationLabel}
-                  />
-                  <Row
-                    label="Extension price"
-                    value={`£${Number(contract.extension.agreedPrice || 0).toFixed(2)}`}
-                  />
-                  <Row
-                    label="Payment"
-                    value="Pay at the office"
-                  />
-                </div>
-              )}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {contract.files?.source && (
-                <button
-                  type="button"
-                  onClick={() => onDownloadContract("source")}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+            <div className="space-y-2">
+              {contracts.map((item) => (
+                <article
+                  key={item._id}
+                  className={`rounded-xl border p-3 sm:p-4 ${item._id === contract?._id ? "border-[#fe9a00]/30 bg-[#fe9a00]/[0.055]" : "border-white/[0.08] bg-black/15"}`}
                 >
-                  <FiDownload /> Download contract
-                </button>
-              )}
-              {contract.files?.signed && (
-                <button
-                  type="button"
-                  onClick={() => onDownloadContract("signed")}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-                >
-                  <FiDownload /> Download signed contract
-                </button>
-              )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-black text-white">
+                          {item.contractType === "reservation_extension"
+                            ? "Rental extension"
+                            : "Original rental agreement"}
+                        </h4>
+                        {item.contractType === "reservation_extension" && (
+                          <span className="rounded-md border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#ffb340]">
+                            Pay at Office
+                          </span>
+                        )}
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${item.status === "completed" ? "bg-emerald-500/10 text-emerald-300" : "bg-white/[0.07] text-slate-400"}`}
+                        >
+                          {item.status.replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs font-semibold text-slate-400">
+                        {item.contractNumber}
+                      </p>
+                      {item.contractType === "reservation_extension" &&
+                        item.extension && (
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            New return{" "}
+                            {item.extension.newReturnDateTime
+                              ? formatDateTimeInLondon(
+                                  item.extension.newReturnDateTime,
+                                )
+                              : "-"}{" "}
+                            · {money(item.extension.agreedPrice)}
+                          </p>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {item.files.source && (
+                        <button
+                          type="button"
+                          onClick={() => onDownloadContract(item, "source")}
+                          className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-white transition hover:bg-white/10"
+                        >
+                          <FiDownload /> Download unsigned agreement
+                        </button>
+                      )}
+                      {item.files.signed && (
+                        <button
+                          type="button"
+                          onClick={() => onDownloadContract(item, "signed")}
+                          className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/15"
+                        >
+                          <FiDownload /> Download signed agreement
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
             {journey.contract?.status === "awaiting_customer_signature" && (
               <div
@@ -1291,8 +1488,12 @@ export default function JourneyAccordions({
                         Confirm before signing
                       </h4>
                       <p className="mt-1 text-xs leading-5 text-slate-400 sm:text-[13px]">
-                        Review the {contract.contractType === "reservation_extension" ? "extension agreement" : "agreement"}, then confirm your acceptance to
-                        continue securely in DocuSign.
+                        Review the{" "}
+                        {contract?.contractType === "reservation_extension"
+                          ? "extension agreement"
+                          : "agreement"}
+                        , then confirm your acceptance to continue securely in
+                        DocuSign.
                       </p>
                     </div>
                   </div>
@@ -1309,7 +1510,11 @@ export default function JourneyAccordions({
                       className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#fe9a00]"
                     />
                     <span className="text-[13px] font-semibold leading-5 text-slate-200">
-                      I have read the {contract.contractType === "reservation_extension" ? "rental extension agreement" : "rental agreement"} and agree to the{" "}
+                      I have read the{" "}
+                      {contract?.contractType === "reservation_extension"
+                        ? "rental extension agreement"
+                        : "rental agreement"}{" "}
+                      and agree to the{" "}
                       <Link
                         href="/terms-and-conditions"
                         target="_blank"
@@ -1318,7 +1523,10 @@ export default function JourneyAccordions({
                         className="inline-flex items-center gap-1 font-black text-[#fe9a00] underline decoration-[#fe9a00]/40 underline-offset-2 transition hover:text-[#ffb13b]"
                       >
                         Terms and Conditions
-                        <FiExternalLink className="text-xs" aria-hidden="true" />
+                        <FiExternalLink
+                          className="text-xs"
+                          aria-hidden="true"
+                        />
                       </Link>
                       .
                     </span>
@@ -1384,183 +1592,224 @@ export default function JourneyAccordions({
         )}
       </Section>
 
-      {/* ── Handover form ──────────────────────────────────── */}
-      <Section id="handover" open={openSection === "handover"}>
-        {handover?.completedAt ? (
-          <>
-            <Row label="Starting mileage" value={handover.startMileage} />
-            <Row label="Starting fuel level" value={handover.startFuelLevel} />
-            {handover.conditionNotes && (
-              <Row label="Condition notes" value={handover.conditionNotes} />
-            )}
-            {(handover.existingDamages?.length ?? 0) > 0 && (
-              <Row
-                label="Existing damages"
-                value={handover.existingDamages!.join(", ")}
-              />
-            )}
-            {handover.keyCount !== undefined && (
-              <Row label="Keys supplied" value={handover.keyCount} />
-            )}
-            {(handover.equipment?.length ?? 0) > 0 && (
-              <Row label="Equipment" value={handover.equipment!.join(", ")} />
-            )}
-            <Row
-              label="Completed"
-              value={new Date(handover.completedAt).toLocaleString("en-GB", {
-                timeZone: "Europe/London",
-              })}
+      {/* ── Vehicle inspection ─────────────────────────────── */}
+      {showInspection && (
+        <>
+          <AccordionHeader
+            id="inspection"
+            title="Vehicle inspection"
+            subtitle={
+              inspection?.completedAt
+                ? "Compare collection and return condition side by side"
+                : handover?.completedAt
+                  ? "Collection condition recorded — return details will appear here later"
+                  : "Collection checklist and return comparison"
+            }
+            icon={<FiCheckCircle />}
+            open={openSection === "inspection"}
+            onToggle={() => onToggleSection("inspection")}
+          />
+          <Section
+            id="inspection"
+            open={openSection === "inspection"}
+            labelledBy="inspection-accordion-header"
+          >
+            <InspectionComparisonTable
+              handover={handover}
+              inspection={inspection}
             />
-          </>
-        ) : (
-          <Placeholder text="The handover checklist is completed with our staff when you collect the van. It will appear here afterwards." />
-        )}
-      </Section>
-
-      {/* ── Return inspection ──────────────────────────────── */}
-      <Section id="inspection" open={openSection === "inspection"}>
-        <InspectionComparisonTable
-          handover={handover}
-          inspection={inspection}
-          pickupDateTime={journey.pickupDateTime}
-          returnDateTime={journey.returnDateTime}
-        />
-      </Section>
+          </Section>
+        </>
+      )}
 
       {/* ── Refund summary ─────────────────────────────────── */}
-      <Section id="refund" open={openSection === "refund"}>
-        {refund && journey.refund ? (
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/15">
-            <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Refund calculation
-                </p>
-                <p className="mt-1 text-sm text-slate-300">
-                  Your deposit, less the deductions listed below.
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  Deposit paid
-                </p>
-                <p className="text-base font-black tabular-nums text-white">
-                  {money(journey.refund.depositPaid)}
-                </p>
-              </div>
-            </div>
+      {showRefund && (
+        <>
+          <AccordionHeader
+            id="refund"
+            title="Refund & deductions"
+            subtitle="Deposit calculation, evidence and bank processing dates"
+            icon={<FiClock />}
+            open={openSection === "refund"}
+            onToggle={() => onToggleSection("refund")}
+          />
+          <Section
+            id="refund"
+            open={openSection === "refund"}
+            labelledBy="refund-accordion-header"
+          >
+            {refund && journey.refund ? (
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/15">
+                <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Refund calculation
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300">
+                      Your deposit, less the deductions listed below.
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Deposit paid
+                    </p>
+                    <p className="text-base font-black tabular-nums text-white">
+                      {money(journey.refund.depositPaid)}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="px-4 py-2">
-              {refundDeductions.length > 0 ? (
-                <div className="divide-y divide-white/[0.07]">
-                  {refundDeductions.map((deduction) => (
-                    <div
-                      key={deduction.key}
-                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 py-3"
-                    >
-                      <p className="min-w-0 break-words text-sm font-semibold text-slate-200">
-                        {deduction.label}
-                      </p>
-                      <p className="text-sm font-bold tabular-nums text-red-300">
-                        -{money(deduction.amount)}
-                      </p>
-                      {deduction.reason && (
-                        <p className="col-span-2 break-words text-xs leading-5 text-slate-500 sm:col-span-1">
-                          {deduction.reason}
-                        </p>
-                      )}
+                <div className="px-4 py-2">
+                  {refundDeductions.length > 0 ? (
+                    <div className="divide-y divide-white/[0.07]">
+                      {refundDeductions.map((deduction) => (
+                        <div
+                          key={deduction.key}
+                          className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 py-3"
+                        >
+                          <div className="flex min-w-0 items-start gap-3">
+                            <EvidenceThumbnail
+                              url={deduction.evidenceUrl}
+                              alt={`Evidence for ${deduction.ticketReference || deduction.label}`}
+                            />
+                            <div className="min-w-0">
+                              <p className="break-words text-sm font-semibold text-slate-200">
+                                {deduction.label}
+                              </p>
+                              {deduction.ticketReference && (
+                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                                  {deduction.ticketReference}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-sm font-bold tabular-nums text-red-300">
+                            -{money(deduction.amount)}
+                          </p>
+                          {deduction.reason && (
+                            <p className="col-span-2 break-words text-xs leading-5 text-slate-500 sm:col-span-1">
+                              {deduction.reason}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="flex items-center justify-between gap-4 py-3 text-sm">
+                      <span className="text-slate-400">No deductions</span>
+                      <span className="font-bold tabular-nums text-emerald-400">
+                        {money(0)}
+                      </span>
+                    </div>
+                  )}
+                  {hasStandardRefundDeductions &&
+                    refund.chargeReason?.trim() && (
+                      <div className="mb-2 rounded-lg border border-[#fe9a00]/15 bg-[#fe9a00]/[0.05] px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#fe9a00]">
+                          Reason for all standard deductions
+                        </p>
+                        <p className="mt-1 break-words text-xs leading-5 text-slate-300">
+                          {refund.chargeReason}
+                        </p>
+                      </div>
+                    )}
                 </div>
-              ) : (
-                <div className="flex items-center justify-between gap-4 py-3 text-sm">
-                  <span className="text-slate-400">No deductions</span>
-                  <span className="font-bold tabular-nums text-emerald-400">
-                    {money(0)}
-                  </span>
-                </div>
-              )}
-              {hasStandardRefundDeductions && refund.chargeReason?.trim() && (
-                <div className="mb-2 rounded-lg border border-[#fe9a00]/15 bg-[#fe9a00]/[0.05] px-3 py-2.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#fe9a00]">
-                    Reason for all standard deductions
-                  </p>
-                  <p className="mt-1 break-words text-xs leading-5 text-slate-300">
-                    {refund.chargeReason}
-                  </p>
-                </div>
-              )}
-            </div>
 
-            <div className="border-t border-[#fe9a00]/25 bg-[#fe9a00]/[0.04] px-4 py-4">
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <span className="font-semibold text-slate-300">
-                  Total deductions
-                </span>
-                <span className="font-black tabular-nums text-red-300">
-                  -{money(journey.refund.deductionsTotal)}
-                </span>
-              </div>
-              <div className="mt-2 flex items-end justify-between gap-4">
-                <span className="font-black text-white">Refund amount</span>
-                <span className="text-xl font-black tabular-nums text-emerald-400">
-                  {money(journey.refund.refundAmount)}
-                </span>
-              </div>
-            </div>
+                <div className="border-t border-[#fe9a00]/25 bg-[#fe9a00]/[0.04] px-4 py-4">
+                  <div className="flex items-center justify-between gap-4 text-sm">
+                    <span className="font-semibold text-slate-300">
+                      Total deductions
+                    </span>
+                    <span className="font-black tabular-nums text-red-300">
+                      -{money(journey.refund.deductionsTotal)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-end justify-between gap-4">
+                    <span className="font-black text-white">
+                      {journey.refund.refundAmount < 0
+                        ? "Customer debt"
+                        : "Refund amount"}
+                    </span>
+                    <span
+                      className={`text-xl font-black tabular-nums ${
+                        journey.refund.refundAmount < 0
+                          ? "text-red-300"
+                          : "text-emerald-400"
+                      }`}
+                    >
+                      {money(journey.refund.refundAmount)}
+                    </span>
+                  </div>
+                  {journey.refund.refundAmount < 0 && (
+                    <p className="mt-2 text-xs leading-5 text-red-200/80">
+                      Your deductions are higher than the deposit paid. This
+                      outstanding balance is owed to SuccessVanHire.
+                    </p>
+                  )}
+                </div>
 
-            <div className="grid gap-3 border-t border-white/10 px-4 py-4 text-xs sm:grid-cols-3">
-              <div className="min-w-0">
-                <p className="font-bold uppercase tracking-wide text-slate-500">
-                  Status
-                </p>
-                <p className="mt-1 break-words font-semibold capitalize text-[#fe9a00]">
-                  {journey.refund.status.replace(/_/g, " ")}
-                </p>
-              </div>
-              {refund.expectedBy && (
-                <div className="min-w-0">
-                  <p className="font-bold uppercase tracking-wide text-slate-500">
-                    Expected by
-                  </p>
-                  <p className="mt-1 font-semibold text-white">
-                    {new Date(refund.expectedBy).toLocaleDateString("en-GB")}
-                  </p>
+                <div className="grid gap-3 border-t border-white/10 px-4 py-4 text-xs sm:grid-cols-3">
+                  <div className="min-w-0">
+                    <p className="font-bold uppercase tracking-wide text-slate-500">
+                      Status
+                    </p>
+                    <p className="mt-1 break-words font-semibold capitalize text-[#fe9a00]">
+                      {journey.refund.status.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                  {refund.expectedBy && refund.status !== "completed" && (
+                    <div className="min-w-0">
+                      <p className="font-bold uppercase tracking-wide text-slate-500">
+                        Expected by
+                      </p>
+                      <p className="mt-1 font-semibold text-white">
+                        {new Date(refund.expectedBy).toLocaleDateString(
+                          "en-GB",
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  {journey.refund.reference && (
+                    <div className="min-w-0">
+                      <p className="font-bold uppercase tracking-wide text-slate-500">
+                        Authorization number
+                      </p>
+                      <p className="mt-1 break-all font-semibold text-white">
+                        {journey.refund.reference}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-              {journey.refund.reference && (
-                <div className="min-w-0">
-                  <p className="font-bold uppercase tracking-wide text-slate-500">
-                    Authorization number
+                {refund.status === "completed" ? (
+                  <div className="border-t border-emerald-400/20 bg-emerald-500/[0.07] px-4 py-3">
+                    <p className="text-sm font-bold text-emerald-300">
+                      {journey.refund.refundAmount < 0
+                        ? "Your deposit review was confirmed"
+                        : "Your refund was sent"}
+                      {journey.refund.processedAt
+                        ? ` on ${compactDate(journey.refund.processedAt)}`
+                        : ""}
+                      .
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-emerald-100/75">
+                      Expected in your account within 3 working days. Keep the
+                      authorization number above in case you need to contact
+                      your bank.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-slate-500">
+                    Once sent, your refund should reach your bank account within
+                    3 days.
                   </p>
-                  <p className="mt-1 break-all font-semibold text-white">
-                    {journey.refund.reference}
-                  </p>
-                </div>
-              )}
-            </div>
-            {refund.status === "completed" ? (
-              <div className="border-t border-emerald-400/20 bg-emerald-500/[0.07] px-4 py-3">
-                <p className="text-sm font-bold text-emerald-300">
-                  Your refund has been sent.
-                </p>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/75">
-                  It should reach your bank account within 3 days. Keep the
-                  authorization number above in case you need to contact your
-                  bank.
-                </p>
+                )}
               </div>
             ) : (
-              <p className="border-t border-white/10 px-4 py-3 text-xs leading-5 text-slate-500">
-                Once sent, your refund should reach your bank account within 3
-                days.
-              </p>
+              <Placeholder text="Your deposit refund will be reviewed after the return inspection. Details will appear here." />
             )}
-          </div>
-        ) : (
-          <Placeholder text="Your deposit refund will be reviewed after the return inspection. Details will appear here." />
-        )}
-      </Section>
+          </Section>
+        </>
+      )}
 
       {/* ── Activity timeline ──────────────────────────────── */}
       <Section id="timeline" open={openSection === "timeline"}>

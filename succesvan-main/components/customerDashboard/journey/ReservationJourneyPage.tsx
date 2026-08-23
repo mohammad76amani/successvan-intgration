@@ -44,7 +44,6 @@ const SECTION_IDS: JourneySectionId[] = [
   "deposit",
   "contract",
   "collection",
-  "handover",
   "inspection",
   "refund",
   "timeline",
@@ -57,7 +56,7 @@ const DEFAULT_SECTION: Partial<Record<ReservationStatus, JourneySectionId>> = {
   deposit_pending: "deposit",
   contract_pending: "contract",
   ready_for_collection: "collection",
-  handover_in_progress: "handover",
+  handover_in_progress: "inspection",
   delivered: "collection",
   vehicle_returned: "inspection",
   return_inspection: "inspection",
@@ -97,6 +96,7 @@ const mobileNavItems = [
 
 const normalizeSectionId = (id: string): JourneySectionId => {
   if (id === "return") return "collection";
+  if (id === "handover") return "inspection";
   return (SECTION_IDS as string[]).includes(id)
     ? (id as JourneySectionId)
     : "summary";
@@ -227,8 +227,10 @@ export default function ReservationJourneyPage({
   const router = useRouter();
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [contract, setContract] = useState<SafeContractSummary | null>(null);
+  const [contracts, setContracts] = useState<SafeContractSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [openSection, setOpenSection] = useState<JourneySectionId | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [signBusy, setSignBusy] = useState(false);
@@ -236,10 +238,14 @@ export default function ReservationJourneyPage({
 
   const fetchData = useCallback(
     async (signal?: AbortSignal) => {
+      setLoading(true);
+      setNotFound(false);
+      setLoadError("");
       try {
         const userRaw = localStorage.getItem("user");
         const userId = userRaw ? JSON.parse(userRaw)?._id : null;
         if (!userId) {
+          setLoadError("Please sign in again to view this booking.");
           router.replace("/login");
           return;
         }
@@ -250,17 +256,23 @@ export default function ReservationJourneyPage({
         );
         const json = await res.json();
         if (signal?.aborted) return;
-        const data: Reservation | undefined = json.data?.reservation;
-        if (!json.success || !data) {
+        if (res.status === 403 || res.status === 404) {
           setNotFound(true);
           return;
         }
+        const data: Reservation | undefined = json.data?.reservation;
+        if (!res.ok || !json.success || !data)
+          throw new Error(json.error || "Could not load booking");
         setReservation(data);
         setContract(json.data.contract || null);
+        setContracts(
+          Array.isArray(json.data.contracts) ? json.data.contracts : [],
+        );
       } catch (error) {
         if (signal?.aborted || (error as Error).name === "AbortError") return;
-        console.log("Failed to load reservation:", error);
-        setNotFound(true);
+        setLoadError(
+          error instanceof Error ? error.message : "Could not load booking",
+        );
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
@@ -304,7 +316,7 @@ export default function ReservationJourneyPage({
         contract?.contractType === "reservation_extension" &&
         journey.contract?.status === "awaiting_customer_signature"
           ? "contract"
-          : DEFAULT_SECTION[journey.mainStatus] ?? "summary";
+          : (DEFAULT_SECTION[journey.mainStatus] ?? "summary");
       return reservation?.deposit?.option === "office" &&
         defaultSection === "deposit"
         ? "summary"
@@ -369,12 +381,12 @@ export default function ReservationJourneyPage({
   };
 
   const handleDownloadContract = async (
+    selectedContract: SafeContractSummary,
     kind: "source" | "signed" | "certificate",
   ) => {
-    if (!contract) return;
     try {
       const res = await fetch(
-        `/api/contracts/${contract._id}/document?type=${kind}`,
+        `/api/contracts/${selectedContract._id}/document?type=${kind}`,
         { headers: authHeaders() },
       );
       if (!res.ok) throw new Error("Download failed");
@@ -382,7 +394,7 @@ export default function ReservationJourneyPage({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${contract.contractNumber}-${kind}.pdf`;
+      link.download = `${selectedContract.contractNumber}-${kind}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -402,7 +414,7 @@ export default function ReservationJourneyPage({
     );
   }
 
-  if (notFound || !reservation || !journey) {
+  if (notFound) {
     return (
       <div
         className={`flex flex-col items-center justify-center gap-4 p-4 ${
@@ -434,15 +446,52 @@ export default function ReservationJourneyPage({
     );
   }
 
+  if (loadError || !reservation || !journey) {
+    return (
+      <div
+        role="alert"
+        className={`flex flex-col items-center justify-center gap-3 p-5 text-center ${
+          embedded
+            ? "min-h-[360px] bg-[#0b1224]/80"
+            : "min-h-screen bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.08),_transparent_32%),#0b1224]"
+        }`}
+      >
+        <p className="text-xl font-black tracking-tight text-white sm:text-2xl">
+          Could not load booking
+        </p>
+        <p className="max-w-md text-sm leading-6 text-red-200/80">
+          {loadError ||
+            "The booking response was incomplete. Please try again."}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => void fetchData()}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-r from-[#fe9a00] to-[#ff8500] px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-[#fe9a00]/10 transition hover:-translate-y-0.5"
+          >
+            Try again
+          </button>
+          {embedded && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] px-5 py-2.5 text-sm font-black text-white transition hover:bg-white/10"
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const customerName = [reservation.user?.name, reservation.user?.lastName]
     .filter(Boolean)
     .join(" ");
   const vehicle = reservation.vehicle as
-    | (Partial<Pick<Vehicle, "title">> & { name?: string })
-    | undefined;
+    (Partial<Pick<Vehicle, "title">> & { name?: string }) | undefined;
   const category = reservation.category as
-    | Partial<Pick<Category, "name">>
-    | undefined;
+    Partial<Pick<Category, "name">> | undefined;
   const vehicleLabel = vehicle?.title || vehicle?.name || journey.vehicleName;
   const rentalDays = getRentalDays(reservation);
   const addOnBreakdown = (reservation.addOns || []).map((item) => ({
@@ -728,7 +777,8 @@ export default function ReservationJourneyPage({
                                       {extension.contractNumber ||
                                         `Extension ${index + 1}`}
                                     </strong>
-                                    New return: {extension.newReturnDateTime
+                                    New return:{" "}
+                                    {extension.newReturnDateTime
                                       ? formatDateTimeInLondon(
                                           extension.newReturnDateTime,
                                         )
@@ -789,7 +839,9 @@ export default function ReservationJourneyPage({
           reservation={reservation}
           journey={journey}
           contract={contract}
+          contracts={contracts}
           openSection={openSection}
+          onToggleSection={handleToggle}
           onSignContract={handleSignContract}
           onDownloadContract={handleDownloadContract}
           onDepositUpdated={fetchData}

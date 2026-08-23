@@ -17,6 +17,8 @@ import {
 } from "react-icons/fi";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import { showToast } from "@/lib/toast";
+import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
+import { calculateRefundBalance } from "@/lib/refund-balance";
 
 type RefundCharges = {
   fuel?: number;
@@ -30,6 +32,11 @@ type RefundCharges = {
 type AdditionalCharge = {
   amount: number;
   reason: string;
+  evidenceUrl?: string;
+  ticketReference?: string;
+  violationDate?: string;
+  vehicleNumber?: string;
+  source?: "traffic_violation" | "manual";
 };
 
 type RefundQueueItem = {
@@ -239,7 +246,7 @@ export default function DepositRefundsManagement() {
           deposits: summary.deposits + Number(item.refund?.depositPaid || 0),
           deductions:
             summary.deductions + Number(item.refund?.deductionsTotal || 0),
-          refunds: summary.refunds + Number(item.refund?.refundAmount || 0),
+          refunds: summary.refunds + calculateRefundBalance(item.refund),
         }),
         { deposits: 0, deductions: 0, refunds: 0 },
       ),
@@ -471,8 +478,12 @@ export default function DepositRefundsManagement() {
 
                   <div className="flex items-end justify-between border-t border-white/[0.07] pt-3 xl:block xl:border-0 xl:pt-0 xl:text-right">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 xl:hidden">Refund payable</p>
-                      <p className="text-xl font-black text-white">{money(item.refund?.refundAmount)}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 xl:hidden">
+                        {calculateRefundBalance(item.refund) < 0 ? "Customer debt" : "Refund payable"}
+                      </p>
+                      <p className={`text-xl font-black ${calculateRefundBalance(item.refund) < 0 ? "text-red-300" : "text-white"}`}>
+                        {money(calculateRefundBalance(item.refund))}
+                      </p>
                     </div>
                     <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       {item.refund?.status || "approved"}
@@ -516,7 +527,18 @@ export default function DepositRefundsManagement() {
                           ))}
                           {additionalRows.map((row, index) => (
                             <div key={`${row.reason}-${index}`} className="flex items-start justify-between gap-4 text-sm">
-                              <span className="min-w-0 break-words text-slate-400">{row.reason || "Additional deduction"}</span>
+                              <span className="flex min-w-0 items-start gap-3 text-slate-400">
+                                <EvidenceThumbnail
+                                  url={row.evidenceUrl}
+                                  alt={`Evidence for ${row.ticketReference || row.reason}`}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block break-words">{row.reason || "Additional deduction"}</span>
+                                  {row.ticketReference && (
+                                    <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-wide text-slate-600">{row.ticketReference}</span>
+                                  )}
+                                </span>
+                              </span>
                               <span className="shrink-0 font-bold text-red-300">−{money(row.amount)}</span>
                             </div>
                           ))}
@@ -571,8 +593,12 @@ export default function DepositRefundsManagement() {
                   <p className="mt-1 truncate text-sm font-bold text-white">{customerName(selected)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Send to bank</p>
-                  <p className="mt-1 text-lg font-black text-[#fe9a00]">{money(selected.refund?.refundAmount)}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    {calculateRefundBalance(selected.refund) < 0 ? "Customer debt" : "Send to bank"}
+                  </p>
+                  <p className={`mt-1 text-lg font-black ${calculateRefundBalance(selected.refund) < 0 ? "text-red-300" : "text-[#fe9a00]"}`}>
+                    {money(calculateRefundBalance(selected.refund))}
+                  </p>
                 </div>
               </div>
 

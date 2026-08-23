@@ -16,6 +16,12 @@ const createContractSchema = z.object({
   insuranceProvider: z.enum(["diba", "customer"]),
   insuranceOtherExcess: z.string().trim().optional(),
   handoverDepositAmount: z.number().min(0).optional(),
+  additionalDriver: z
+    .object({
+      name: z.string().trim().min(1),
+      licenceNumber: z.string().trim().min(1),
+    })
+    .optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -47,6 +53,7 @@ export async function POST(req: NextRequest) {
         insuranceProvider: body.insuranceProvider,
         insuranceOtherExcess: body.insuranceOtherExcess,
         handoverDepositAmount: body.handoverDepositAmount,
+        additionalDriver: body.additionalDriver,
       },
     );
     return successResponse(contract, 201);

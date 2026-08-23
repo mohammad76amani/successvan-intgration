@@ -220,6 +220,7 @@ export interface AddOn {
 
   name: string;
   description?: string;
+  type?: string;
   pricingType: "flat" | "tiered";
   flatPrice?:
     | number
@@ -284,6 +285,12 @@ export interface Reservation {
     quantity: number;
     selectedTierIndex?: number;
   }>;
+  additionalDriver?: {
+    name?: string;
+    licenceNumber?: string;
+    capturedAt?: Date | string;
+    capturedBy?: string;
+  };
   discountCode?: string;
   selectedGear?: "manual" | "automatic";
   pickupExtensionPrice?: number;
@@ -405,6 +412,11 @@ export interface Reservation {
     additionalCharges?: {
       amount: number;
       reason: string;
+      evidenceUrl?: string;
+      ticketReference?: string;
+      violationDate?: Date | string;
+      vehicleNumber?: string;
+      source?: "traffic_violation" | "manual";
     }[];
     chargeReason?: string;
     otherChargeReason?: string;

@@ -14,13 +14,24 @@ export const isPendingExtensionStatus = (status?: ContractStatus) =>
 
 export type ExtensionPanelState =
   | "create"
+  | "create_another"
+  | "awaiting_signature"
   | "agreement_preparing"
-  | "download";
+  | "history";
 
 export const extensionPanelState = (input: {
-  exists: boolean;
-  sourceAvailable?: boolean;
+  extensions: Array<{ status?: ContractStatus; sourceAvailable?: boolean }>;
 }): ExtensionPanelState => {
-  if (!input.exists) return "create";
-  return input.sourceAvailable ? "download" : "agreement_preparing";
+  if (!input.extensions.length) return "create";
+  const unfinished = input.extensions.find((item) =>
+    isPendingExtensionStatus(item.status),
+  );
+  if (unfinished) {
+    return unfinished.sourceAvailable
+      ? "awaiting_signature"
+      : "agreement_preparing";
+  }
+  return input.extensions.some((item) => item.status === "completed")
+    ? "create_another"
+    : "history";
 };

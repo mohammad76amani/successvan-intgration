@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import TimeSelect from "@/components/ui/TimeSelect";
 import {
   FiArrowRight,
   FiCalendar,
@@ -23,10 +24,16 @@ import {
 import { showToast } from "@/lib/toast";
 import type { SafeContractSummary } from "@/lib/docusign/types";
 import {
+  findSpecialDayForDate,
+  getWorkingDayExtensionRanges,
+  getWorkingDayWindow,
+} from "@/lib/specialDaySchedule";
+import { generateTimeSlots } from "@/utils/timeSlots";
+import {
   extensionPanelState,
   isPendingExtensionStatus,
 } from "@/lib/contracts/extension-status";
-import type { Reservation } from "@/types/type";
+import type { Office, Reservation, WorkingTime } from "@/types/type";
 
 type ReservationExtensionPanelProps = {
   reservation: Reservation;
@@ -114,6 +121,10 @@ export default function ReservationExtensionPanel({
   const [newReturnTime, setNewReturnTime] = useState(
     reservation.returnTime || "09:00",
   );
+  const [useManualReturnExtension, setUseManualReturnExtension] =
+    useState(false);
+  const [manualReturnExtensionPrice, setManualReturnExtensionPrice] =
+    useState("");
   const [useCustomPrice, setUseCustomPrice] = useState(false);
   const [customPrice, setCustomPrice] = useState("");
   const [customPriceReason, setCustomPriceReason] = useState("");
@@ -122,11 +133,10 @@ export default function ReservationExtensionPanel({
   const [previewError, setPreviewError] = useState("");
   const [validationError, setValidationError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [latestExtension, setLatestExtension] =
-    useState<SafeContractSummary | null>(null);
+  const [extensions, setExtensions] = useState<SafeContractSummary[]>([]);
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [existingCheckError, setExistingCheckError] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
@@ -139,11 +149,7 @@ export default function ReservationExtensionPanel({
         reservation.endDateDisplay,
         reservation.returnTime,
       ) || displayDateTime(reservation.endDate, reservation.returnTime),
-    [
-      reservation.endDate,
-      reservation.endDateDisplay,
-      reservation.returnTime,
-    ],
+    [reservation.endDate, reservation.endDateDisplay, reservation.returnTime],
   );
   const minimumReturnDate = useMemo(
     () => reservation.endDateDisplay || dateInputValue(reservation.endDate),
@@ -153,6 +159,96 @@ export default function ReservationExtensionPanel({
     () => dateFromInputValue(newReturnDate),
     [newReturnDate],
   );
+  const office = useMemo(() => {
+    const value = reservation.office;
+    return value && typeof value === "object" ? (value as Office) : null;
+  }, [reservation.office]);
+  const returnTimeSlots = useMemo(() => {
+    let slots = generateTimeSlots("06:00", "23:45", 15);
+    if (newReturnDate === minimumReturnDate && reservation.returnTime) {
+      slots = slots.filter((slot) => slot > reservation.returnTime!);
+    }
+    return slots;
+  }, [minimumReturnDate, newReturnDate, reservation.returnTime]);
+  const returnSchedule = useMemo(() => {
+    if (!office || !selectedReturnDate) {
+      return { specialDayInfo: undefined, extensionTimes: undefined };
+    }
+
+    const dayName = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ][selectedReturnDate.getDay()] as WorkingTime["day"];
+    const workingDay = office.workingTime?.find(
+      (day) => day.day === dayName && day.isOpen,
+    );
+    const normalWindow = workingDay
+      ? getWorkingDayWindow(workingDay, "return")
+      : undefined;
+
+    if (useManualReturnExtension) {
+      return {
+        specialDayInfo: undefined,
+        extensionTimes: {
+          start: returnTimeSlots[0] || normalWindow?.startTime || "06:00",
+          end:
+            returnTimeSlots[returnTimeSlots.length - 1] ||
+            normalWindow?.endTime ||
+            "23:45",
+          normalStart: normalWindow?.startTime || "00:00",
+          normalEnd: normalWindow?.endTime || "00:00",
+          price: Number(manualReturnExtensionPrice) || 0,
+        },
+      };
+    }
+
+    const specialDay = findSpecialDayForDate(
+      office.specialDays,
+      selectedReturnDate,
+    );
+    if (specialDay) {
+      return {
+        specialDayInfo: {
+          reason: specialDay.reason || "Special day / holiday",
+          price: Number(specialDay.extraPrice || 0),
+        },
+        extensionTimes: undefined,
+      };
+    }
+
+    if (!workingDay) {
+      return { specialDayInfo: undefined, extensionTimes: undefined };
+    }
+
+    const automaticNormalWindow = getWorkingDayWindow(workingDay, "return");
+    const extensionRange = getWorkingDayExtensionRanges(
+      workingDay,
+      "return",
+    )[0];
+    return {
+      specialDayInfo: undefined,
+      extensionTimes: extensionRange
+        ? {
+            start: extensionRange.startTime,
+            end: extensionRange.endTime,
+            normalStart: automaticNormalWindow.startTime,
+            normalEnd: automaticNormalWindow.endTime,
+            price: extensionRange.flatPrice,
+          }
+        : undefined,
+    };
+  }, [
+    manualReturnExtensionPrice,
+    office,
+    returnTimeSlots,
+    selectedReturnDate,
+    useManualReturnExtension,
+  ]);
   const minimumReturnDateValue = useMemo(
     () => dateFromInputValue(minimumReturnDate) || new Date(),
     [minimumReturnDate],
@@ -160,6 +256,16 @@ export default function ReservationExtensionPanel({
   const agreedPrice = useCustomPrice
     ? Number(customPrice)
     : preview?.pricing.totalPrice;
+
+  useEffect(() => {
+    if (
+      newReturnDate &&
+      newReturnTime &&
+      !returnTimeSlots.includes(newReturnTime)
+    ) {
+      setNewReturnTime("");
+    }
+  }, [newReturnDate, newReturnTime, returnTimeSlots]);
 
   useEffect(() => {
     if (!reservationId) {
@@ -180,16 +286,20 @@ export default function ReservationExtensionPanel({
         );
         const payload = await response.json();
         if (!response.ok || !payload.success) {
-          throw new Error(apiError(payload, "Could not check extension status"));
+          throw new Error(
+            apiError(payload, "Could not check extension status"),
+          );
         }
-        const contracts = Array.isArray(payload.data?.data)
-          ? payload.data.data
-          : [];
-        setLatestExtension(
-          contracts.find(
-            (contract: SafeContractSummary) =>
-              contract.contractType === "reservation_extension",
-          ) || null,
+        const contracts = Array.isArray(payload.data)
+          ? payload.data
+          : Array.isArray(payload.data?.data)
+            ? payload.data.data
+            : [];
+        setExtensions(
+          contracts.filter(
+            (item: SafeContractSummary) =>
+              item.contractType === "reservation_extension",
+          ),
         );
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
@@ -204,13 +314,19 @@ export default function ReservationExtensionPanel({
     return () => controller.abort();
   }, [reservationId]);
 
-  const extensionPending = Boolean(
-    latestExtension && isPendingExtensionStatus(latestExtension.status),
+  const latestExtension = extensions[0] || null;
+  const pendingExtension = extensions.find((item) =>
+    isPendingExtensionStatus(item.status),
   );
-  const extensionCompleted = latestExtension?.status === "completed";
+  const extensionPending = Boolean(pendingExtension);
+  const extensionCompleted = Boolean(
+    extensions.some((item) => item.status === "completed"),
+  );
   const panelState = extensionPanelState({
-    exists: Boolean(latestExtension),
-    sourceAvailable: latestExtension?.files.source,
+    extensions: extensions.map((item) => ({
+      status: item.status,
+      sourceAvailable: item.files.source,
+    })),
   });
 
   const extensionStatusLabel = latestExtension
@@ -221,13 +337,17 @@ export default function ReservationExtensionPanel({
         : `Extension ${latestExtension.status.replaceAll("_", " ")}`
     : null;
 
-  const downloadExtension = async () => {
-    if (!latestExtension || downloading) return;
-    setDownloading(true);
+  const downloadExtension = async (
+    extension: SafeContractSummary,
+    kind: "source" | "signed",
+  ) => {
+    const busyKey = `${extension._id}:${kind}`;
+    if (downloading) return;
+    setDownloading(busyKey);
     setDownloadError("");
     try {
       const response = await fetch(
-        `/api/admin/contracts/${latestExtension._id}/document?type=source`,
+        `/api/admin/contracts/${extension._id}/document?type=${kind}`,
         { headers: clientAuthHeaders(), cache: "no-store" },
       );
       if (!response.ok) {
@@ -238,7 +358,7 @@ export default function ReservationExtensionPanel({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${safeFilePart(latestExtension.contractNumber)}-extension-agreement.pdf`;
+      link.download = `${safeFilePart(extension.contractNumber)}-${kind}-extension-agreement.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -249,13 +369,15 @@ export default function ReservationExtensionPanel({
       setDownloadError(message);
       showToast.error(message);
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   };
 
   const resetForm = () => {
     setNewReturnDate("");
     setNewReturnTime(reservation.returnTime || "09:00");
+    setUseManualReturnExtension(false);
+    setManualReturnExtensionPrice("");
     setUseCustomPrice(false);
     setCustomPrice("");
     setCustomPriceReason("");
@@ -277,7 +399,7 @@ export default function ReservationExtensionPanel({
       if (event.key === "Tab" && modalRef.current) {
         const focusable = Array.from(
           modalRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]',
+            "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]",
           ),
         );
         if (!focusable.length) return;
@@ -328,6 +450,9 @@ export default function ReservationExtensionPanel({
           newReturnDate,
           newReturnTime,
         });
+        if (useManualReturnExtension) {
+          query.set("manualReturnExtensionPrice", manualReturnExtensionPrice);
+        }
         const response = await fetch(
           `/api/admin/reservations/${reservationId}/extensions?${query.toString()}`,
           {
@@ -365,6 +490,8 @@ export default function ReservationExtensionPanel({
     open,
     reservation.returnTime,
     reservationId,
+    manualReturnExtensionPrice,
+    useManualReturnExtension,
   ]);
 
   const submitExtension = async () => {
@@ -379,6 +506,13 @@ export default function ReservationExtensionPanel({
         previewError || "Choose a valid new return date and time",
       );
       return;
+    }
+    if (useManualReturnExtension) {
+      const value = Number(manualReturnExtensionPrice);
+      if (!Number.isFinite(value) || value < 0) {
+        setValidationError("Enter a valid manual return extension fee");
+        return;
+      }
     }
     if (useCustomPrice) {
       const value = Number(customPrice);
@@ -399,6 +533,13 @@ export default function ReservationExtensionPanel({
       const body = {
         newReturnDate,
         newReturnTime,
+        ...(useManualReturnExtension
+          ? {
+              manualReturnExtensionPrice: Number(
+                Number(manualReturnExtensionPrice).toFixed(2),
+              ),
+            }
+          : {}),
         ...(useCustomPrice
           ? {
               customPrice: Number(Number(customPrice).toFixed(2)),
@@ -421,7 +562,12 @@ export default function ReservationExtensionPanel({
         );
       }
       showToast.success("Extension agreement created and sent for signing");
-      setLatestExtension(payload.data as SafeContractSummary);
+      setExtensions((current) => [
+        payload.data as SafeContractSummary,
+        ...current.filter(
+          (item) => item._id !== (payload.data as SafeContractSummary)._id,
+        ),
+      ]);
       setOpen(false);
       resetForm();
       onCreated?.();
@@ -472,10 +618,15 @@ export default function ReservationExtensionPanel({
                   <strong className="font-bold text-slate-200">
                     {latestExtension.contractNumber || "Extension agreement"}
                   </strong>
-                  <span aria-hidden="true" className="text-slate-600">•</span>
+                  <span aria-hidden="true" className="text-slate-600">
+                    •
+                  </span>
                   <span>
-                    New return {latestExtension.extension?.newReturnDateTime
-                      ? displayDateTime(latestExtension.extension.newReturnDateTime)
+                    New return{" "}
+                    {latestExtension.extension?.newReturnDateTime
+                      ? displayDateTime(
+                          latestExtension.extension.newReturnDateTime,
+                        )
                       : "pending"}
                   </span>
                   {extensionStatusLabel && (
@@ -495,38 +646,33 @@ export default function ReservationExtensionPanel({
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {panelState === "download" && (
-              <button
-                type="button"
-                onClick={downloadExtension}
-                disabled={downloading}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#fe9a00]/30 bg-[#fe9a00]/10 px-4 py-2.5 text-sm font-black text-[#ffb340] transition hover:border-[#fe9a00]/50 hover:bg-[#fe9a00]/15 focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/35 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {downloading ? (
-                  <FiLoader aria-hidden="true" className="animate-spin" />
-                ) : (
-                  <FiDownload aria-hidden="true" />
-                )}
-                {downloading ? "Downloading…" : "Download extension agreement"}
-              </button>
-            )}
             {panelState === "agreement_preparing" && (
               <span className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-slate-400">
                 <FiLoader aria-hidden="true" className="animate-spin" />
                 Agreement preparing
               </span>
             )}
-            {panelState === "create" && !existingCheckError && (
-              <button
-                ref={triggerButtonRef}
-                type="button"
-                onClick={() => setOpen(true)}
-                disabled={!reservationId || checkingExisting}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-2.5 text-sm font-black text-[#111827] transition hover:bg-[#ffad2f] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/40 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {checkingExisting ? "Checking…" : "Create extension"}
-                <FiArrowRight aria-hidden="true" />
-              </button>
+            {(panelState === "create" || panelState === "create_another") &&
+              !existingCheckError && (
+                <button
+                  ref={triggerButtonRef}
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  disabled={!reservationId || checkingExisting}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-4 py-2.5 text-sm font-black text-[#111827] transition hover:bg-[#ffad2f] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {checkingExisting
+                    ? "Checking…"
+                    : panelState === "create_another"
+                      ? "Create another extension"
+                      : "Create extension"}
+                  <FiArrowRight aria-hidden="true" />
+                </button>
+              )}
+            {panelState === "awaiting_signature" && (
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-4 text-sm font-black text-[#ffb340]">
+                <FiClock aria-hidden="true" /> Awaiting customer signature
+              </span>
             )}
             {existingCheckError && (
               <span className="inline-flex min-h-11 items-center rounded-lg border border-red-400/20 bg-red-500/10 px-4 text-sm font-bold text-red-200">
@@ -539,6 +685,80 @@ export default function ReservationExtensionPanel({
           <p className="mt-3 text-xs font-semibold text-red-300" role="alert">
             {downloadError}
           </p>
+        )}
+        {extensions.length > 0 && (
+          <div className="mt-4 divide-y divide-white/[0.07] overflow-hidden rounded-xl border border-white/[0.08] bg-black/15">
+            {extensions.map((extension, index) => {
+              const sourceBusy = downloading === `${extension._id}:source`;
+              const signedBusy = downloading === `${extension._id}:signed`;
+              return (
+                <div
+                  key={extension._id}
+                  className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-sm text-white">
+                        Extension {extensions.length - index} ·{" "}
+                        {extension.contractNumber}
+                      </strong>
+                      <span className="rounded-md border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#ffb340]">
+                        Pay at Office
+                      </span>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${extension.status === "completed" ? "bg-emerald-500/10 text-emerald-300" : "bg-white/[0.06] text-slate-400"}`}
+                      >
+                        {extension.status.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      New return:{" "}
+                      {extension.extension?.newReturnDateTime
+                        ? displayDateTime(extension.extension.newReturnDateTime)
+                        : "Pending"}{" "}
+                      · {money(Number(extension.extension?.agreedPrice || 0))}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {extension.files.source && (
+                      <button
+                        type="button"
+                        disabled={Boolean(downloading)}
+                        onClick={() =>
+                          void downloadExtension(extension, "source")
+                        }
+                        className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 text-xs font-bold text-white transition hover:bg-white/10 disabled:opacity-50"
+                      >
+                        {sourceBusy ? (
+                          <FiLoader className="animate-spin" />
+                        ) : (
+                          <FiDownload />
+                        )}
+                        Unsigned
+                      </button>
+                    )}
+                    {extension.files.signed && (
+                      <button
+                        type="button"
+                        disabled={Boolean(downloading)}
+                        onClick={() =>
+                          void downloadExtension(extension, "signed")
+                        }
+                        className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/15 disabled:opacity-50"
+                      >
+                        {signedBusy ? (
+                          <FiLoader className="animate-spin" />
+                        ) : (
+                          <FiDownload />
+                        )}
+                        Signed
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -594,7 +814,10 @@ export default function ReservationExtensionPanel({
                     </h3>
                   </div>
                   <div className="mb-3 flex items-center gap-3 border-l-2 border-[#fe9a00] bg-[#fe9a00]/[0.06] px-3 py-2.5 text-xs text-slate-300">
-                    <FiClock aria-hidden="true" className="shrink-0 text-[#fe9a00]" />
+                    <FiClock
+                      aria-hidden="true"
+                      className="shrink-0 text-[#fe9a00]"
+                    />
                     <span>
                       Current return: <strong>{currentReturnLabel}</strong>
                     </span>
@@ -606,7 +829,9 @@ export default function ReservationExtensionPanel({
                         className={inputClass}
                         selected={selectedReturnDate}
                         onChange={(date: Date | null) =>
-                          setNewReturnDate(date ? formatDateForStorage(date) : "")
+                          setNewReturnDate(
+                            date ? formatDateForStorage(date) : "",
+                          )
                         }
                         minDate={minimumReturnDateValue}
                         dateFormat="dd/MM/yyyy"
@@ -622,18 +847,67 @@ export default function ReservationExtensionPanel({
                     </label>
                     <label className="text-xs font-semibold text-slate-300">
                       New return time
+                      <div className="mt-1.5">
+                        <TimeSelect
+                          id="extension-return-time"
+                          value={newReturnTime}
+                          onChange={setNewReturnTime}
+                          slots={returnTimeSlots}
+                          reservedSlots={[]}
+                          selectedDate={selectedReturnDate || undefined}
+                          isStartTime={false}
+                          specialDayInfo={returnSchedule.specialDayInfo}
+                          extensionTimes={returnSchedule.extensionTimes}
+                          disabled={submitting || !newReturnDate}
+                        />
+                      </div>
+                    </label>
+                  </div>
+                </section>
+
+                <section className="border-t border-white/[0.08] pt-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-black text-white">
+                        Out-of-hours return fee
+                      </h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Use the office fee automatically, or enter the agreed
+                        return surcharge manually.
+                      </p>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-300">
+                      <input
+                        type="checkbox"
+                        className="peer sr-only"
+                        checked={useManualReturnExtension}
+                        onChange={(event) =>
+                          setUseManualReturnExtension(event.target.checked)
+                        }
+                        disabled={submitting}
+                      />
+                      <span className="relative h-6 w-11 rounded-full border border-white/15 bg-white/10 transition peer-checked:border-[#fe9a00]/60 peer-checked:bg-[#fe9a00]/20 peer-focus-visible:ring-2 peer-focus-visible:ring-[#fe9a00]/40 after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-slate-300 after:transition-transform peer-checked:after:translate-x-5 peer-checked:after:bg-[#fe9a00]" />
+                      Manual
+                    </label>
+                  </div>
+                  {useManualReturnExtension && (
+                    <label className="mt-3 block text-xs font-semibold text-slate-300 sm:max-w-[calc(50%-0.375rem)]">
+                      Return extension (£)
                       <input
                         className={inputClass}
-                        type="time"
-                        value={newReturnTime}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={manualReturnExtensionPrice}
                         onChange={(event) =>
-                          setNewReturnTime(event.target.value)
+                          setManualReturnExtensionPrice(event.target.value)
                         }
+                        placeholder="0.00"
                         disabled={submitting}
                         required
                       />
                     </label>
-                  </div>
+                  )}
                 </section>
 
                 <section className="border-t border-white/[0.08] pt-5">
@@ -694,7 +968,6 @@ export default function ReservationExtensionPanel({
                     </div>
                   )}
                 </section>
-
               </div>
 
               <aside className="border-t border-white/[0.08] bg-[#07101f]/70 p-4 sm:p-6 lg:overflow-y-auto lg:border-l lg:border-t-0">

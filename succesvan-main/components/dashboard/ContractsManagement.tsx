@@ -105,6 +105,7 @@ export default function ContractsManagement() {
   const [statusFilter, setStatusFilter] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [detailContract, setDetailContract] =
@@ -116,6 +117,7 @@ export default function ContractsManagement() {
 
   const fetchContracts = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const params = new URLSearchParams({ page: String(page), limit: "15" });
       if (statusFilter) params.set("status", statusFilter);
@@ -124,13 +126,16 @@ export default function ContractsManagement() {
         headers: authHeaders(),
       });
       const payload = await res.json();
-      if (!payload.success) throw new Error(apiError(payload));
+      if (!res.ok || !payload.success) throw new Error(apiError(payload));
       // successResponse flattens paginated results to { data: [...], pagination }
       setContracts(Array.isArray(payload.data) ? payload.data : []);
       setPagination(payload.pagination || null);
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not load contracts";
+      setLoadError(message);
       showToast.error(
-        error instanceof Error ? error.message : "Could not load contracts",
+        message,
       );
     } finally {
       setLoading(false);
@@ -263,6 +268,28 @@ export default function ContractsManagement() {
         </button>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-red-400/25 bg-red-500/[0.08] p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2.5">
+            <FiAlertTriangle className="mt-0.5 shrink-0 text-red-300" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-black text-red-100">Could not load contracts</p>
+              <p className="mt-0.5 text-xs leading-5 text-red-200/75">{loadError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchContracts()}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-red-300/25 bg-red-400/10 px-3 py-2 text-xs font-black text-red-100 transition hover:bg-red-400/15 focus:outline-none focus:ring-2 focus:ring-red-300/50"
+          >
+            <FiRefreshCw aria-hidden="true" /> Retry
+          </button>
+        </div>
+      )}
+
       <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -287,7 +314,7 @@ export default function ContractsManagement() {
                   </td>
                 </tr>
               )}
-              {!loading && contracts.length === 0 && (
+              {!loading && !loadError && contracts.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
                     No contracts found. Create one from a booking to get
@@ -314,9 +341,18 @@ export default function ContractsManagement() {
                       <p className="text-white font-bold">{contract.contractNumber}</p>
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold text-gray-300">
-                      {contract.contractType === "reservation_extension"
-                        ? "Extension"
-                        : "Rental"}
+                      <div className="flex min-w-28 flex-col items-start gap-1.5">
+                        <span>
+                          {contract.contractType === "reservation_extension"
+                            ? "Extension"
+                            : "Rental"}
+                        </span>
+                        {contract.contractType === "reservation_extension" && (
+                          <span className="inline-flex rounded-full border border-[#fe9a00]/25 bg-[#fe9a00]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#ffb340]">
+                            Pay at Office
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-300">
                       {contract.bookingReference || "-"}
@@ -338,17 +374,21 @@ export default function ContractsManagement() {
                       {formatDateTime(contract.docusign?.completedAt)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex min-w-max flex-wrap items-center justify-end gap-1.5">
                         <button
+                          type="button"
                           title="View details"
+                          aria-label={`View details for contract ${contract.contractNumber}`}
                           onClick={() => setDetailContract(contract)}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-gray-300 transition-colors"
+                          className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-white/5 px-2.5 py-2 text-xs font-bold text-gray-300 transition-colors hover:bg-white/15"
                         >
-                          <FiEye />
+                          <FiEye aria-hidden="true" /> Details
                         </button>
                         {canSend && (
                           <button
+                            type="button"
                             title="Send for signature via DocuSign"
+                            aria-label={`Send contract ${contract.contractNumber} for signature via DocuSign`}
                             disabled={busy}
                             onClick={() =>
                               runAction(
@@ -358,14 +398,16 @@ export default function ContractsManagement() {
                                 "Contract sent — DocuSign has emailed the customer.",
                               )
                             }
-                            className="p-2 rounded-lg bg-[#fe9a00]/20 hover:bg-[#fe9a00]/30 text-[#fe9a00] transition-colors disabled:opacity-50"
+                            className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#fe9a00]/20 px-2.5 py-2 text-xs font-bold text-[#fe9a00] transition-colors hover:bg-[#fe9a00]/30 disabled:opacity-50"
                           >
-                            <FiSend />
+                            <FiSend aria-hidden="true" /> Send
                           </button>
                         )}
                         {canResend && (
                           <button
+                            type="button"
                             title="Resend DocuSign email"
+                            aria-label={`Resend DocuSign email for contract ${contract.contractNumber}`}
                             disabled={busy}
                             onClick={() =>
                               runAction(
@@ -375,15 +417,17 @@ export default function ContractsManagement() {
                                 "DocuSign email resent to the customer.",
                               )
                             }
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-gray-300 transition-colors disabled:opacity-50"
+                            className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-white/5 px-2.5 py-2 text-xs font-bold text-gray-300 transition-colors hover:bg-white/15 disabled:opacity-50"
                           >
-                            <FiRepeat />
+                            <FiRepeat aria-hidden="true" /> Resend
                           </button>
                         )}
                         {contract.docusign?.envelopeId &&
                           !isTerminalStatus(contract.status) && (
                             <button
+                              type="button"
                               title="Refresh status from DocuSign"
+                              aria-label={`Refresh DocuSign status for contract ${contract.contractNumber}`}
                               disabled={busy}
                               onClick={() =>
                                 runAction(
@@ -393,22 +437,24 @@ export default function ContractsManagement() {
                                   "Status refreshed.",
                                 )
                               }
-                              className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-gray-300 transition-colors disabled:opacity-50"
+                              className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-white/5 px-2.5 py-2 text-xs font-bold text-gray-300 transition-colors hover:bg-white/15 disabled:opacity-50"
                             >
-                              <FiRefreshCw className={busy ? "animate-spin" : ""} />
+                              <FiRefreshCw className={busy ? "animate-spin" : ""} aria-hidden="true" /> Refresh
                             </button>
                           )}
                         {canVoidContract(contract.status) && (
                           <button
+                            type="button"
                             title="Void contract"
+                            aria-label={`Void contract ${contract.contractNumber}`}
                             disabled={busy}
                             onClick={() => {
                               setVoidReason("");
                               setVoidContractTarget(contract);
                             }}
-                            className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors disabled:opacity-50"
+                            className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-500/10 px-2.5 py-2 text-xs font-bold text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
                           >
-                            <FiSlash />
+                            <FiSlash aria-hidden="true" /> Void
                           </button>
                         )}
                       </div>
@@ -817,19 +863,17 @@ function ContractDetailModal({
     {
       key: "source" as const,
       title:
-        contract.contractType === "reservation_extension"
-          ? "Extension agreement"
-          : "Rental agreement",
+        "Download unsigned agreement",
       description:
         contract.contractType === "reservation_extension"
-          ? "Unsigned extension confirmation"
-          : "Unsigned source document",
+          ? "Unsigned rental extension"
+          : "Unsigned rental agreement",
       available: contract.files.source,
       completed: false,
     },
     {
       key: "signed" as const,
-      title: "Signed agreement",
+      title: "Download signed agreement",
       description: "Customer-signed contract",
       available: contract.files.signed,
       completed: true,

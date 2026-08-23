@@ -144,7 +144,6 @@ The full-deposit discount is recorded on the reservation but does **not yet auto
 `lib/payment-info.ts` reads:
 
 ```env
-NEXT_PUBLIC_DEPOSIT_CARD_NUMBER=
 NEXT_PUBLIC_DEPOSIT_ACCOUNT_NAME=
 ```
 

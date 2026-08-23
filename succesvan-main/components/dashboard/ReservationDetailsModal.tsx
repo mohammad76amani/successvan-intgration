@@ -11,17 +11,94 @@ import {
   FiStar,
   FiPackage,
   FiPrinter,
+  FiFileText,
+  FiDollarSign,
+  FiCheckCircle,
+  FiActivity,
+  FiDownload,
 } from "react-icons/fi";
-import { Reservation } from "@/types/type";
+import type {
+  AddOn,
+  Category,
+  Reservation,
+  User,
+  Vehicle,
+} from "@/types/type";
 import { usePriceCalculation } from "@/hooks/usePriceCalculation";
 import {
   printReservationReceipt,
 } from "@/lib/printReservation";
+import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
+import { clientAuthHeaders } from "@/lib/client-auth";
+import type { SafeContractSummary } from "@/lib/docusign/types";
+import { calculateRefundBalance } from "@/lib/refund-balance";
 
 const formatCurrency = (value: unknown) => {
   const amount = Number(value);
-  return `£${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
 };
+
+const formatDateTime = (value: unknown) => {
+  if (!value) return "-";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const Fact = ({ label, value, tone = "default" }: { label: string; value: React.ReactNode; tone?: "default" | "good" | "bad" | "warn" }) => (
+  <div className="min-w-0">
+    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+    <div className={`mt-1 break-words text-xs font-semibold ${tone === "bad" ? "text-red-300" : tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-[#fe9a00]" : "text-slate-100"}`}>
+      {value ?? "-"}
+    </div>
+  </div>
+);
+
+type InspectionField = NonNullable<
+  NonNullable<Reservation["handover"]>["customFields"]
+>[number];
+
+const inspectionFieldKey = (field: InspectionField, index: number) =>
+  field.templateFieldId ||
+  field.label?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") ||
+  `field-${index}`;
+
+function InspectionFieldValue({
+  field,
+  emptyLabel,
+}: {
+  field?: InspectionField;
+  emptyLabel: string;
+}) {
+  if (!field) return <span className="text-xs text-slate-600">{emptyLabel}</span>;
+  if (field.fieldType === "file") {
+    return field.files?.length ? (
+      <div className="flex flex-wrap gap-2">
+        {field.files.map((url, index) => (
+          <EvidenceThumbnail
+            key={`${url}-${index}`}
+            url={url}
+            alt={field.label || "Inspection evidence"}
+          />
+        ))}
+      </div>
+    ) : (
+      <span className="text-xs text-slate-600">No images</span>
+    );
+  }
+  return <span className="text-xs font-semibold text-white">{field.value || "-"}</span>;
+}
 
 interface ReservationDetailsModalProps {
   reservation: Reservation | null;
@@ -30,17 +107,25 @@ interface ReservationDetailsModalProps {
   layerClassName?: string;
 }
 
+type ReservationAddOn = NonNullable<Reservation["addOns"]>[number] & {
+  addOn?: AddOn | string;
+  totalPrice?: number;
+};
+
 export default function ReservationDetailsModal({
   reservation,
   isOpen,
   onClose,
   layerClassName = "z-50",
 }: ReservationDetailsModalProps) {
-  const [addOns, setAddOns] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [addOns, setAddOns] = useState<AddOn[]>([]);
+  const [contracts, setContracts] = useState<SafeContractSummary[]>([]);
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const customer = reservation?.user as User | undefined;
+  const reservationAddOns = (reservation?.addOns || []) as ReservationAddOn[];
 
   const categoryData = useMemo(() => {
-    return reservation?.category as any;
+    return reservation?.category as Category | undefined;
   }, [reservation?.category]);
 
   const startDateTimeString = reservation?.startDate
@@ -52,7 +137,7 @@ export default function ReservationDetailsModal({
 
   const gearExtraCost = useMemo(() => {
     if (
-      (reservation as any)?.selectedGear === "automatic" &&
+      reservation?.selectedGear === "automatic" &&
       categoryData?.gear?.automaticExtraCost
     ) {
       return categoryData.gear.automaticExtraCost;
@@ -61,10 +146,10 @@ export default function ReservationDetailsModal({
   }, [categoryData, reservation]);
 
   const pickupExtensionPrice = Number(
-    (reservation as any)?.pickupExtensionPrice || 0,
+    reservation?.pickupExtensionPrice || 0,
   );
   const returnExtensionPrice = Number(
-    (reservation as any)?.returnExtensionPrice || 0,
+    reservation?.returnExtensionPrice || 0,
   );
 
   const priceCalc = usePriceCalculation(
@@ -80,9 +165,9 @@ export default function ReservationDetailsModal({
     [],
   );
 
-  const isManualPrice = (reservation as any)?.isManualPrice;
-  const manualPricePerDay = (reservation as any)?.manualPricePerDay || 0;
-  const manualPriceNote = (reservation as any)?.manualPriceNote;
+  const isManualPrice = reservation?.isManualPrice;
+  const manualPricePerDay = reservation?.manualPricePerDay || 0;
+  const manualPriceNote = reservation?.manualPriceNote;
   const manualDailyRate = Number(manualPricePerDay || 0);
   const isManualDailyPrice = Boolean(isManualPrice && manualDailyRate > 0);
   const isManualTotalOverride = Boolean(isManualPrice && !isManualDailyPrice);
@@ -99,30 +184,65 @@ export default function ReservationDetailsModal({
     : 0;
   const gearTotalPrice = priceCalc ? gearExtraCost * priceCalc.totalDays : 0;
   const specialDaysPrice = Number(priceCalc?.specialDaysPrice || 0);
-  const reservationTotalPrice = Number((reservation as any)?.totalPrice || 0);
-  const isPerInvoice = Boolean((reservation as any)?.perInvoice);
+  const reservationTotalPrice = Number(reservation?.totalPrice || 0);
+  const isPerInvoice = Boolean(reservation?.perInvoice);
   const isPerInvoicePending = isPerInvoice && reservationTotalPrice <= 0;
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/addons?status=active").then((res) => res.json()),
-      fetch("/api/categories").then((res) => res.json()),
-    ])
-      .then(([addOnsData, categoriesData]) => {
+    Promise.all([fetch("/api/addons?status=active").then((res) => res.json())])
+      .then(([addOnsData]) => {
         const addonsArray = addOnsData.data?.data || addOnsData.data || [];
         setAddOns(Array.isArray(addonsArray) ? addonsArray : []);
-        setCategories(categoriesData.data || []);
       })
       .catch((err) => console.log(err));
   }, []);
 
-  const getAddOnPrice = (item: any) => {
+  useEffect(() => {
+    if (!isOpen || !reservation?._id) {
+      setContracts([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadContracts = async () => {
+      setContractsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          bookingId: reservation._id as string,
+          limit: "100",
+        });
+        const response = await fetch(`/api/admin/contracts?${params}`, {
+          headers: clientAuthHeaders(),
+          signal: controller.signal,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || "Could not load contracts");
+        }
+        setContracts(Array.isArray(payload.data) ? payload.data : []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") setContracts([]);
+      } finally {
+        if (!controller.signal.aborted) setContractsLoading(false);
+      }
+    };
+
+    void loadContracts();
+    return () => controller.abort();
+  }, [isOpen, reservation?._id, reservation?.status]);
+
+  const resolveAddOn = (item: ReservationAddOn) =>
+    typeof item.addOn === "object"
+      ? item.addOn
+      : addOns.find((addOn) => addOn._id === item.addOn);
+
+  const getAddOnPrice = (item: ReservationAddOn) => {
     const storedTotal = Number(item.totalPrice);
     if (Number.isFinite(storedTotal) && storedTotal > 0) {
       return storedTotal;
     }
 
-    const addon = item.addOn || addOns.find((a) => a._id === item.addOn);
+    const addon = resolveAddOn(item);
     if (!addon) return 0;
 
     const quantity = Number(item.quantity || 1);
@@ -152,15 +272,42 @@ export default function ReservationDetailsModal({
   };
 
   const totalAddOnsPrice =
-    reservation?.addOns?.reduce((sum, item: any) => {
+    reservationAddOns.reduce((sum, item) => {
       return sum + getAddOnPrice(item);
     }, 0) || 0;
+  const extensions = reservation?.rentalExtensions || [];
+  const extensionContracts = contracts.filter(
+    (agreement) => agreement.contractType === "reservation_extension",
+  );
+  const extensionPriceRows = extensionContracts.length
+    ? extensionContracts.map((agreement, index) => ({
+        key: agreement._id,
+        contractNumber: agreement.contractNumber || `Extension ${index + 1}`,
+        newReturnDateTime: agreement.extension?.newReturnDateTime,
+        price: Number(agreement.extension?.agreedPrice || 0),
+        status: agreement.status,
+      }))
+    : extensions.map((extension, index) => ({
+        key: `${extension.contractNumber || "extension"}-${index}`,
+        contractNumber: extension.contractNumber || `Extension ${index + 1}`,
+        newReturnDateTime: extension.newReturnDateTime,
+        price: Number(extension.agreedPrice || 0),
+        status: extension.signedAt ? "completed" : "pending",
+      }));
+  const extensionContractsTotal = extensionPriceRows.reduce(
+    (total, extension) => total + extension.price,
+    0,
+  );
 
   const priceSummaryText = (() => {
     if (!priceCalc) return "";
 
     if (isManualTotalOverride) {
-      return `Admin total override: ${formatCurrency(reservationTotalPrice)}`;
+      return `Admin total override: ${formatCurrency(reservationTotalPrice)}${
+        extensionContractsTotal > 0
+          ? ` · extension contracts ${formatCurrency(extensionContractsTotal)} (pay at office)`
+          : ""
+      }`;
     }
 
     const parts: string[] = [
@@ -205,10 +352,66 @@ export default function ReservationDetailsModal({
       parts.push(`special days ${formatCurrency(specialDaysPrice)}`);
     }
 
+    if (extensionContractsTotal > 0) {
+      parts.push(
+        `extension contracts ${formatCurrency(extensionContractsTotal)} (pay at office)`,
+      );
+    }
+
     return `${parts.join(" + ")}${
       isManualDailyPrice ? " (Manual daily price)" : ""
     }`;
   })();
+
+  const refund = reservation?.refund;
+  const refundBalance = calculateRefundBalance(
+    refund,
+    reservation?.deposit?.amount,
+  );
+  const customerOwes = refundBalance < 0;
+  const fixedRefundRows = [
+    ["Fuel", refund?.charges?.fuel],
+    ["Late return", refund?.charges?.late],
+    ["Damage", refund?.charges?.damage],
+    ["Cleaning", refund?.charges?.cleaning],
+    ["Missing equipment", refund?.charges?.missingEquipment],
+  ].filter(([, value]) => Number(value || 0) > 0);
+  const handover = reservation?.handover;
+  const inspection = reservation?.inspection;
+  const hasLicenceCard = Boolean(
+    customer?.licenceAttached?.front || customer?.licenceAttached?.back,
+  );
+  const hasRentalPeriodCompanion = hasLicenceCard || Boolean(reservation?.messege);
+  const liveVehicle = reservation?.vehicle as Partial<Vehicle> | undefined;
+  const vehicleSnapshot = reservation?.vehicleSnapshot;
+  const vehicle = liveVehicle || vehicleSnapshot;
+  const showVehicleSnapshot = Boolean(
+    liveVehicle &&
+      vehicleSnapshot &&
+      (String(liveVehicle._id || "") !== String(vehicleSnapshot.vehicleId || "") ||
+        String(liveVehicle.number || "") !== String(vehicleSnapshot.number || "") ||
+        String(liveVehicle.title || liveVehicle.make || "") !==
+          String(vehicleSnapshot.title || vehicleSnapshot.make || "")),
+  );
+  const beforeInspectionFields = handover?.customFields || [];
+  const afterInspectionFields = inspection?.customFields || [];
+  const inspectionFieldKeys = Array.from(
+    new Set([
+      ...beforeInspectionFields.map(inspectionFieldKey),
+      ...afterInspectionFields.map(inspectionFieldKey),
+    ]),
+  );
+  const downloadContract = (
+    selectedContract: SafeContractSummary,
+    kind: "source" | "signed" | "certificate",
+  ) => {
+    const token = localStorage.getItem("token") || "";
+    window.open(
+      `/api/admin/contracts/${selectedContract._id}/document?type=${kind}&token=${encodeURIComponent(token)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
 
   if (!isOpen || !reservation) return null;
 
@@ -234,7 +437,7 @@ export default function ReservationDetailsModal({
            
     
               <button
-                onClick={() => printReservationReceipt(reservation)}
+                onClick={() => printReservationReceipt(reservation, contracts)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#fe9a00]/20 hover:bg-[#fe9a00]/30 text-[#fe9a00] rounded-lg transition-colors text-xs font-bold"
               >
                 <FiPrinter className="text-sm" />
@@ -265,7 +468,7 @@ export default function ReservationDetailsModal({
                       Name
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {reservation.user?.name || "-"}
+                      {[reservation.user?.name, reservation.user?.lastName].filter(Boolean).join(" ") || "-"}
                     </p>
                   </div>
                   <div>
@@ -297,7 +500,7 @@ export default function ReservationDetailsModal({
                       City
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {(reservation.user as any)?.city || "-"}
+                      {customer?.city || "-"}
                     </p>
                   </div>
                   <div>
@@ -305,7 +508,7 @@ export default function ReservationDetailsModal({
                       Address
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {(reservation.user as any)?.address || "-"}
+                      {customer?.address || "-"}
                     </p>
                   </div>
                   <div>
@@ -313,7 +516,7 @@ export default function ReservationDetailsModal({
                       Postal
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {(reservation.user as any)?.postalCode || "-"}
+                      {customer?.postalCode || "-"}
                     </p>
                   </div>
                 </div>
@@ -339,7 +542,7 @@ export default function ReservationDetailsModal({
                       Category
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {(reservation.category as any)?.name || "-"}
+                      {categoryData?.name || "-"}
                     </p>
                   </div>
                   <div>
@@ -347,9 +550,10 @@ export default function ReservationDetailsModal({
                       Vehicle
                     </p>
                     <p className="text-white font-medium text-xs truncate">
-                      {(reservation.vehicle as any)?.title || "-"}
-                      {(reservation.vehicle as any)?.keyNumber
-                        ? ` (Key: ${(reservation.vehicle as any).keyNumber})`
+                      {vehicle?.title || vehicle?.make || "-"}
+                      {vehicle?.number ? ` · ${vehicle.number}` : ""}
+                      {vehicle?.keyNumber
+                        ? ` (Key: ${vehicle.keyNumber})`
                         : ""}
                     </p>
                   </div>
@@ -358,7 +562,7 @@ export default function ReservationDetailsModal({
                       Gear
                     </p>
                     <p className="text-white font-medium text-xs capitalize">
-                      {(reservation as any).selectedGear || "-"}
+                      {reservation.selectedGear || "-"}
                     </p>
                   </div>
                   <div>
@@ -366,7 +570,7 @@ export default function ReservationDetailsModal({
                       Type
                     </p>
                     <p className="text-white font-medium text-xs capitalize">
-                      {(reservation as any).reservationType || "-"}
+                      {reservation.reservationType || "-"}
                     </p>
                   </div>
                   <div>
@@ -405,13 +609,24 @@ export default function ReservationDetailsModal({
                       </div>
                     )}
                 </div>
+                {showVehicleSnapshot && vehicleSnapshot && (
+                  <div className="mt-3 rounded-lg border border-[#fe9a00]/15 bg-[#fe9a00]/[0.05] p-2.5">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-[#fe9a00]">Vehicle retained on this reservation</p>
+                    <p className="mt-1 text-xs font-semibold text-white">
+                      {vehicleSnapshot.title || vehicleSnapshot.make || "Vehicle"}
+                      {vehicleSnapshot.number ? ` · ${vehicleSnapshot.number}` : ""}
+                      {vehicleSnapshot.color ? ` · ${vehicleSnapshot.color}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">Assigned {formatDateTime(vehicleSnapshot.assignedAt)}</p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Middle Row: Dates + License side by side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {/* Dates & Times - Compact */}
-              <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+              <div className={`self-start rounded-lg border border-white/10 bg-white/5 p-3 ${hasRentalPeriodCompanion ? "" : "lg:col-span-2"}`}>
                 <h3 className="text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 mb-2.5">
                   <span className="w-0.5 h-4 bg-[#fe9a00] rounded-full"></span>
                   Rental Period
@@ -471,6 +686,35 @@ export default function ReservationDetailsModal({
                     </p>
                   </div>
                 </div>
+                {(extensionContracts.length > 0 || extensions.length > 0) && (
+                  <div className="mt-3 border-t border-white/[0.08] pt-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-[#fe9a00]">Rental extensions</p>
+                      <span className="rounded-full border border-[#fe9a00]/20 bg-[#fe9a00]/10 px-2 py-0.5 text-[9px] font-bold text-[#fe9a00]">
+                        {extensionContracts.length || extensions.length} contract{(extensionContracts.length || extensions.length) === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {extensionContracts.length > 0
+                        ? extensionContracts.map((agreement, index) => (
+                            <div key={agreement._id} className="grid gap-2 rounded-lg border border-white/[0.07] bg-black/15 p-2.5 sm:grid-cols-[auto_1fr_1fr_auto] sm:items-center">
+                              <span className="text-[10px] font-black text-white">#{index + 1}</span>
+                              <Fact label="Previous return" value={formatDateTime(agreement.extension?.previousReturnDateTime)} />
+                              <Fact label="Extended return" value={formatDateTime(agreement.extension?.newReturnDateTime)} tone="warn" />
+                              <span className="justify-self-start rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-bold uppercase text-slate-400 sm:justify-self-end">{agreement.status.replace(/_/g, " ")}</span>
+                            </div>
+                          ))
+                        : extensions.map((extension, index) => (
+                            <div key={`${extension.contractNumber || "extension"}-${index}`} className="grid gap-2 rounded-lg border border-white/[0.07] bg-black/15 p-2.5 sm:grid-cols-[auto_1fr_1fr_auto] sm:items-center">
+                              <span className="text-[10px] font-black text-white">#{index + 1}</span>
+                              <Fact label="Previous return" value={formatDateTime(extension.previousReturnDateTime)} />
+                              <Fact label="Extended return" value={formatDateTime(extension.newReturnDateTime)} tone="warn" />
+                              <span className="justify-self-start text-[10px] font-black text-[#fe9a00] sm:justify-self-end">{formatCurrency(extension.agreedPrice)}</span>
+                            </div>
+                          ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* License Information - Compact */}
@@ -540,6 +784,16 @@ export default function ReservationDetailsModal({
                       </a>
                     )}
                   </div>
+                  {customer?.licenceDetails && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-3 sm:grid-cols-3">
+                      <Fact label="Licence name" value={customer.licenceDetails.fullName || [customer.licenceDetails.firstName, customer.licenceDetails.lastName].filter(Boolean).join(" ") || "-"} />
+                      <Fact label="Licence number" value={customer.licenceDetails.licenceNumber || customer.licenceDetails.licenseNumber || "-"} />
+                      <Fact label="Date of birth" value={customer.licenceDetails.dateOfBirth || "-"} />
+                      <Fact label="Issue date" value={customer.licenceDetails.issueDate || "-"} />
+                      <Fact label="Expiry date" value={customer.licenceDetails.expiryDate || customer.licenceDetails.expirationDate || "-"} />
+                      <Fact label="Licence address" value={[customer.licenceDetails.address, customer.licenceDetails.postcode].filter(Boolean).join(", ") || "-"} />
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Message - placed here if no license to fill the grid slot */
@@ -753,7 +1007,7 @@ export default function ReservationDetailsModal({
                             </div>
                             <div className="border-t border-purple-400/10 px-3 py-2 space-y-1">
                               {priceCalc.specialDaysInfo.map(
-                                (info: any, idx: number) => (
+                                (info, idx) => (
                                   <div
                                     key={idx}
                                     className="flex justify-between items-center gap-3 text-[10px] pl-10"
@@ -777,7 +1031,7 @@ export default function ReservationDetailsModal({
                           </div>
                         )}
 
-                      {reservation.addOns && reservation.addOns.length > 0 && (
+                      {reservationAddOns.length > 0 && (
                         <div className="rounded-lg bg-emerald-500/5 border border-emerald-400/15 overflow-hidden">
                           <div className="flex items-center justify-between gap-3 p-3">
                             <div className="flex items-start gap-2.5">
@@ -789,8 +1043,8 @@ export default function ReservationDetailsModal({
                                   Add-ons
                                 </p>
                                 <p className="text-gray-400 text-[11px] leading-snug mt-0.5">
-                                  {reservation.addOns.length} item
-                                  {reservation.addOns.length !== 1 ? "s" : ""}
+                                  {reservationAddOns.length} item
+                                  {reservationAddOns.length !== 1 ? "s" : ""}
                                 </p>
                               </div>
                             </div>
@@ -799,8 +1053,8 @@ export default function ReservationDetailsModal({
                             </span>
                           </div>
                           <div className="border-t border-emerald-400/10 px-3 py-2 space-y-1">
-                            {reservation.addOns.map((item: any, idx: number) => {
-                              const addon = item.addOn;
+                            {reservationAddOns.map((item, idx) => {
+                              const addon = resolveAddOn(item);
                               const price = getAddOnPrice(item);
                               return (
                                 <div
@@ -845,6 +1099,26 @@ export default function ReservationDetailsModal({
                       {priceSummaryText}
                     </p>
                   )}
+                  {extensionPriceRows.length > 0 && (
+                    <div className="mt-3 overflow-hidden rounded-lg border border-[#fe9a00]/20 bg-black/15">
+                      <div className="flex items-center justify-between gap-3 border-b border-[#fe9a00]/15 px-3 py-2">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-[#fe9a00]">Extension agreements</span>
+                        <span className="rounded-full bg-[#fe9a00]/15 px-2 py-0.5 text-[9px] font-bold uppercase text-[#ffb84d]">Pay at office</span>
+                      </div>
+                      <div className="divide-y divide-white/[0.06]">
+                        {extensionPriceRows.map((extension) => (
+                          <div key={extension.key} className="grid gap-1 px-3 py-2 sm:grid-cols-[1fr_1.2fr_auto] sm:items-center sm:gap-3">
+                            <div>
+                              <p className="text-[11px] font-bold text-white">{extension.contractNumber}</p>
+                              <p className="text-[9px] font-semibold uppercase text-slate-500">{extension.status.replace(/_/g, " ")}</p>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Extended return: <span className="font-semibold text-slate-200">{formatDateTime(extension.newReturnDateTime)}</span></p>
+                            <strong className="text-xs text-[#fe9a00]">+{formatCurrency(extension.price)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {(isManualDailyPrice || isManualTotalOverride) && (
                     <p className="text-purple-300 text-xs font-semibold mt-2">
                       {isManualTotalOverride
@@ -861,64 +1135,155 @@ export default function ReservationDetailsModal({
               </div>
             </div>
 
-            {/* Bottom Row: Add-ons Detail + Message side by side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Add-ons Detail */}
-              {reservation.addOns && reservation.addOns.length > 0 && (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                  <h3 className="text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 mb-2">
-                    <span className="w-0.5 h-4 bg-[#fe9a00] rounded-full"></span>
-                    Selected Add-ons
-                  </h3>
-                  <div className="space-y-1.5">
-                    {reservation.addOns.map((item: any, idx: number) => {
-                      const addon = item.addOn;
-                      const price = getAddOnPrice(item);
+            {/* Message is shown here when the licence card occupies the period row. */}
+            {reservation.messege && hasLicenceCard && (
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-white sm:text-sm">
+                  <span className="h-4 w-0.5 rounded-full bg-[#fe9a00]"></span>
+                  Customer Message
+                </h3>
+                <p className="rounded bg-black/30 p-2 text-xs leading-relaxed text-gray-300">
+                  {reservation.messege}
+                </p>
+              </div>
+            )}
 
-                      return (
-                        <div
-                          key={idx}
-                          className="flex justify-between items-center py-1.5 px-2.5 bg-black/30 rounded border border-white/5"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-white font-medium text-xs truncate">
-                              {addon?.name || "Unknown"}
-                            </p>
-                            {addon?.description && (
-                              <p className="text-gray-500 text-[9px] truncate">
-                                {addon.description}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-right ml-3 shrink-0">
-                            <span className="text-gray-500 text-[9px]">
-                              ×{item.quantity}
-                            </span>
-                            <p className="text-white font-semibold text-xs">
-                              £{price.toFixed(2)}
-                            </p>
-                          </div>
+            <div className="space-y-2">
+              {(reservation.deposit || refund) && (
+                <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]" open>
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]">
+                    <FiDollarSign className="text-[#fe9a00]" />
+                    Deposit & refund
+                    <span className="ml-auto text-xs font-semibold capitalize text-slate-400">
+                      {refund?.status?.replace(/_/g, " ") || reservation.deposit?.status?.replace(/_/g, " ")}
+                    </span>
+                  </summary>
+                  <div className="border-t border-white/10 p-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Fact label="Deposit option" value={reservation.deposit?.option?.replace(/_/g, " ") || "-"} />
+                      <Fact label="Deposit amount" value={formatCurrency(refund?.depositPaid ?? reservation.deposit?.amount)} />
+                      <Fact label="Payment status" value={reservation.deposit?.status?.replace(/_/g, " ") || "-"} tone={reservation.deposit?.status === "failed" ? "bad" : reservation.deposit?.status === "paid" ? "good" : "warn"} />
+                      <Fact label="Transaction reference" value={reservation.deposit?.transactionRef || "-"} />
+                      <Fact label="Receipt uploaded" value={formatDateTime(reservation.deposit?.receiptUploadedAt)} />
+                      {reservation.deposit?.receiptUrl && (
+                        <div>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Uploaded receipt</p>
+                          <EvidenceThumbnail url={reservation.deposit.receiptUrl} alt="Uploaded deposit receipt" size="md" />
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+                    {reservation.deposit?.failureReason && (
+                      <p className="mt-3 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">Rejected: {reservation.deposit.failureReason}</p>
+                    )}
+                    {refund && (
+                      <div className="mt-4 border-t border-white/10 pt-4">
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <Fact label="Deductions" value={`-${formatCurrency(refund.deductionsTotal)}`} tone="bad" />
+                          <Fact label={customerOwes ? "Customer debt" : "Refund amount"} value={formatCurrency(refundBalance)} tone={customerOwes ? "bad" : "good"} />
+                          <Fact label="Authorization" value={refund.reference || "-"} />
+                          <Fact label="Processed" value={formatDateTime(refund.processedAt)} />
+                        </div>
+                        {(fixedRefundRows.length > 0 || (refund.additionalCharges?.length || 0) > 0) && (
+                          <div className="mt-3 divide-y divide-white/[0.06] rounded-lg border border-white/[0.07] bg-black/15 px-3">
+                            {fixedRefundRows.map(([label, value]) => (
+                              <div key={String(label)} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="text-slate-400">{label}</span><strong className="text-red-300">-{formatCurrency(value)}</strong></div>
+                            ))}
+                            {refund.additionalCharges?.map((charge, index) => (
+                              <div key={`${charge.ticketReference || charge.reason}-${index}`} className="flex items-start justify-between gap-3 py-2">
+                                <div className="flex min-w-0 items-start gap-2">
+                                  <EvidenceThumbnail url={charge.evidenceUrl} alt={`Evidence for ${charge.ticketReference || charge.reason}`} />
+                                  <div><p className="break-words text-xs font-semibold text-slate-200">{charge.reason}</p>{charge.ticketReference && <p className="mt-0.5 text-[10px] uppercase text-slate-500">{charge.ticketReference}</p>}</div>
+                                </div>
+                                <strong className="shrink-0 text-xs text-red-300">-{formatCurrency(charge.amount)}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </details>
               )}
 
-              {/* Message - show here if license exists (otherwise it was shown above) */}
-              {reservation.messege &&
-                (reservation.user?.licenceAttached?.front ||
-                  reservation.user?.licenceAttached?.back) && (
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-                    <h3 className="text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 mb-2">
-                      <span className="w-0.5 h-4 bg-[#fe9a00] rounded-full"></span>
-                      Customer Message
-                    </h3>
-                    <p className="text-gray-300 text-xs leading-relaxed bg-black/30 p-2 rounded">
-                      {reservation.messege}
-                    </p>
+              {(contractsLoading || contracts.length > 0 || extensions.length > 0 || reservation.additionalDriver || reservation.insuranceArrangement) && (
+                <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]">
+                    <FiFileText className="text-[#fe9a00]" /> Contract & extensions
+                    <span className="ml-auto text-xs text-slate-500">{contractsLoading ? "Loading…" : `${contracts.length} agreement${contracts.length === 1 ? "" : "s"}`}</span>
+                  </summary>
+                  <div className="grid gap-3 border-t border-white/10 p-4 sm:grid-cols-3">
+                    <Fact label="Insurance" value={reservation.insuranceArrangement?.provider === "customer" ? "Customer arranged" : reservation.insuranceArrangement?.provider === "diba" ? "Diba Cooperation Ltd" : "-"} />
+                    <Fact label="Other excess" value={reservation.insuranceArrangement?.otherExcess || "-"} />
+                    <Fact label="Handover deposit" value={formatCurrency(reservation.handoverDepositAmount)} />
+                    {reservation.additionalDriver && <><Fact label="Additional driver" value={reservation.additionalDriver.name || "-"} /><Fact label="Driver licence" value={reservation.additionalDriver.licenceNumber || "-"} /></>}
+                    <div className="space-y-2 sm:col-span-3">
+                      {contracts.map((agreement) => (
+                        <div key={agreement._id} className="rounded-lg border border-white/10 bg-black/15 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <strong className="text-xs text-white">{agreement.contractNumber || "Contract pending"}</strong>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{agreement.contractType === "reservation_extension" ? "Extension agreement" : "Rental agreement"} · {agreement.status.replace(/_/g, " ")}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {agreement.files.source && <button type="button" onClick={() => downloadContract(agreement, "source")} className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.05] px-2.5 py-1.5 text-[11px] font-bold text-slate-200 transition hover:border-[#fe9a00]/30 hover:text-[#fe9a00]"><FiDownload /> Original</button>}
+                              {agreement.files.signed && <button type="button" onClick={() => downloadContract(agreement, "signed")} className="inline-flex items-center gap-1 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/15"><FiDownload /> Signed</button>}
+                            </div>
+                          </div>
+                          {agreement.extension && <div className="mt-2 grid gap-2 border-t border-white/[0.06] pt-2 sm:grid-cols-3"><Fact label="Previous return" value={formatDateTime(agreement.extension.previousReturnDateTime)} /><Fact label="New return" value={formatDateTime(agreement.extension.newReturnDateTime)} /><Fact label="Agreed price" value={formatCurrency(agreement.extension.agreedPrice)} tone="warn" /></div>}
+                        </div>
+                      ))}
+                      {!contractsLoading && contracts.length === 0 && extensions.map((extension, index) => (
+                        <div key={`${extension.contractNumber || "extension"}-${index}`} className="rounded-lg border border-white/10 bg-black/15 p-3">
+                          <div className="flex items-center justify-between gap-3"><strong className="text-xs text-white">Extension {index + 1} · {extension.contractNumber || "Contract pending"}</strong><span className="text-xs font-bold text-[#fe9a00]">{formatCurrency(extension.agreedPrice)}</span></div>
+                          <p className="mt-1 text-[11px] text-slate-400">{formatDateTime(extension.previousReturnDateTime)} → {formatDateTime(extension.newReturnDateTime)}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                )}
+                </details>
+              )}
+
+              {(handover?.completedAt || inspection?.completedAt) && (
+                <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]">
+                    <FiCheckCircle className="text-[#fe9a00]" /> Vehicle inspection
+                    <span className="ml-auto text-xs text-slate-500">Before / after</span>
+                  </summary>
+                  <div className="border-t border-white/10 p-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-white/10 bg-black/15 p-3"><p className="mb-3 text-[10px] font-black uppercase tracking-wide text-emerald-300">Collection · before</p><div className="grid grid-cols-2 gap-3"><Fact label="Mileage" value={handover?.startMileage ?? "-"} /><Fact label="Fuel" value={handover?.startFuelLevel || "-"} /><Fact label="Staff" value={handover?.staff?.name || "-"} /><Fact label="Completed" value={formatDateTime(handover?.completedAt)} /></div></div>
+                      <div className="rounded-lg border border-white/10 bg-black/15 p-3"><p className="mb-3 text-[10px] font-black uppercase tracking-wide text-[#fe9a00]">Return · after</p><div className="grid grid-cols-2 gap-3"><Fact label="Mileage" value={inspection?.returnMileage ?? "-"} /><Fact label="Fuel" value={inspection?.returnFuelLevel || "-"} /><Fact label="Staff" value={inspection?.staff?.name || "-"} /><Fact label="Completed" value={formatDateTime(inspection?.completedAt)} /></div></div>
+                    </div>
+                    {inspectionFieldKeys.length > 0 && (
+                      <div className="mt-3 overflow-hidden rounded-lg border border-white/[0.08] bg-black/10">
+                        <div className="hidden grid-cols-[1fr_1.2fr_1.2fr] gap-3 border-b border-white/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500 sm:grid">
+                          <span>Inspection item</span><span>Before</span><span>After</span>
+                        </div>
+                        <div className="divide-y divide-white/[0.06]">
+                          {inspectionFieldKeys.map((key) => {
+                            const beforeField = beforeInspectionFields.find((field, index) => inspectionFieldKey(field, index) === key);
+                            const afterField = afterInspectionFields.find((field, index) => inspectionFieldKey(field, index) === key);
+                            return (
+                              <div key={key} className="grid gap-3 px-3 py-3 sm:grid-cols-[1fr_1.2fr_1.2fr] sm:items-start">
+                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{beforeField?.label || afterField?.label || "Inspection field"}</p>
+                                <div><p className="mb-1 text-[9px] font-bold uppercase text-emerald-300 sm:hidden">Before</p><InspectionFieldValue field={beforeField} emptyLabel="Not recorded" /></div>
+                                <div><p className="mb-1 text-[9px] font-bold uppercase text-[#fe9a00] sm:hidden">After</p><InspectionFieldValue field={afterField} emptyLabel="Awaiting return inspection" /></div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+
+              {(reservation.statusHistory?.length || 0) > 0 && (
+                <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]"><FiActivity className="text-[#fe9a00]" /> Activity history<span className="ml-auto text-xs text-slate-500">{reservation.statusHistory?.length}</span></summary>
+                  <div className="divide-y divide-white/[0.06] border-t border-white/10 px-4">{reservation.statusHistory?.slice().reverse().map((entry, index) => <div key={`${entry.status}-${String(entry.changedAt)}-${index}`} className="grid gap-1 py-3 sm:grid-cols-[150px_150px_1fr]"><span className="text-xs font-bold capitalize text-white">{entry.status.replace(/_/g, " ")}</span><span className="text-xs text-slate-500">{formatDateTime(entry.changedAt)}</span><span className="text-xs text-slate-400">{entry.note || entry.source || "Status updated"}</span></div>)}</div>
+                </details>
+              )}
             </div>
           </div>
         </div>

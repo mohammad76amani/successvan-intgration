@@ -3,6 +3,8 @@ import {
   DEPOSIT_OPTION_LABELS,
   statusLabel as getReservationStatusLabel,
 } from "@/lib/reservation-status";
+import type { SafeContractSummary } from "@/lib/docusign/types";
+import { calculateRefundBalance } from "@/lib/refund-balance";
 
 type PrintAddOnItem = NonNullable<Reservation["addOns"]>[number] & {
   totalPrice?: number;
@@ -16,6 +18,19 @@ type PrintUser = {
   address?: string;
   city?: string;
   postalCode?: string;
+  licenceDetails?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    fullName?: string | null;
+    dateOfBirth?: string | null;
+    address?: string | null;
+    postcode?: string | null;
+    licenseNumber?: string | null;
+    licenceNumber?: string | null;
+    issueDate?: string | null;
+    expirationDate?: string | null;
+    expiryDate?: string | null;
+  };
 };
 
 type PrintOffice = { name?: string };
@@ -38,7 +53,11 @@ const escapeHtml = (value: unknown) =>
 
 const formatCurrency = (value: unknown) => {
   const amount = Number(value || 0);
-  return `£${amount.toFixed(2)}`;
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
 };
 
 const formatDateTime = (value: unknown) => {
@@ -47,6 +66,7 @@ const formatDateTime = (value: unknown) => {
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleString("en-GB", {
+    timeZone: "Europe/London",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -163,27 +183,62 @@ const hasMeaningfulData = (value: unknown) => {
   });
 };
 
-const customFieldRows = (
-  fields: NonNullable<Reservation["handover"]>["customFields"] = [],
-) =>
-  (fields || [])
-    .map((field) => {
-      const value =
-        field.fieldType === "file"
-          ? `${field.files?.length || 0} uploaded file(s)`
-          : field.value || "-";
-      return `<div class="price-row"><span>${escapeHtml(
-        field.label || "Checklist item",
-      )}</span><strong>${escapeHtml(value)}</strong></div>`;
+type PrintInspectionField = NonNullable<
+  NonNullable<Reservation["handover"]>["customFields"]
+>[number];
+
+const printInspectionFieldKey = (field: PrintInspectionField, index: number) =>
+  field.templateFieldId ||
+  field.label?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") ||
+  `field-${index}`;
+
+const printInspectionFieldValue = (field?: PrintInspectionField) => {
+  if (!field) return '<span class="muted">Not recorded</span>';
+  if (field.fieldType === "file") {
+    return (
+      (field.files || [])
+        .map(
+          (url, index) =>
+            `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Image ${index + 1}</a>`,
+        )
+        .join(" · ") || '<span class="muted">No images</span>'
+    );
+  }
+  return escapeHtml(field.value || "-");
+};
+
+const customFieldComparisonRows = (
+  beforeFields: PrintInspectionField[] = [],
+  afterFields: PrintInspectionField[] = [],
+) => {
+  const keys = Array.from(
+    new Set([
+      ...beforeFields.map(printInspectionFieldKey),
+      ...afterFields.map(printInspectionFieldKey),
+    ]),
+  );
+  return keys
+    .map((key) => {
+      const before = beforeFields.find(
+        (field, index) => printInspectionFieldKey(field, index) === key,
+      );
+      const after = afterFields.find(
+        (field, index) => printInspectionFieldKey(field, index) === key,
+      );
+      return `<tr><td>${escapeHtml(before?.label || after?.label || "Inspection item")}</td><td>${printInspectionFieldValue(before)}</td><td>${printInspectionFieldValue(after)}</td></tr>`;
     })
     .join("");
+};
 
 export function downloadReservationReceiptPng(reservation: Reservation | null) {
   if (!reservation || typeof window === "undefined") return;
   printReservationReceipt(reservation);
 }
 
-export function printReservationReceipt(reservation: Reservation | null) {
+export function printReservationReceipt(
+  reservation: Reservation | null,
+  contracts: SafeContractSummary[] = [],
+) {
   if (!reservation || typeof window === "undefined") return;
 
   const user = (reservation.user || {}) as PrintUser;
@@ -195,6 +250,10 @@ export function printReservationReceipt(reservation: Reservation | null) {
   const handover = reservation.handover;
   const inspection = reservation.inspection;
   const refund = reservation.refund;
+  const inspectionCustomRows = customFieldComparisonRows(
+    handover?.customFields,
+    inspection?.customFields,
+  );
   const customerName =
     `${user.name || ""} ${user.lastName || ""}`.trim() || "Customer";
   const pickupExtensionPrice = Number(reservation.pickupExtensionPrice || 0);
@@ -222,6 +281,8 @@ export function printReservationReceipt(reservation: Reservation | null) {
   const assignedVehicleColor = vehicle.color || vehicleSnapshot.color || "-";
   const assignedVehicleKey =
     vehicle.keyNumber || vehicleSnapshot.keyNumber || "-";
+  const licence = user.licenceDetails;
+  const refundBalance = calculateRefundBalance(refund, deposit?.amount);
   const refundChargeRows = refund
     ? [
         ["Fuel charge", refund.charges?.fuel],
@@ -230,10 +291,6 @@ export function printReservationReceipt(reservation: Reservation | null) {
         ["Cleaning charge", refund.charges?.cleaning],
         ["Missing equipment", refund.charges?.missingEquipment],
         [refund.otherChargeReason || "Other charge", refund.charges?.other],
-        ...(refund.additionalCharges || []).map((charge) => [
-          charge.reason || "Additional charge",
-          charge.amount,
-        ]),
       ]
         .filter(([, amount]) => Number(amount || 0) > 0)
         .map(
@@ -242,8 +299,63 @@ export function printReservationReceipt(reservation: Reservation | null) {
               label,
             )}</span><strong>-${formatCurrency(amount)}</strong></div>`,
         )
+        .join("") +
+      (refund.additionalCharges || [])
+        .filter((charge) => Number(charge.amount || 0) > 0)
+        .map((charge) => {
+          const metadata = [
+            charge.ticketReference
+              ? `Ticket ${escapeHtml(charge.ticketReference)}`
+              : "",
+            charge.violationDate
+              ? `Violation ${formatDateTime(charge.violationDate)}`
+              : "",
+            charge.vehicleNumber
+              ? `Vehicle ${escapeHtml(charge.vehicleNumber)}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          const evidence = charge.evidenceUrl
+            ? `<div><a href="${escapeHtml(charge.evidenceUrl)}" target="_blank" rel="noopener noreferrer">View evidence image</a></div>`
+            : "";
+          return `<div class="price-row"><span>${escapeHtml(
+            charge.reason || "Additional charge",
+          )}${metadata ? `<small>${metadata}</small>` : ""}${evidence}</span><strong>-${formatCurrency(
+            charge.amount,
+          )}</strong></div>`;
+        })
         .join("")
     : "";
+  const printToken =
+    typeof window !== "undefined" ? window.localStorage.getItem("token") || "" : "";
+  const contractRows = contracts
+    .map((contract) => {
+      const documentLinks = (
+        ["source", "signed", "certificate"] as const
+      )
+        .filter((kind) => contract.files[kind])
+        .map((kind) => {
+          const href = `/api/admin/contracts/${contract._id}/document?type=${kind}&token=${encodeURIComponent(printToken)}`;
+          const label = kind === "source" ? "Original" : humanize(kind);
+          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+        })
+        .join(" · ");
+      return `<tr>
+        <td>${escapeHtml(contract.contractNumber || "-")}</td>
+        <td>${escapeHtml(
+          contract.contractType === "reservation_extension"
+            ? "Extension agreement"
+            : "Rental agreement",
+        )}</td>
+        <td>${escapeHtml(humanize(contract.status))}</td>
+        <td>${formatDateTime(
+          contract.docusign?.completedAt || contract.updatedAt,
+        )}</td>
+        <td>${documentLinks || "-"}</td>
+      </tr>`;
+    })
+    .join("");
   const statusHistoryRows = (reservation.statusHistory || [])
     .slice()
     .reverse()
@@ -370,6 +482,9 @@ export function printReservationReceipt(reservation: Reservation | null) {
         font-weight: 900;
         margin: 0 0 12px;
       }
+      a { color: #b45309; font-weight: 700; overflow-wrap: anywhere; }
+      .debt { color: #b91c1c; }
+      small { display: block; margin-top: 3px; color: #64748b; font-size: 9px; font-weight: 600; }
       .bar {
         width: 4px;
         height: 18px;
@@ -509,9 +624,56 @@ export function printReservationReceipt(reservation: Reservation | null) {
                     .join(", ") || "-",
                 )}</div>
               </div>
+              <div><div class="label">Licence name</div><div class="value">${escapeHtml(licence?.fullName || [licence?.firstName, licence?.lastName].filter(Boolean).join(" ") || "-")}</div></div>
+              <div><div class="label">Licence number</div><div class="value">${escapeHtml(licence?.licenceNumber || licence?.licenseNumber || "-")}</div></div>
+              <div><div class="label">Date of birth</div><div class="value">${escapeHtml(licence?.dateOfBirth || "-")}</div></div>
+              <div><div class="label">Issue date</div><div class="value">${escapeHtml(licence?.issueDate || "-")}</div></div>
+              <div><div class="label">Expiry date</div><div class="value">${escapeHtml(licence?.expiryDate || licence?.expirationDate || "-")}</div></div>
+              <div><div class="label">Licence address</div><div class="value">${escapeHtml([licence?.address, licence?.postcode].filter(Boolean).join(", ") || "-")}</div></div>
             </div>
           </div>
         </section>
+
+        ${
+          reservation.insuranceArrangement || reservation.additionalDriver
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Contract Details</h3>
+                <div class="panel"><div class="grid">
+                  <div><div class="label">Insurance arranged by</div><div class="value">${escapeHtml(
+                    reservation.insuranceArrangement?.provider === "customer"
+                      ? "Customer"
+                      : reservation.insuranceArrangement?.provider === "diba"
+                        ? "Diba Cooperation Ltd"
+                        : "-",
+                  )}</div></div>
+                  <div><div class="label">Other excess</div><div class="value">${escapeHtml(reservation.insuranceArrangement?.otherExcess || "-")}</div></div>
+                  <div><div class="label">Handover deposit</div><div class="value">${formatCurrency(reservation.handoverDepositAmount)}</div></div>
+                  <div><div class="label">Additional driver</div><div class="value">${escapeHtml(reservation.additionalDriver?.name || "-")}</div></div>
+                  <div><div class="label">Additional driver licence</div><div class="value">${escapeHtml(reservation.additionalDriver?.licenceNumber || "-")}</div></div>
+                </div></div>
+              </section>`
+            : ""
+        }
+
+        ${
+          contractRows
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Agreements</h3>
+                <table><thead><tr><th>Contract number</th><th>Type</th><th>Status</th><th>Completed / updated</th><th>Documents</th></tr></thead><tbody>${contractRows}</tbody></table>
+              </section>`
+            : ""
+        }
+
+        ${
+          (reservation.rentalExtensions || []).length
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Rental Extensions</h3>
+                <table><thead><tr><th>Contract</th><th>Previous return</th><th>New return</th><th>Agreed price</th><th>Signed</th></tr></thead><tbody>
+                  ${(reservation.rentalExtensions || []).map((extension) => `<tr><td>${escapeHtml(extension.contractNumber || "-")}</td><td>${formatDateTime(extension.previousReturnDateTime)}</td><td>${formatDateTime(extension.newReturnDateTime)}</td><td>${formatCurrency(extension.agreedPrice)}</td><td>${formatDateTime(extension.signedAt)}</td></tr>`).join("")}
+                </tbody></table>
+              </section>`
+            : ""
+        }
 
         <section class="section">
           <h3 class="section-title"><span class="bar"></span>Hire Details</h3>
@@ -569,6 +731,7 @@ export function printReservationReceipt(reservation: Reservation | null) {
                 <div class="label">Collection Code</div>
                 <div class="value">${escapeHtml(reservation.collectionCode || "-")}</div>
               </div>
+              ${reservation.vehicleSnapshot ? `<div><div class="label">Reserved vehicle snapshot</div><div class="value">${escapeHtml([vehicleSnapshot.title || vehicleSnapshot.make, vehicleSnapshot.number, vehicleSnapshot.color].filter(Boolean).join(" · ") || "-")}</div></div><div><div class="label">Vehicle assigned</div><div class="value">${formatDateTime(vehicleSnapshot.assignedAt)}</div></div>` : ""}
             </div>
           </div>
         </section>
@@ -684,6 +847,11 @@ export function printReservationReceipt(reservation: Reservation | null) {
                     <div><div class="label">Receipt Uploaded</div><div class="value">${formatDateTime(
                       deposit.receiptUploadedAt,
                     )}</div></div>
+                    <div><div class="label">Receipt</div><div class="value">${
+                      deposit.receiptUrl
+                        ? `<a href="${escapeHtml(deposit.receiptUrl)}" target="_blank" rel="noopener noreferrer">View uploaded receipt</a>`
+                        : "-"
+                    }</div></div>
                     <div><div class="label">Verified</div><div class="value">${formatDateTime(
                       deposit.verifiedAt,
                     )}</div></div>
@@ -759,7 +927,6 @@ export function printReservationReceipt(reservation: Reservation | null) {
                       handover?.conditionNotes || "-",
                     )}</div></div>
                   </div>
-                  ${customFieldRows(handover?.customFields)}
                 </div>
               </section>`
             : ""
@@ -807,8 +974,16 @@ export function printReservationReceipt(reservation: Reservation | null) {
                         )}</div>`
                       : ""
                   }
-                  ${customFieldRows(inspection?.customFields)}
                 </div>
+              </section>`
+            : ""
+        }
+
+        ${
+          inspectionCustomRows
+            ? `<section class="section">
+                <h3 class="section-title"><span class="bar"></span>Vehicle Inspection Checklist</h3>
+                <table><thead><tr><th>Inspection item</th><th>Collection · before</th><th>Return · after</th></tr></thead><tbody>${inspectionCustomRows}</tbody></table>
               </section>`
             : ""
         }
@@ -825,8 +1000,8 @@ export function printReservationReceipt(reservation: Reservation | null) {
                   <div class="price-row"><span>Total deductions</span><strong>-${formatCurrency(
                     refund?.deductionsTotal,
                   )}</strong></div>
-                  <div class="price-row"><span>Refund amount</span><strong>${formatCurrency(
-                    refund?.refundAmount,
+                  <div class="price-row"><span>${refundBalance < 0 ? "Customer debt" : "Refund amount"}</span><strong class="${refundBalance < 0 ? "debt" : ""}">${formatCurrency(
+                    refundBalance,
                   )}</strong></div>
                   <div class="price-row"><span>Status</span><strong>${escapeHtml(
                     humanize(refund?.status),
@@ -834,12 +1009,11 @@ export function printReservationReceipt(reservation: Reservation | null) {
                   <div class="price-row"><span>Authorization number</span><strong>${escapeHtml(
                     refund?.reference || "-",
                   )}</strong></div>
-                  <div class="price-row"><span>Expected by</span><strong>${formatDateTime(
-                    refund?.expectedBy,
-                  )}</strong></div>
+                  ${refund?.status !== "completed" && refund?.expectedBy ? `<div class="price-row"><span>Expected by</span><strong>${formatDateTime(refund.expectedBy)}</strong></div>` : ""}
                   <div class="price-row"><span>Processed</span><strong>${formatDateTime(
                     refund?.processedAt,
                   )}</strong></div>
+                  ${refund?.status === "completed" && refundBalance >= 0 ? '<div class="status-note">Expected in your account within 3 working days.</div>' : ""}
                 </div>
               </section>`
             : ""

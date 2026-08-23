@@ -83,11 +83,10 @@ export default function DepositPanel({
     deposit?.status === "pending" && Boolean(deposit?.receiptUrl);
   const receiptRejected = deposit?.status === "failed";
   const payAtOfficeSelected = deposit?.option === "office";
-  const hasCardNumber = Boolean(DEPOSIT_PAYMENT_DETAILS.cardNumber);
   const hasBankAccount = Boolean(
     DEPOSIT_PAYMENT_DETAILS.sortCode && DEPOSIT_PAYMENT_DETAILS.accountNumber,
   );
-  const transferDetailsAvailable = hasCardNumber || hasBankAccount;
+  const transferDetailsAvailable = hasBankAccount;
 
   const fullOriginalAmount =
     deposit?.option === "full" && deposit.originalAmount !== undefined
@@ -502,11 +501,6 @@ export default function DepositPanel({
         <>
           {transferDetailsAvailable ? (
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              {DEPOSIT_PAYMENT_DETAILS.isTestCard && (
-                <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">
-                  Test payment details only — no real payment will be processed.
-                </div>
-              )}
               <p className="mb-2 text-xs text-gray-400">
                 Make a direct transfer of{" "}
                 <span className="font-black text-[#fe9a00]">
@@ -532,31 +526,6 @@ export default function DepositPanel({
                   </p>
                 </div>
               </div>
-              {hasCardNumber && (
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wide text-gray-500">
-                      Card number
-                    </p>
-                    <p className="font-black tracking-wider text-white">
-                      {DEPOSIT_PAYMENT_DETAILS.cardNumber}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyPaymentValue(
-                        DEPOSIT_PAYMENT_DETAILS.cardNumber,
-                        "Card number",
-                      )
-                    }
-                    className="cursor-pointer rounded-lg bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
-                    title="Copy card number"
-                  >
-                    <FiCopy />
-                  </button>
-                </div>
-              )}
               {hasBankAccount && (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 p-3">
