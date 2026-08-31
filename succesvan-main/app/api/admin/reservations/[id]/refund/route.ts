@@ -11,7 +11,7 @@ import {
 import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
 import Vehicle from "@/model/vehicle";
 import User from "@/model/user";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { normalizeRefundAdditionalCharges } from "@/lib/refund-additional-charges";
 
 const money = (value: unknown) => Math.max(0, Number(value) || 0);
@@ -19,8 +19,8 @@ const signedMoney = (value: number) => Math.round(value * 100) / 100;
 const formatLondonDate = (value: Date | string) =>
   new Date(value).toLocaleDateString("en-GB", {
     day: "2-digit",
-    month: "long",
-    year: "numeric",
+    month: "2-digit",
+    year: "2-digit",
     timeZone: "Europe/London",
   });
 
@@ -316,26 +316,21 @@ export async function POST(
         const customer = await User.findById(existing.user).select("phoneData");
         const phoneNumber = customer?.phoneData?.phoneNumber;
         if (phoneNumber) {
-          const siteUrl = (
-            process.env.NEXT_PUBLIC_SITE_URL ||
-            process.env.APP_URL ||
-            "https://successvanhire.co.uk"
-          ).replace(/\/$/, "");
-          const dashboardUrl = `${siteUrl}/customerDashboard#reserves`;
+          const dashboardUrl = customerReservationsSmsUrl();
           const bookingReference = existing.reservationCode || id;
           let message: string;
 
           if (body.action === "approve") {
             message =
               refundAmount > 0 && expectedBy
-                ? `Your deposit refund of £${refundAmount.toFixed(2)} for reservation ${bookingReference} is being processed and is expected in your bank account by ${formatLondonDate(expectedBy)}. For more details: ${dashboardUrl}`
-                : `Your deposit review for reservation ${bookingReference} is being processed. For the refund and deduction details: ${dashboardUrl}`;
+                ? `Refund £${refundAmount.toFixed(2)} for ${bookingReference} is due by ${formatLondonDate(expectedBy)}. Details: ${dashboardUrl}`
+                : `Deposit review started for ${bookingReference}. Details: ${dashboardUrl}`;
           } else if (refundAmount < 0) {
-            message = `Your deposit review for reservation ${bookingReference} is complete. Deductions exceed your deposit by £${Math.abs(refundAmount).toFixed(2)}, so you have an outstanding balance. Please come to the Success Van Hire office to pay it. For more details: ${dashboardUrl}`;
+            message = `${bookingReference}: £${Math.abs(refundAmount).toFixed(2)} remains due after deductions. Please pay at our office. Details: ${dashboardUrl}`;
           } else if (refundAmount === 0) {
-            message = `Your deposit review for reservation ${bookingReference} is complete. There is no refund or outstanding balance remaining. For more details: ${dashboardUrl}`;
+            message = `Deposit review complete for ${bookingReference}. Nothing to refund or pay. Details: ${dashboardUrl}`;
           } else {
-            message = `Your refund transfer of £${refundAmount.toFixed(2)} for reservation ${bookingReference} has been completed. It is expected in your bank account within 3 working days. For more details: ${dashboardUrl}`;
+            message = `Refund £${refundAmount.toFixed(2)} sent for ${bookingReference}. Allow 3 working days. Details: ${dashboardUrl}`;
           }
 
           await sendSMS(phoneNumber, message);
@@ -357,7 +352,7 @@ export async function POST(
         if (phoneNumber) {
           await sendSMS(
             phoneNumber,
-            "Thanks for hiring with Success Van Hire! We hope everything went smoothly. We would love to hear about your experience: https://g.page/r/CZcNuTEcLJMAEBM/review",
+            "Thanks for choosing Success Van Hire. Please review us: https://g.page/r/CZcNuTEcLJMAEBM/review",
           );
         }
       } catch (reviewSmsError) {

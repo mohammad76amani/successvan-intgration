@@ -1,6 +1,16 @@
 const SMS_WORKS_JWT = process.env.NEXT_PUBLIC_SMSWORKS_JWT;
 const SMS_WORKS_SENDER = process.env.NEXT_PUBLIC_SMSWORKS_SENDER || "InfoText";
 
+export const customerReservationsSmsUrl = () => {
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.APP_URL ||
+    "https://successvanhire.co.uk"
+  ).replace(/\/$/, "");
+
+  return `${siteUrl}/r`;
+};
+
 export async function sendSMS(to: string, message: string) {
   if (!SMS_WORKS_JWT) {
     throw new Error("Missing NEXT_PUBLIC_SMSWORKS_JWT");

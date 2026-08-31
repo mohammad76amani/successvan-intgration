@@ -5,7 +5,7 @@ import User from "@/model/user";
 import AddOn from "@/model/addOn";
 import bcrypt from "bcryptjs";
 import { successResponse, errorResponse } from "@/lib/api-response";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { requireAuth, verifyToken } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { formatDateInputInLondon } from "@/lib/englandTime";
@@ -378,19 +378,13 @@ export async function POST(req: NextRequest) {
     const hasLicence =
       user.licenceAttached?.front && user.licenceAttached?.back;
     const licenceMessage = hasLicence ? "" : " Add licence to dashboard.";
-    const siteUrl = (
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      process.env.APP_URL ||
-      "https://successvanhire.co.uk"
-    ).replace(/\/$/, "");
-
     // Send creation SMS
     try {
       await sendSMS(
         user.phoneData.phoneNumber.replace("+", ""),
         isDashboardUser
-          ? `Dear ${user.name}, your reservation is confirmed. Open My Reservations, select your deposit option and complete payment to secure your booking.${licenceMessage} ${siteUrl}/customerDashboard#reserves`
-          : `Dear ${user.name}, reservation created, pending review.${licenceMessage} SuccessVanHire.co.uk/register`,
+          ? `Hi ${user.name}, booking confirmed. Choose and pay your deposit.${licenceMessage} ${customerReservationsSmsUrl()}`
+          : `Hi ${user.name}, booking received and pending review.${licenceMessage} successvanhire.co.uk/register`,
       );
     } catch (error) {
       console.log(
@@ -404,7 +398,7 @@ export async function POST(req: NextRequest) {
       try {
         await sendSMS(
           admin.phoneData.phoneNumber,
-          "You have a new reservation. Check the admin dashboard.",
+          "New booking received. Check admin dashboard.",
         );
       } catch (error) {
         console.log(

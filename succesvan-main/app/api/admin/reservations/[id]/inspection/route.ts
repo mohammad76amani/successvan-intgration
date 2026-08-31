@@ -6,7 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
 import User from "@/model/user";
 import Notification from "@/model/notification";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -145,14 +145,9 @@ export async function POST(
       const customer = await User.findById(existing.user).select("phoneData");
       const phoneNumber = customer?.phoneData?.phoneNumber;
       if (phoneNumber) {
-        const siteUrl = (
-          process.env.NEXT_PUBLIC_SITE_URL ||
-          process.env.APP_URL ||
-          "https://successvanhire.co.uk"
-        ).replace(/\/$/, "");
         await sendSMS(
           phoneNumber,
-          `We have received and inspected the vehicle for reservation ${existing.reservationCode || id}. For inspection and deposit review details, visit My Reservations: ${siteUrl}/customerDashboard#reserves`,
+          `Van returned and inspected for ${existing.reservationCode || id}. View inspection and deposit review: ${customerReservationsSmsUrl()}`,
         );
       }
     } catch (smsError) {

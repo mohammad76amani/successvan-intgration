@@ -4,7 +4,7 @@ import Reservation from "@/model/reservation";
 import User from "@/model/user";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { sendStatusNotification } from "@/lib/notification-scheduler";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { deleteImage } from "@/lib/s3";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
@@ -606,14 +606,9 @@ export async function PATCH(
             "Not recorded";
           const phoneNumber = customer?.phoneData?.phoneNumber;
           if (phoneNumber) {
-            const siteUrl = (
-              process.env.NEXT_PUBLIC_SITE_URL ||
-              process.env.APP_URL ||
-              "https://successvanhire.co.uk"
-            ).replace(/\/$/, "");
             await sendSMS(
               phoneNumber.replace("+", ""),
-              `Vehicle assigned to your Success Van Hire booking. Registration: ${vehicleRegistration}. Your rental agreement is ready to sign via DocuSign. Sign in your dashboard: ${siteUrl}/customerDashboard#reserves`,
+              `Van assigned. Reg: ${vehicleRegistration}. Your contract is ready to sign: ${customerReservationsSmsUrl()}`,
             );
           }
 

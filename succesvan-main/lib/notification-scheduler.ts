@@ -3,7 +3,7 @@ import Reservation from "@/model/reservation";
 import User from "@/model/user";
 import Office from "@/model/office";
 import Vehicle from "@/model/vehicle";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
 
 type NotificationUser = {
@@ -51,15 +51,6 @@ const formatLondonDate = (date: Date) =>
     timeZone: "Europe/London",
   });
 
-const customerReservationsUrl = () => {
-  const siteUrl = (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.APP_URL ||
-    "https://successvanhire.co.uk"
-  ).replace(/\/$/, "");
-  return `${siteUrl}/customerDashboard#reserves`;
-};
-
 export async function scheduleReservationNotifications(reservationId: string) {
   const reservation = await Reservation.findById(reservationId)
     .populate({
@@ -87,27 +78,17 @@ export async function scheduleReservationNotifications(reservationId: string) {
   );
   const now = new Date();
 
-  // Schedule reminders for all pickup times within 3 hours (every 15 min)
-  const pickupTimes = [
-    startDate,
-    new Date(startDate.getTime() + 15 * 60 * 1000),
-    new Date(startDate.getTime() + 30 * 60 * 1000),
-    new Date(startDate.getTime() + 45 * 60 * 1000),
-  ];
+  const reminderFor = new Date(startDate.getTime() - 3 * 60 * 60 * 1000);
 
-  for (const pickupTime of pickupTimes) {
-    const reminderFor = new Date(pickupTime.getTime() - 3 * 60 * 60 * 1000);
-    
-    if (reminderFor > now) {
-      await Notification.create({
-        type: "reservation_reminder",
-        reservation: reservationId,
-        user: user._id,
-        phoneNumber,
-        message: `Reminder: Van pickup in 3hrs at ${office.name || "office"}. Time: ${formatLondonTime(pickupTime)} ${formatLondonDate(pickupTime)}. SuccessVanHire.co.uk`,
-        scheduledFor: reminderFor,
-      });
-    }
+  if (reminderFor > now) {
+    await Notification.create({
+      type: "reservation_reminder",
+      reservation: reservationId,
+      user: user._id,
+      phoneNumber,
+      message: `Pickup reminder: ${formatLondonDate(startDate)} ${formatLondonTime(startDate)} at ${office.name || "our office"}. ${customerReservationsSmsUrl()}`,
+      scheduledFor: reminderFor,
+    });
   }
 }
 
@@ -143,27 +124,20 @@ export async function rescheduleReturnNotifications(reservationId: string) {
     reservation.returnTime,
     reservation.endDate,
   );
-  const firstReminderAt = new Date(
-    returnAt.getTime() - 3 * 60 * 60 * 1000,
-  );
+  const reminderAt = new Date(returnAt.getTime() - 3 * 60 * 60 * 1000);
   const now = new Date();
 
-  for (const offsetMinutes of [0, 15, 30, 45]) {
-    const scheduledFor = new Date(
-      firstReminderAt.getTime() + offsetMinutes * 60 * 1000,
-    );
-    if (scheduledFor <= now) continue;
-
+  if (reminderAt > now) {
     await Notification.create({
       type: "reservation_reminder",
       reservation: reservationId,
       user: user._id,
       phoneNumber,
-      message: `Reminder: Van return is due at ${office?.name || "office"}. Return date and time (UK): ${formatLondonDate(returnAt)}, ${formatLondonTime(returnAt)}. ${customerReservationsUrl()}`,
-      scheduledFor,
+      message: `Return reminder: ${formatLondonDate(returnAt)} ${formatLondonTime(returnAt)} at ${office?.name || "our office"}. ${customerReservationsSmsUrl()}`,
+      scheduledFor: reminderAt,
     });
     console.log(
-      `[NOTIF] Created return reminder for ${reservationId} at ${scheduledFor}`,
+      `[NOTIF] Created return reminder for ${reservationId} at ${reminderAt}`,
     );
   }
 }
@@ -180,24 +154,18 @@ export async function sendStatusNotification(
   if (!reservation) return;
 
   const user = reservation.user as unknown as NotificationUser;
-  const office = reservation.office as unknown as NotificationOffice;
   const vehicle = reservation.vehicle as unknown as NotificationVehicle;
   const phoneNumber = user.phoneData?.phoneNumber;
 
   if (!phoneNumber) return;
 
-  const pickupAt = getReservationInstant(
-    reservation.startDateDisplay,
-    reservation.pickupTime,
-    reservation.startDate
-  );
   const returnAt = getReservationInstant(
     reservation.endDateDisplay,
     reservation.returnTime,
     reservation.endDate
   );
 
-  const vehicleInfo = vehicle?.number ? ` Vehicle number: ${vehicle.number}` : "";
+  const vehicleInfo = vehicle?.number ? ` Reg: ${vehicle.number}.` : "";
   const cancelReason =
     typeof reservation.cancelReason === "string" &&
     reservation.cancelReason.trim()
@@ -205,10 +173,10 @@ export async function sendStatusNotification(
       : "";
 
   const messages = {
-    confirmed: `Reservation confirmed!\nNext step: open My Reservations, select your deposit option and complete payment to secure your booking.\nPickup: ${formatLondonDate(pickupAt)}, ${formatLondonTime(pickupAt)} at ${office.name || "office"}.\n${customerReservationsUrl()}`,
-    canceled: `Reservation canceled.\n${cancelReason?`${cancelReason}\n`: ""}For more information call:\n+44 20 3011 1198`,
-    delivered: `Vehicle handover completed!\n${vehicleInfo}Return date and time (UK): ${formatLondonDate(returnAt)}, ${formatLondonTime(returnAt)}.\nView your booking details: ${customerReservationsUrl()}\nFor emergency or breakdown call +44 20 3011 1198.`,
-    completed: `Thanks for hiring with Success Van Hire!\nYour licence documents have now been securely removed from our system.\nWe hope everything went smoothly. If so, we'd love to hear about your experience.Your review helps other customers choose a trusted local van hire company.\nhttps://g.page/r/CZcNuTEcLJMAEBM/review`
+    confirmed: `Booking confirmed. Choose and pay your deposit: ${customerReservationsSmsUrl()}`,
+    canceled: `Booking cancelled.${cancelReason ? ` ${cancelReason}.` : ""} Help: 020 3011 1198`,
+    delivered: `Van collected.${vehicleInfo} Return: ${formatLondonDate(returnAt)} ${formatLondonTime(returnAt)} UK. Emergency/breakdown: 020 3011 1198. ${customerReservationsSmsUrl()}`,
+    completed: "Thanks for choosing Success Van Hire. Please review us: https://g.page/r/CZcNuTEcLJMAEBM/review",
   };
 
   // Send SMS immediately, don't save to database
@@ -251,7 +219,7 @@ export async function sendReservationEditedNotification(reservationId: string) {
   try {
     await sendSMS(
       phoneNumber.replace("+", ""),
-      `Your reservation updated by admin. Check details in dashboard. SuccessVanHire.co.uk`
+      `Your booking was updated. Check details: ${customerReservationsSmsUrl()}`
     );
   } catch (error) {
     console.log(
@@ -310,7 +278,7 @@ export async function scheduleRefundDueOwnerNotifications(
   const refundAmount = Number(reservation.refund.refundAmount || 0).toFixed(2);
   const bookingReference =
     reservation.reservationCode || reservation._id.toString();
-  const message = `Refund due: ${bookingReference}, ${customerName}, £${refundAmount}, ${vehicleLabel}. Check the admin dashboard. SuccessVanHire.co.uk`;
+  const message = `Refund due: ${bookingReference}, ${customerName}, £${refundAmount}, ${vehicleLabel}. Check admin dashboard.`;
 
   for (const owner of owners) {
     const phoneNumber = owner.phoneData?.phoneNumber;

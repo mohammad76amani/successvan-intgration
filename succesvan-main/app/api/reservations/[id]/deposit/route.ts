@@ -3,7 +3,7 @@ import connect from "@/lib/data";
 import Reservation from "@/model/reservation";
 import User from "@/model/user";
 import { successResponse, errorResponse } from "@/lib/api-response";
-import { sendSMS } from "@/lib/sms";
+import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { DEPOSIT_OPTIONS, type DepositOption } from "@/lib/reservation-status";
@@ -231,16 +231,11 @@ export async function PATCH(
       );
       const phoneNumber = customer?.phoneData?.phoneNumber;
       if (phoneNumber) {
-        const siteUrl = (
-          process.env.NEXT_PUBLIC_SITE_URL ||
-          process.env.APP_URL ||
-          "https://successvanhire.co.uk"
-        ).replace(/\/$/, "");
         const reference = reservation.reservationCode || id;
         const message =
           body.action === "approve"
-            ? `Deposit payment approved for reservation ${reference}. Your payment has been verified. We will now prepare the vehicle assignment and rental agreement. Track your booking: ${siteUrl}/customerDashboard#reserves`
-            : `Deposit receipt rejected for reservation ${reference}. Reason: ${reservation.deposit.failureReason}. Open My Reservations to review the reason and upload a new receipt: ${siteUrl}/customerDashboard#reserves`;
+            ? `Deposit approved for ${reference}. We will assign your van and prepare the contract. ${customerReservationsSmsUrl()}`
+            : `Deposit rejected for ${reference}. Reason: ${reservation.deposit.failureReason}. Upload a new receipt: ${customerReservationsSmsUrl()}`;
         await sendSMS(phoneNumber, message);
       }
     } catch (smsError) {
