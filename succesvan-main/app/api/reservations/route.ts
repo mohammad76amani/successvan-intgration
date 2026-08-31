@@ -378,13 +378,18 @@ export async function POST(req: NextRequest) {
     const hasLicence =
       user.licenceAttached?.front && user.licenceAttached?.back;
     const licenceMessage = hasLicence ? "" : " Add licence to dashboard.";
+    const siteUrl = (
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.APP_URL ||
+      "https://successvanhire.co.uk"
+    ).replace(/\/$/, "");
 
     // Send creation SMS
     try {
       await sendSMS(
         user.phoneData.phoneNumber.replace("+", ""),
         isDashboardUser
-          ? `Dear ${user.name}, your reservation has been confirmed and is ready for deposit payment.${licenceMessage} SuccessVanHire.co.uk/register`
+          ? `Dear ${user.name}, your reservation is confirmed. Open My Reservations, select your deposit option and complete payment to secure your booking.${licenceMessage} ${siteUrl}/customerDashboard#reserves`
           : `Dear ${user.name}, reservation created, pending review.${licenceMessage} SuccessVanHire.co.uk/register`,
       );
     } catch (error) {

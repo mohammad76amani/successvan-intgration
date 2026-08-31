@@ -35,6 +35,11 @@ import {
 } from "@/lib/specialDaySchedule";
 import { formatDateInputInLondon, formatTimeInLondon } from "@/lib/englandTime";
 import { useRouter } from "next/navigation";
+import {
+  getStoredAuthenticatedUserId,
+  trackReservationCompleted,
+  trackReservationConfirmAttempt,
+} from "@/lib/analytics";
 
 interface Office {
   _id: string;
@@ -95,7 +100,7 @@ export default function ReservationModal({
   onClose,
   isAdminMode = false,
 }: ReservationModalProps) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, setUser: setAuthUser } = useAuth();
   const user = isAdminMode ? null : authUser;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [offices, setOffices] = useState<Office[]>([]);
@@ -752,6 +757,7 @@ export default function ReservationModal({
         if (!isAdminMode) {
           localStorage.setItem("token", data.data.token);
           localStorage.setItem("user", JSON.stringify(data.data.user));
+          setAuthUser(data.data.user);
         }
         setCustomerUserId(data.data.user._id);
         setFormData((prev) => ({
@@ -843,6 +849,7 @@ export default function ReservationModal({
       if (!isAdminMode) {
         localStorage.setItem("token", data.data.token);
         localStorage.setItem("user", JSON.stringify(data.data.user));
+        setAuthUser(data.data.user);
       }
       setCustomerUserId(data.data.user._id);
       setIsNewUser(true);
@@ -911,6 +918,11 @@ export default function ReservationModal({
   };
 
   const handleSubmit = async () => {
+    if (!isAdminMode) {
+      trackReservationConfirmAttempt(
+        customerUserId || authUser?._id || getStoredAuthenticatedUserId(),
+      );
+    }
     if (!formData.acceptTerms) {
       setErrors({ acceptTerms: "You must accept the terms and conditions" });
       return;
@@ -1021,6 +1033,23 @@ export default function ReservationModal({
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Reservation failed");
       setIsSuccess(true);
+      if (!isAdminMode && data.data?._id) {
+        trackReservationCompleted({
+          reservationId: data.data._id,
+          totalPrice: payload.reservationData.totalPrice,
+          vehicleName: selectedCategory?.name || "",
+          vehicleType: formData.type?.name || "",
+          office:
+            selectedOfficeData?.name ||
+            offices.find((office) => office._id === formData.office)?.name ||
+            "",
+          rentalStartDate: formData.startDate,
+          rentalEndDate: formData.endDate,
+          pickupTime: formData.startTime,
+          returnTime: formData.endTime,
+          userId,
+        });
+      }
       if (isAdminMode) {
         setTimeout(() => onClose(), 2000);
       } else if (isNewUser) {

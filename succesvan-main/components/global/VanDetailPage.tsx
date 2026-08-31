@@ -36,6 +36,10 @@ import type { CategoryDetail } from "@/lib/category-detail";
 import { getVanSeoContent, type VanSeoBlock } from "@/lib/vanSeo";
 import { getVanDetailFaqs } from "@/lib/vanFaq";
 import FAQComponent from "@/components/static/fAQSection";
+import {
+  cancelReservationFlow,
+  startReservationFlow,
+} from "@/lib/analytics";
 
 interface VanDetailPageProps {
   category: CategoryDetail;
@@ -253,7 +257,10 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
   );
 
   const bookingVan = category as unknown as BookingCategory;
-  const openBooking = () => setShowBooking(true);
+  const openBooking = () => {
+    startReservationFlow(true);
+    setShowBooking(true);
+  };
 
   const seoBlocks = useMemo(() => getVanSeoContent(category), [category]);
 
@@ -792,7 +799,10 @@ export default function VanDetailPage({ category }: VanDetailPageProps) {
       {showBooking && (
         <ReservationPanelPortal
           van={bookingVan}
-          onClose={() => setShowBooking(false)}
+          onClose={() => {
+            cancelReservationFlow();
+            setShowBooking(false);
+          }}
           setUser={setUser}
         />
       )}

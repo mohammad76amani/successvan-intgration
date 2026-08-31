@@ -8,6 +8,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
+import { trackUserIdentified } from "@/lib/analytics";
 
 interface User {
   _id: string;
@@ -88,6 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     fetchUser();
   }, [persistUser]);
+
+  useEffect(() => {
+    if (user?._id) trackUserIdentified(user._id);
+  }, [user?._id]);
 
   const logout = () => {
     localStorage.removeItem("token");

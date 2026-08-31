@@ -223,6 +223,33 @@ export async function PATCH(
 
     await reservation.save();
 
+    // Notify the customer of the verification result. SMS delivery must not
+    // roll back the admin action if the external provider is unavailable.
+    try {
+      const customer = await User.findById(reservation.user).select(
+        "name phoneData",
+      );
+      const phoneNumber = customer?.phoneData?.phoneNumber;
+      if (phoneNumber) {
+        const siteUrl = (
+          process.env.NEXT_PUBLIC_SITE_URL ||
+          process.env.APP_URL ||
+          "https://successvanhire.co.uk"
+        ).replace(/\/$/, "");
+        const reference = reservation.reservationCode || id;
+        const message =
+          body.action === "approve"
+            ? `Deposit payment approved for reservation ${reference}. Your payment has been verified. We will now prepare the vehicle assignment and rental agreement. Track your booking: ${siteUrl}/customerDashboard#reserves`
+            : `Deposit receipt rejected for reservation ${reference}. Reason: ${reservation.deposit.failureReason}. Open My Reservations to review the reason and upload a new receipt: ${siteUrl}/customerDashboard#reserves`;
+        await sendSMS(phoneNumber, message);
+      }
+    } catch (smsError) {
+      console.log(
+        `Customer deposit ${body.action} SMS error:`,
+        smsError instanceof Error ? smsError.message : "Unknown error",
+      );
+    }
+
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

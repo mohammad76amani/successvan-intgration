@@ -41,6 +41,7 @@ import {
   syncServerClock,
 } from "@/lib/englandTime";
 import FullScreenMobileCalendar from "./FullScreenMobileCalendar";
+import { startReservationFlow } from "@/lib/analytics";
 import {
   calculateOfficeExtensionPrices,
   findSpecialDayForDate,
@@ -446,11 +447,13 @@ export default function ReservationForm({
 
   const handleGlobalVoice = () => {
     console.log("  [Form] Voice button clicked");
+    if (!isAdminMode) startReservationFlow(true);
     toggleRecording();
   };
 
   const handleAIAgentMode = () => {
     console.log("  [Form] Starting Fast AI Agent mode");
+    if (!isAdminMode) startReservationFlow(true);
     setShowFastAgentModal(true);
   };
 
@@ -820,6 +823,7 @@ export default function ReservationForm({
     }
 
     try {
+      if (!isAdminMode) startReservationFlow(true);
       const pickupDateTimeISO = createLondonDateTime(
         dateRange[0].startDate || new Date(),
         formData.pickupTime,

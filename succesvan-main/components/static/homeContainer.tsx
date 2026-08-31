@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import ReservationHero from "@/components/static/ReservationHero";
 import VanListingHome from "@/components/global/vanListingBackup";
 import type { FAQItem } from "@/components/static/fAQSection";
+import { cancelReservationFlow } from "@/lib/analytics";
 
 // Dynamically import below-the-fold components
 const HeroSlider = dynamic(() => import("@/components/static/HeroSlider"), {
@@ -247,7 +248,12 @@ export default function HomeContainer() {
       {/* Modal: loaded only on user interaction */}
       {showReservationModal && (
         <Suspense fallback={null}>
-          <ReservationModal onClose={() => setShowReservationModal(false)} />
+          <ReservationModal
+            onClose={() => {
+              cancelReservationFlow();
+              setShowReservationModal(false);
+            }}
+          />
         </Suspense>
       )}
     </>

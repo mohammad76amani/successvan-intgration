@@ -369,9 +369,6 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   ]
     .filter(Boolean)
     .join(", ");
-  const extensionTotal =
-    Number(reservation.pickupExtensionPrice || 0) +
-    Number(reservation.returnExtensionPrice || 0);
   const depositPaymentMethod =
     reservation.deposit?.option === "full"
       ? "Full deposit - bank transfer"
@@ -464,15 +461,27 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   cellText(page, reservation.pickupTime || formatDateTime(reservation.startDate), 433.8, 343.1, 133.2);
   cellText(page, contractDate(reservation.endDate, reservation.endDateDisplay), 167.4, 353.9, 133.2);
   cellText(page, reservation.returnTime || formatDateTime(reservation.endDate), 433.8, 353.9, 133.2);
-  cellText(page, durationLabel, 167.4, 364.9, 133.2);
-  cellText(page, extensionTotal > 0 ? money(extensionTotal) : "None", 433.8, 364.9, 133.2);
+  // Remove "Extension (if agreed)" and rebuild the final rental-term row as
+  // one full-width duration field. Keeping the row in its original vertical
+  // position preserves every later page and DocuSign coordinate.
+  cover(page, 33.7, 364.2, 533.8, 12.2);
+  drawGrid(page, [34.2, 167.4, 567], 364.6, [10.9]);
+  cellText(page, "Agreed Duration:", 34.2, 364.6, 133.2, 10.9, 7.2);
+  cellText(page, durationLabel, 167.4, 364.6, 399.6, 10.9, 7.2);
 
   // Rental fee, deposit and payment details.
-  cellText(page, money(reservation.totalPrice), 167.4, 425.1, 133.2);
-  cellText(page, money(refundableDeposit), 433.8, 425.1, 133.2);
-  cellText(page, depositPaymentMethod, 167.4, 436.1, 133.2, 21.1);
-  cellText(page, extensionTotal > 0 ? money(extensionTotal) : money(0), 167.4, 457.2, 133.2);
-  cellText(page, money(0), 433.8, 457.2, 133.2);
+  // Remove the Administration Fee, Other Charges, and Fuel / Other Deposit
+  // fields. Rebuild this section with only Rental Fee, Deposit, and Payment
+  // Method, leaving the rest of page 1 at its existing coordinates.
+  cover(page, 33.7, 424.3, 533.8, 44.3);
+  drawGrid(page, [34.2, 167.4, 300.6, 433.8, 567], 424.7, [10.9]);
+  drawGrid(page, [34.2, 167.4, 567], 435.6, [21.7]);
+  cellText(page, "Rental Fee:", 34.2, 424.7, 133.2, 10.9, 7.2);
+  cellText(page, money(reservation.totalPrice), 167.4, 424.7, 133.2, 10.9, 7.2);
+  cellText(page, "Deposit:", 300.6, 424.7, 133.2, 10.9, 7.2);
+  cellText(page, money(refundableDeposit), 433.8, 424.7, 133.2, 10.9, 7.2);
+  cellText(page, "Payment Method:", 34.2, 435.6, 133.2, 21.7, 7.2);
+  cellText(page, depositPaymentMethod, 167.4, 435.6, 399.6, 21.7, 7.2);
 
   // Mileage allowance. Mileage add-ons are sold per rental day, so their
   // stated mileage increases the daily allowance and seven times that amount

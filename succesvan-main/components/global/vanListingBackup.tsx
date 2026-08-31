@@ -70,6 +70,13 @@ import {
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import {
+  cancelReservationFlow,
+  getStoredAuthenticatedUserId,
+  startReservationFlow,
+  trackReservationCompleted,
+  trackReservationConfirmAttempt,
+} from "@/lib/analytics";
 
 export interface Category extends VanData {
   expert?: string;
@@ -225,7 +232,10 @@ export default function VanListingHome({
       {selectedCategory && (
         <ReservationPanelPortal
           van={selectedCategory}
-          onClose={() => setSelectedCategory(null)}
+          onClose={() => {
+            cancelReservationFlow();
+            setSelectedCategory(null);
+          }}
           setUser={setUser}
         />
       )}
@@ -266,6 +276,10 @@ export function ReservationPanel({
   onClose: () => void;
   setUser: (user: any) => void;
 }) {
+  useEffect(() => {
+    startReservationFlow();
+  }, []);
+
   const [step, setStep] = useState<"details" | "auth">("details");
   const [authStep, setAuthStep] = useState<"phone" | "code" | "register">(
     "phone",
@@ -1075,6 +1089,7 @@ export function ReservationPanel({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    trackReservationConfirmAttempt(getStoredAuthenticatedUserId());
 
     if (!validateForm()) {
       // Show specific error for driver age if it exists
@@ -1210,6 +1225,20 @@ export function ReservationPanel({
       }
 
       setIsSuccess(true);
+      if (data.data?._id) {
+        trackReservationCompleted({
+          reservationId: data.data._id,
+          totalPrice: payload.reservationData.totalPrice,
+          vehicleName: van.name || "",
+          vehicleType: (van as any)?.type?.name || "",
+          office: getSelectedOffice()?.name || "",
+          rentalStartDate: formatDateForStorage(pickupDate),
+          rentalEndDate: formatDateForStorage(returnDate),
+          pickupTime: formData.pickupTime,
+          returnTime: formData.returnTime,
+          userId: user._id,
+        });
+      }
 
       // Detect user role and redirect accordingly
       const userRole = user?.role || "user";

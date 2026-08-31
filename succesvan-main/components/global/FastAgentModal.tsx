@@ -42,6 +42,11 @@ import {
   getWorkingDayTimeSlots,
   getWorkingDayWindow,
 } from "@/lib/specialDaySchedule";
+import {
+  getStoredAuthenticatedUserId,
+  trackReservationCompleted,
+  trackReservationConfirmAttempt,
+} from "@/lib/analytics";
 
 interface FastAgentModalProps {
   isOpen: boolean;
@@ -418,6 +423,18 @@ export default function FastAgentModal({
   // Handle complete
   useEffect(() => {
     if (agentState.phase === "complete" && agentState.reservationId) {
+      trackReservationCompleted({
+        reservationId: agentState.reservationId,
+        totalPrice: agentState.booking.totalPrice || 0,
+        vehicleName: agentState.selectedCategory?.name || "",
+        vehicleType: "",
+        office: agentState.booking.officeName || "",
+        rentalStartDate: agentState.booking.startDate || "",
+        rentalEndDate: agentState.booking.endDate || "",
+        pickupTime: agentState.booking.startTime || "",
+        returnTime: agentState.booking.endTime || "",
+        userId: agentState.userId || getStoredAuthenticatedUserId(),
+      });
       setTimeout(() => {
         onComplete(
           agentState.reservationId!,
@@ -587,6 +604,7 @@ export default function FastAgentModal({
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!verificationCode || verificationCode.length !== 6) return;
+    trackReservationConfirmAttempt();
     await verifyCode(verificationCode);
   };
 
@@ -783,6 +801,7 @@ export default function FastAgentModal({
 
   const handleConfirmReceipt = async () => {
     if (isAuthenticated && existingUserToken) {
+      trackReservationConfirmAttempt(getStoredAuthenticatedUserId());
       try {
         const tokenPayload = JSON.parse(atob(existingUserToken.split(".")[1]));
         const userId = tokenPayload.userId || tokenPayload.id;
@@ -829,6 +848,18 @@ export default function FastAgentModal({
         });
         const data = await response.json();
         if (data.success) {
+          trackReservationCompleted({
+            reservationId: data.data?._id,
+            totalPrice: booking.totalPrice || 0,
+            vehicleName: agentState.selectedCategory?.name || "",
+            vehicleType: "",
+            office: booking.officeName || "",
+            rentalStartDate: booking.startDate || "",
+            rentalEndDate: booking.endDate || "",
+            pickupTime: booking.startTime || "",
+            returnTime: booking.endTime || "",
+            userId,
+          });
           showToast.success("Booking confirmed successfully!");
           onComplete(data.data._id, existingUserToken, false);
         } else {

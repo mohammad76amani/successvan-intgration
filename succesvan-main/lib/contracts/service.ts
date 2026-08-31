@@ -57,6 +57,7 @@ import {
 } from "@/lib/specialDaySchedule";
 import { calculateReservationExtensionPrice } from "@/lib/reservation-extension-pricing";
 import { validateAdditionalDriver } from "@/lib/additional-driver";
+import { rescheduleReturnNotifications } from "@/lib/notification-scheduler";
 
 const contractDocumentSelect =
   "+sourceDocument.storageKey +signedDocument.storageKey +certificateDocument.storageKey";
@@ -1564,6 +1565,19 @@ async function syncReservationFromContractStatus(
         },
       },
     );
+
+    if (updateResult.modifiedCount > 0) {
+      try {
+        await rescheduleReturnNotifications(String(contract.bookingId));
+      } catch (notificationError) {
+        console.log(
+          "Extension return reminder update error:",
+          notificationError instanceof Error
+            ? notificationError.message
+            : "Unknown error",
+        );
+      }
+    }
 
     if (updateResult.modifiedCount > 0 || !extension.appliedAt) {
       extension.appliedAt = occurredAt;

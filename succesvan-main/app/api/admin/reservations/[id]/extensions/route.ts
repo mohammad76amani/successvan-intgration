@@ -12,6 +12,7 @@ import {
   safeErrorMessage,
 } from "@/lib/docusign/errors";
 import { createLondonDateTimeFromStorage } from "@/lib/englandTime";
+import { sendSMS } from "@/lib/sms";
 
 export const runtime = "nodejs";
 
@@ -137,6 +138,26 @@ export async function POST(
       },
       true,
     );
+
+    try {
+      if (contract.customerPhone) {
+        const siteUrl = (
+          process.env.NEXT_PUBLIC_SITE_URL ||
+          process.env.APP_URL ||
+          "https://successvanhire.co.uk"
+        ).replace(/\/$/, "");
+        await sendSMS(
+          contract.customerPhone,
+          `Your Success Van Hire extension agreement ${contract.contractNumber} is ready to sign. Review and sign it in My Reservations: ${siteUrl}/customerDashboard#reserves`,
+        );
+      }
+    } catch (smsError) {
+      console.log(
+        "Extension agreement SMS error:",
+        smsError instanceof Error ? smsError.message : "Unknown error",
+      );
+    }
+
     return successResponse(contract, 201);
   } catch (error) {
     const status = error instanceof z.ZodError ? 400 : errorStatus(error);

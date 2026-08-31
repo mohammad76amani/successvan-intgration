@@ -5,6 +5,8 @@ import { canAccessDashboard } from "@/lib/roles";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
 import User from "@/model/user";
+import Notification from "@/model/notification";
+import { sendSMS } from "@/lib/sms";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -120,6 +122,46 @@ export async function POST(
       },
       { new: true, runValidators: true },
     );
+
+    // The vehicle is already back, so no future return reminder should fire.
+    try {
+      await Notification.deleteMany({
+        reservation: id,
+        status: "pending",
+        type: "reservation_reminder",
+      });
+    } catch (notificationError) {
+      console.log(
+        "Return reminder cleanup error:",
+        notificationError instanceof Error
+          ? notificationError.message
+          : "Unknown error",
+      );
+    }
+
+    // Customer communication is best-effort and must not roll back a saved
+    // return inspection if the external SMS provider is unavailable.
+    try {
+      const customer = await User.findById(existing.user).select("phoneData");
+      const phoneNumber = customer?.phoneData?.phoneNumber;
+      if (phoneNumber) {
+        const siteUrl = (
+          process.env.NEXT_PUBLIC_SITE_URL ||
+          process.env.APP_URL ||
+          "https://successvanhire.co.uk"
+        ).replace(/\/$/, "");
+        await sendSMS(
+          phoneNumber,
+          `We have received and inspected the vehicle for reservation ${existing.reservationCode || id}. For inspection and deposit review details, visit My Reservations: ${siteUrl}/customerDashboard#reserves`,
+        );
+      }
+    } catch (smsError) {
+      console.log(
+        "Return inspection SMS error:",
+        smsError instanceof Error ? smsError.message : "Unknown error",
+      );
+    }
+
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

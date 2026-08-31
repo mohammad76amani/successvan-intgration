@@ -6,6 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import Reservation from "@/model/reservation";
 import Vehicle from "@/model/vehicle";
 import User from "@/model/user";
+import { sendStatusNotification } from "@/lib/notification-scheduler";
 
 type CustomFieldPayload = {
   templateFieldId?: unknown;
@@ -109,6 +110,20 @@ export async function POST(
       { new: true, runValidators: true },
     );
     await Vehicle.findByIdAndUpdate(existing.vehicle, { available: false });
+
+    // Handover completion starts the active rental. Notify the customer using
+    // the shared London-time formatter without allowing SMS issues to undo it.
+    try {
+      await sendStatusNotification(id, "delivered");
+    } catch (notificationError) {
+      console.log(
+        "Handover completion SMS error:",
+        notificationError instanceof Error
+          ? notificationError.message
+          : "Unknown error",
+      );
+    }
+
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

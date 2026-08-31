@@ -12,7 +12,6 @@ import {
   FiPackage,
   FiPrinter,
   FiFileText,
-  FiDollarSign,
   FiCheckCircle,
   FiActivity,
   FiDownload,
@@ -31,7 +30,6 @@ import {
 import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
 import { clientAuthHeaders } from "@/lib/client-auth";
 import type { SafeContractSummary } from "@/lib/docusign/types";
-import { calculateRefundBalance } from "@/lib/refund-balance";
 
 const formatCurrency = (value: unknown) => {
   const amount = Number(value);
@@ -363,19 +361,6 @@ export default function ReservationDetailsModal({
     }`;
   })();
 
-  const refund = reservation?.refund;
-  const refundBalance = calculateRefundBalance(
-    refund,
-    reservation?.deposit?.amount,
-  );
-  const customerOwes = refundBalance < 0;
-  const fixedRefundRows = [
-    ["Fuel", refund?.charges?.fuel],
-    ["Late return", refund?.charges?.late],
-    ["Damage", refund?.charges?.damage],
-    ["Cleaning", refund?.charges?.cleaning],
-    ["Missing equipment", refund?.charges?.missingEquipment],
-  ].filter(([, value]) => Number(value || 0) > 0);
   const handover = reservation?.handover;
   const inspection = reservation?.inspection;
   const hasLicenceCard = Boolean(
@@ -1149,62 +1134,6 @@ export default function ReservationDetailsModal({
             )}
 
             <div className="space-y-2">
-              {(reservation.deposit || refund) && (
-                <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]" open>
-                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]">
-                    <FiDollarSign className="text-[#fe9a00]" />
-                    Deposit & refund
-                    <span className="ml-auto text-xs font-semibold capitalize text-slate-400">
-                      {refund?.status?.replace(/_/g, " ") || reservation.deposit?.status?.replace(/_/g, " ")}
-                    </span>
-                  </summary>
-                  <div className="border-t border-white/10 p-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <Fact label="Deposit option" value={reservation.deposit?.option?.replace(/_/g, " ") || "-"} />
-                      <Fact label="Deposit amount" value={formatCurrency(refund?.depositPaid ?? reservation.deposit?.amount)} />
-                      <Fact label="Payment status" value={reservation.deposit?.status?.replace(/_/g, " ") || "-"} tone={reservation.deposit?.status === "failed" ? "bad" : reservation.deposit?.status === "paid" ? "good" : "warn"} />
-                      <Fact label="Transaction reference" value={reservation.deposit?.transactionRef || "-"} />
-                      <Fact label="Receipt uploaded" value={formatDateTime(reservation.deposit?.receiptUploadedAt)} />
-                      {reservation.deposit?.receiptUrl && (
-                        <div>
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Uploaded receipt</p>
-                          <EvidenceThumbnail url={reservation.deposit.receiptUrl} alt="Uploaded deposit receipt" size="md" />
-                        </div>
-                      )}
-                    </div>
-                    {reservation.deposit?.failureReason && (
-                      <p className="mt-3 rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">Rejected: {reservation.deposit.failureReason}</p>
-                    )}
-                    {refund && (
-                      <div className="mt-4 border-t border-white/10 pt-4">
-                        <div className="grid gap-3 sm:grid-cols-4">
-                          <Fact label="Deductions" value={`-${formatCurrency(refund.deductionsTotal)}`} tone="bad" />
-                          <Fact label={customerOwes ? "Customer debt" : "Refund amount"} value={formatCurrency(refundBalance)} tone={customerOwes ? "bad" : "good"} />
-                          <Fact label="Authorization" value={refund.reference || "-"} />
-                          <Fact label="Processed" value={formatDateTime(refund.processedAt)} />
-                        </div>
-                        {(fixedRefundRows.length > 0 || (refund.additionalCharges?.length || 0) > 0) && (
-                          <div className="mt-3 divide-y divide-white/[0.06] rounded-lg border border-white/[0.07] bg-black/15 px-3">
-                            {fixedRefundRows.map(([label, value]) => (
-                              <div key={String(label)} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="text-slate-400">{label}</span><strong className="text-red-300">-{formatCurrency(value)}</strong></div>
-                            ))}
-                            {refund.additionalCharges?.map((charge, index) => (
-                              <div key={`${charge.ticketReference || charge.reason}-${index}`} className="flex items-start justify-between gap-3 py-2">
-                                <div className="flex min-w-0 items-start gap-2">
-                                  <EvidenceThumbnail url={charge.evidenceUrl} alt={`Evidence for ${charge.ticketReference || charge.reason}`} />
-                                  <div><p className="break-words text-xs font-semibold text-slate-200">{charge.reason}</p>{charge.ticketReference && <p className="mt-0.5 text-[10px] uppercase text-slate-500">{charge.ticketReference}</p>}</div>
-                                </div>
-                                <strong className="shrink-0 text-xs text-red-300">-{formatCurrency(charge.amount)}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </details>
-              )}
-
               {(contractsLoading || contracts.length > 0 || extensions.length > 0 || reservation.additionalDriver || reservation.insuranceArrangement) && (
                 <details className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
                   <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.04]">

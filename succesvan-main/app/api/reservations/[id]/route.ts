@@ -597,6 +597,13 @@ export async function PATCH(
                 name?: string;
               }
             | undefined;
+          const assignedVehicle = latestReservation.vehicle as
+            | { number?: string }
+            | undefined;
+          const vehicleRegistration =
+            assignedVehicle?.number ||
+            latestReservation.vehicleSnapshot?.number ||
+            "Not recorded";
           const phoneNumber = customer?.phoneData?.phoneNumber;
           if (phoneNumber) {
             const siteUrl = (
@@ -606,7 +613,7 @@ export async function PATCH(
             ).replace(/\/$/, "");
             await sendSMS(
               phoneNumber.replace("+", ""),
-              `Your Success Van Hire rental agreement is ready to sign via DocuSign. Sign in your dashboard: ${siteUrl}/customerDashboard#reserves`,
+              `Vehicle assigned to your Success Van Hire booking. Registration: ${vehicleRegistration}. Your rental agreement is ready to sign via DocuSign. Sign in your dashboard: ${siteUrl}/customerDashboard#reserves`,
             );
           }
 

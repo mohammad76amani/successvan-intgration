@@ -45,7 +45,7 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
   const signHereTabs = [
     // Authorised-driver declaration on page 2.
     fromObject(docusign.SignHere, {
-      ...positioned("2", "266", "363"),
+      ...positioned("2", "266", "374"),
       scaleValue: "0.35",
     }),
     // PCN / TfL liability acknowledgement on page 3.
