@@ -20,6 +20,7 @@ import {
   type DepositOption,
 } from "@/lib/reservation-status";
 import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
+import { hasCancellationProtection } from "@/lib/rental-cancellation-policy";
 
 function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
@@ -53,6 +54,7 @@ export default function DepositPanel({
   onUpdated: () => void;
 }) {
   const deposit = reservation.deposit;
+  const cancellationProtected = hasCancellationProtection(reservation.addOns);
   const priceAdjustment = deposit?.priceAdjustment;
   const config =
     ((reservation.category as Reservation["category"])?.deposit as
@@ -576,6 +578,14 @@ export default function DepositPanel({
             </div>
 
             <div className="space-y-3 p-5 text-sm leading-6 text-slate-300">
+              {cancellationProtected && (
+                <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3">
+                  <p className="font-bold text-emerald-200">Cancellation Protection selected</p>
+                  <p className="text-emerald-100/80">
+                    The cancellation deductions below will not apply to this booking. Your paid rental fee will be returned in full.
+                  </p>
+                </div>
+              )}
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3">
                 <p className="font-bold text-emerald-200">More than 72 hours before pickup</p>
                 <p className="text-emerald-100/80">Your paid rental fee is returned in full.</p>

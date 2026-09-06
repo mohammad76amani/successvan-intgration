@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { calculateRentalCancellation } from "./rental-cancellation-policy";
-import { reservationCancellationCalculation } from "./rental-cancellation-policy";
+import {
+  CANCELLATION_PROTECTION_ADDON_ID,
+  calculateRentalCancellation,
+  reservationCancellationCalculation,
+} from "./rental-cancellation-policy";
 
 const pickupAt = new Date("2026-09-10T12:00:00Z");
 const canceled = (hoursBeforePickup: number) =>
@@ -54,5 +57,30 @@ describe("rental fee cancellation policy", () => {
     expect(result?.paidAmount).toBe(300);
     expect(result?.agreedDeductionPercent).toBe(50);
     expect(result?.refundAmount).toBe(150);
+  });
+
+  it("waives the deduction when cancellation protection was selected", () => {
+    const result = reservationCancellationCalculation(
+      {
+        startDate: pickupAt,
+        endDate: pickupAt,
+        totalPrice: 300,
+        status: "canceled",
+        driverAge: 30,
+        deposit: { option: "full", status: "paid", amount: 300 },
+        addOns: [
+          {
+            addOn: { _id: CANCELLATION_PROTECTION_ADDON_ID } as never,
+            quantity: 1,
+          },
+        ],
+        statusHistory: [{ status: "canceled", changedAt: canceled(12) }],
+      },
+      100,
+    );
+    expect(result?.cancellationProtected).toBe(true);
+    expect(result?.agreedDeductionPercent).toBe(0);
+    expect(result?.deductionAmount).toBe(0);
+    expect(result?.refundAmount).toBe(300);
   });
 });

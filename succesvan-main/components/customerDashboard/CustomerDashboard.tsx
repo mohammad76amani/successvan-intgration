@@ -1198,10 +1198,7 @@ function ReservesContent() {
                           addOns.find((a) => a._id === item.addOn) ||
                           item.addOn;
                         return (
-                          <div
-                            key={idx}
-                            className="flex justify-between items-center text-sm"
-                          >
+                          <div key={idx} className="flex justify-between items-center text-sm">
                             <span className="text-white font-semibold">
                               {addon?.name || "Unknown"}
                             </span>
@@ -1494,10 +1491,7 @@ function ReservesContent() {
                           {selectedAddOns.map((item: any, idx: number) => {
                             const addon = addOns.find((a) => a._id === item.addOn);
                             return (
-                              <div
-                                key={idx}
-                                className="text-xs text-gray-400 flex justify-between"
-                              >
+                              <div key={idx} className="text-xs text-gray-400 flex justify-between">
                                 <span>{addon?.name || "Unknown"}</span>
                                 <span>x{item.quantity}</span>
                               </div>

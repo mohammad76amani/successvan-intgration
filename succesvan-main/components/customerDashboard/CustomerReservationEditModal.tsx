@@ -1274,10 +1274,7 @@ export default function CustomerReservationEditModal({
                       {selectedAddOns.map((item: any, idx: number) => {
                         const addon = addOns.find((a) => a._id === item.addOn);
                         return (
-                          <div
-                            key={idx}
-                            className="text-xs text-gray-400 flex justify-between"
-                          >
+                          <div key={idx} className="text-xs text-gray-400 flex justify-between">
                             <span>{addon?.name || "Unknown"}</span>
                             <span>x{item.quantity}</span>
                           </div>

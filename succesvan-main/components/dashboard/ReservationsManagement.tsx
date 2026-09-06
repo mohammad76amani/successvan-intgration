@@ -63,6 +63,7 @@ import { RESERVATION_SERVICE_CHARGE } from "@/lib/reservation-pricing";
 import VehicleIssueReports from "@/components/reservations/VehicleIssueReports";
 import {
   calculateRentalCancellation,
+  hasCancellationProtection,
   reservationCancellationCalculation,
 } from "@/lib/rental-cancellation-policy";
 
@@ -352,6 +353,7 @@ function ReservationStepManagerModal({
         option: option as "full" | "secure",
         paidAmount,
         pickupAt,
+        cancellationProtected: hasCancellationProtection(reservation.addOns),
       });
       setCancellationPercent(String(preview.policyDeductionPercent));
     } else {
@@ -412,6 +414,7 @@ function ReservationStepManagerModal({
       paidAmount,
       pickupAt,
       agreedDeductionPercent: Number(cancellationPercent),
+      cancellationProtected: hasCancellationProtection(reservation.addOns),
     });
   }, [reservation, cancellationPercent]);
   const displayedCancellationSettlement =
@@ -1340,12 +1343,20 @@ function ReservationStepManagerModal({
                   </div>
                   {cancellationPreview && (
                     <span className="rounded-full border border-red-300/20 bg-red-500/10 px-3 py-1 text-xs font-bold text-red-200">
-                      Policy: {cancellationPreview.policyDeductionPercent}% deduction
+                      {cancellationPreview.cancellationProtected
+                        ? "Cancellation protection active"
+                        : `Policy: ${cancellationPreview.policyDeductionPercent}% deduction`}
                     </span>
                   )}
                 </div>
 
                 {cancellationPreview && (
+                  <>
+                  {cancellationPreview.cancellationProtected && (
+                    <p className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-200">
+                      Cancellation Protection removes all cancellation deductions. The full paid rental fee will be returned.
+                    </p>
+                  )}
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <label className="rounded-xl border border-white/10 bg-black/20 p-3">
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Agreed deduction</span>
@@ -1357,6 +1368,7 @@ function ReservationStepManagerModal({
                           step="0.01"
                           value={cancellationPercent}
                           onChange={(event) => setCancellationPercent(event.target.value)}
+                          disabled={cancellationPreview.cancellationProtected}
                           className="min-h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#070d19] px-3 text-sm font-bold text-white outline-none focus:border-red-300/60"
                         />
                         <span className="font-bold text-slate-400">%</span>
@@ -1371,6 +1383,7 @@ function ReservationStepManagerModal({
                       <p className="mt-2 text-xl font-black text-emerald-300">£{cancellationPreview.refundAmount.toFixed(2)}</p>
                     </div>
                   </div>
+                  </>
                 )}
 
                 <textarea
@@ -3515,10 +3528,7 @@ export default function ReservationsManagement() {
                               (a) => a._id === item.addOn,
                             );
                             return (
-                              <div
-                                key={idx}
-                                className="text-xs text-gray-400 flex justify-between"
-                              >
+                              <div key={idx} className="text-xs text-gray-400 flex justify-between">
                                 <span>{addon?.name || "Unknown"}</span>
                                 <span>x{item.quantity}</span>
                               </div>

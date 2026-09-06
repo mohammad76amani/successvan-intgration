@@ -102,6 +102,7 @@ const reservationSchema = new mongoose.Schema(
       agreedDeductionPercent: { type: Number, min: 0, max: 100 },
       deductionAmount: { type: Number, min: 0 },
       refundAmount: { type: Number, min: 0 },
+      cancellationProtected: { type: Boolean },
       status: {
         type: String,
         enum: ["pending", "refunded"],

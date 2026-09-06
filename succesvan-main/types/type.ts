@@ -288,6 +288,7 @@ export interface Reservation {
     agreedDeductionPercent?: number;
     deductionAmount?: number;
     refundAmount?: number;
+    cancellationProtected?: boolean;
     status?: "pending" | "refunded";
     calculatedAt?: Date | string;
     calculatedBy?: string;

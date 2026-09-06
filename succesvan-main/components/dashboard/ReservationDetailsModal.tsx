@@ -1065,10 +1065,7 @@ export default function ReservationDetailsModal({
                               const addon = resolveAddOn(item);
                               const price = getAddOnPrice(item);
                               return (
-                                <div
-                                  key={idx}
-                                  className="flex justify-between items-center gap-3 text-[10px] pl-10"
-                                >
+                                <div key={idx} className="flex justify-between items-center gap-3 text-[10px] pl-10">
                                   <span className="text-emerald-200/75 truncate">
                                     {addon?.name || "Unknown"}{" "}
                                     <span className="text-emerald-300/50">

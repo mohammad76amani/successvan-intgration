@@ -8,6 +8,21 @@ export type CancellationWindow =
 
 export type CancellationPaymentOption = "full" | "secure";
 
+export const CANCELLATION_PROTECTION_ADDON_ID = "6a9d4f1d93982013c5cc34fc";
+
+export function hasCancellationProtection(addOns?: Reservation["addOns"]) {
+  return Boolean(
+    addOns?.some((selection) => {
+      const addOn = selection.addOn;
+      const id =
+        typeof addOn === "string"
+          ? addOn
+          : String((addOn as { _id?: unknown } | undefined)?._id || "");
+      return id === CANCELLATION_PROTECTION_ADDON_ID;
+    }),
+  );
+}
+
 const HOURS_24 = 24 * 60 * 60 * 1000;
 const HOURS_72 = 72 * 60 * 60 * 1000;
 
@@ -39,20 +54,25 @@ export function calculateRentalCancellation(input: {
   pickupAt: Date;
   canceledAt?: Date;
   agreedDeductionPercent?: number;
+  cancellationProtected?: boolean;
 }) {
   const canceledAt = input.canceledAt ?? new Date();
   const paidAmount = Math.max(0, Number(input.paidAmount) || 0);
   const millisecondsUntilPickup = input.pickupAt.getTime() - canceledAt.getTime();
-  const policyDeductionPercent = cancellationPolicyPercent(
-    input.option,
-    paidAmount,
-    millisecondsUntilPickup,
-  );
+  const policyDeductionPercent = input.cancellationProtected
+    ? 0
+    : cancellationPolicyPercent(
+        input.option,
+        paidAmount,
+        millisecondsUntilPickup,
+      );
   const agreedDeductionPercent = Math.min(
     100,
     Math.max(
       0,
-      input.agreedDeductionPercent ?? policyDeductionPercent,
+      input.cancellationProtected
+        ? 0
+        : input.agreedDeductionPercent ?? policyDeductionPercent,
     ),
   );
   const deductionAmount =
@@ -69,6 +89,7 @@ export function calculateRentalCancellation(input: {
     agreedDeductionPercent,
     deductionAmount,
     refundAmount,
+    cancellationProtected: Boolean(input.cancellationProtected),
   };
 }
 
@@ -106,11 +127,12 @@ export function reservationCancellationCalculation(
 
   return {
     ...calculateRentalCancellation({
-    option,
-    paidAmount,
-    pickupAt,
-    canceledAt: canceledAtValue ? new Date(canceledAtValue) : new Date(),
-    agreedDeductionPercent,
+      option,
+      paidAmount,
+      pickupAt,
+      canceledAt: canceledAtValue ? new Date(canceledAtValue) : new Date(),
+      agreedDeductionPercent,
+      cancellationProtected: hasCancellationProtection(reservation.addOns),
     }),
     status: "pending" as const,
   };

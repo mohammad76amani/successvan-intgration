@@ -23,7 +23,10 @@ import {
   validateAdditionalDriver,
 } from "@/lib/additional-driver";
 import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
-import { calculateRentalCancellation } from "@/lib/rental-cancellation-policy";
+import {
+  calculateRentalCancellation,
+  hasCancellationProtection,
+} from "@/lib/rental-cancellation-policy";
 
 export async function GET(
   req: NextRequest,
@@ -255,6 +258,9 @@ export async function PATCH(
             ? new Date(createLondonDateTime(pickupDay, oldReservation.pickupTime))
             : new Date(oldReservation.startDate);
         const calculatedAt = new Date();
+        const cancellationProtected = hasCancellationProtection(
+          oldReservation.addOns as never,
+        );
         body.cancellationSettlement = {
           ...calculateRentalCancellation({
             option: option as "full" | "secure",
@@ -262,6 +268,7 @@ export async function PATCH(
             pickupAt,
             canceledAt: calculatedAt,
             agreedDeductionPercent: suppliedPercent,
+            cancellationProtected,
           }),
           status: "pending",
           calculatedAt,

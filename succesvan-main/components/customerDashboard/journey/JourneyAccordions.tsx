@@ -1155,6 +1155,9 @@ export default function JourneyAccordions({
           label: "Rental fee paid",
           value: money(settlement.paidAmount),
         },
+        ...(settlement.cancellationProtected
+          ? [{ label: "Cancellation protection", value: "Applied - no cancellation charge" }]
+          : []),
         {
           label: "Agreed deduction",
           value: `${Number(settlement.agreedDeductionPercent || 0)}% · -${money(settlement.deductionAmount)}`,

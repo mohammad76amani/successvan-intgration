@@ -7,6 +7,9 @@ interface AddOn {
   _id: string;
   name: string;
   description?: string;
+  icon?: string;
+  type?: string;
+  categoryId?: string | { _id?: string } | null;
   pricingType: "flat" | "tiered";
   flatPrice?: {
     amount: number;
@@ -125,7 +128,7 @@ export default function AddOnsModal({
       />
 
       <div className="fixed inset-0 z-10002 flex items-center justify-center p-0 sm:p-4">
-        <div className="bg-linear-to-br from-[#13203a] to-[#1a2847] rounded-none sm:rounded-2xl max-w-5xl w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden border border-white/10 shadow-2xl flex flex-col">
+        <div className="bg-linear-to-br from-[#13203a] to-[#1a2847] rounded-none sm:rounded-2xl max-w-6xl w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden border border-white/10 shadow-2xl flex flex-col">
           {/* Header */}
           <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 bg-[#16233f]/95 backdrop-blur-sm">
             <div>
@@ -146,7 +149,7 @@ export default function AddOnsModal({
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto">
-            <div className="p-3 ">
+            <div className="p-3 sm:p-5">
               <div className="flex items-center gap-2 mb-4">
                 <FiPackage className="text-[#fe9a00] text-base sm:text-lg" />
                 <h3 className="text-white font-bold text-sm sm:text-base">
@@ -159,16 +162,17 @@ export default function AddOnsModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 items-stretch">
                 {addOns
                   .filter((addon) => {
                     // Category filter: if addon has a categoryId, only show it when the selected category matches
-                    const rawCatId = (addon as any).categoryId;
-                    const addonCategoryId = rawCatId?._id
-                      ? String(rawCatId._id)
-                      : rawCatId && typeof rawCatId === "string" && rawCatId.length > 0
-                      ? rawCatId
-                      : null;
+                    const rawCatId = addon.categoryId;
+                    const addonCategoryId =
+                      rawCatId && typeof rawCatId === "object" && rawCatId._id
+                        ? String(rawCatId._id)
+                        : typeof rawCatId === "string" && rawCatId.length > 0
+                          ? rawCatId
+                          : null;
                     if (addonCategoryId) {
                       if (!selectedCategoryId || addonCategoryId !== String(selectedCategoryId)) return false;
                     }
@@ -182,8 +186,8 @@ export default function AddOnsModal({
                     );
                   })
                   .sort((a, b) => {
-                    const typeA = (a as any).type || "";
-                    const typeB = (b as any).type || "";
+                    const typeA = a.type || "";
+                    const typeB = b.type || "";
                     if (typeA === typeB) return 0;
                     if (!typeA) return 1;
                     if (!typeB) return -1;
@@ -198,8 +202,8 @@ export default function AddOnsModal({
                       isSelected?.selectedTierIndex,
                     );
 
-                    const addonType = (addon as any).type;
-                    const isTypeDisabled =
+                    const addonType = addon.type;
+                    const isTypeDisabled = Boolean(
                       addonType &&
                       selected.some((s) => {
                         const selectedAddon = addOns.find(
@@ -207,16 +211,17 @@ export default function AddOnsModal({
                         );
                         return (
                           selectedAddon &&
-                          (selectedAddon as any).type === addonType &&
+                          selectedAddon.type === addonType &&
                           selectedAddon._id !== addon._id
                         );
-                      });
+                      }),
+                    );
 
                     return (
                       <div
                         title={addon.name}
                         key={addon._id}
-                        className={`relative rounded-2xl border p-2 transition-all ${
+                        className={`relative flex min-w-0 flex-col overflow-hidden rounded-2xl border p-3 transition-all ${
                           isSelected
                             ? "border-[#fe9a00] bg-[#fe9a00]/10 shadow-lg shadow-[#fe9a00]/10"
                             : isTypeDisabled
@@ -236,51 +241,53 @@ export default function AddOnsModal({
                           </div>
                         )}
 
-                        <div className="flex flex-col h-full items-center justify-center">
+                        <div className="flex h-full min-w-0 flex-col">
                           {/* Icon */}
-                          <div className="mb-3">
-                            {(addon as any).icon ? (
-                              <div className="w-full h-full rounded-xl overflow-hidden ">
+                          <div className="mb-3 aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-[#0b162c]">
+                            {addon.icon ? (
+                              <div className="h-full w-full overflow-hidden rounded-xl">
                                 <img
-                                  src={(addon as any).icon}
+                                  src={addon.icon}
                                   alt={addon.name}
-                                  className="w-full h-full object-contain"
+                                  className="h-full w-full object-contain"
                                 />
                               </div> 
 
                             ) : (
-                              <div className="w-full h-28 sm:h-32 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center">
+                              <div className="flex h-full w-full items-center justify-center">
                                 <FiPackage className="text-white/20 text-4xl" />
                               </div>
                             )}
                           </div>
 
                           {/* Title */}
-                          <div className="mb-2 min-w-0 text-center">
-                            <h3 className="text-white font-bold text-[11px] sm:text-xs md:truncate ">
+                          <div className="mb-3 min-w-0 text-center">
+                            <h3 className="min-h-10 text-sm font-bold leading-5 text-white">
                               {addon.name}
                             </h3>
-                            {/* {addon.description && (
-                              <p className="text-gray-400 text-[10px] mt-1 line-clamp-2 min-h-[32px]">
-                                {addon.description}
-                              </p>
-                            )} */}
+                            <div className="mt-1.5 min-h-12">
+                              {addon.description && (
+                                <p className="line-clamp-3 text-xs leading-4 text-gray-400">
+                                  {addon.description}
+                                </p>
+                              )}
+                            </div>
                             {isTypeDisabled && (
-                              <p className="text-red-400 text-[10px] mt-1">
+                              <p className="mt-2 text-[10px] leading-4 text-red-400">
                                 Another option of this type is already selected
                               </p>
                             )}
                           </div>
 
                           {/* Price */}
-                          <div className="mt-auto">
+                          <div className="mt-auto flex w-full flex-col">
                             {addon.pricingType === "flat" ? (
-                              <div className="mb-3">
-                                <p className="text-[#fe9a00] font-black text-base sm:text-lg">
+                              <div className="mb-3 min-h-14 text-center">
+                                <p className="text-lg font-black text-[#fe9a00]">
                                   £{addon.flatPrice?.amount || 0}
                                 </p>
                                 {addon.flatPrice?.isPerDay && (
-                                  <p className="text-gray-500 text-[11px] mt-0.5">
+                                  <p className="mt-0.5 text-[11px] leading-4 text-gray-400">
                                     £{addon.flatPrice?.amount || 0}/day ×{" "}
                                     {rentalDays} day
                                     {rentalDays > 1 ? "s" : ""} = £
@@ -289,13 +296,13 @@ export default function AddOnsModal({
                                 )}
                               </div>
                             ) : (
-                              <div className="mb-3">
-                                <p className="text-gray-400 text-[10px] mb-1 font-medium">
+                              <div className="mb-3 min-h-14 text-center">
+                                <p className="mb-1.5 text-[10px] font-medium text-gray-400">
                                   Available tier
                                   {addon.tieredPrice?.isPerDay &&
                                     ` (per day × ${rentalDays}d)`}
                                 </p>
-                                <div className="flex flex-wrap gap-1.5">
+                                <div className="flex flex-wrap justify-center gap-1.5">
                                   {addon.tieredPrice?.tiers
                                     ?.filter(
                                       (tier) =>
@@ -326,7 +333,7 @@ export default function AddOnsModal({
                                             }
                                           }}
                                           disabled={!isSelected}
-                                          className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-semibold transition-colors ${
+                                          className={`min-w-0 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${
                                             isSelected?.selectedTierIndex ===
                                             originalIdx
                                               ? "bg-[#fe9a00] text-white"
@@ -357,7 +364,7 @@ export default function AddOnsModal({
                                 }
                               }}
                               disabled={isTypeDisabled}
-                              className={`w-full py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all ${
+                              className={`mt-auto min-h-11 w-full shrink-0 rounded-xl px-3 py-2.5 text-xs font-bold transition-all sm:text-sm ${
                                 isTypeDisabled
                                   ? "bg-gray-600/40 text-gray-400 cursor-not-allowed"
                                   : isSelected
