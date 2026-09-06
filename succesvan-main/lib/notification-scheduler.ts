@@ -86,7 +86,7 @@ export async function scheduleReservationNotifications(reservationId: string) {
       reservation: reservationId,
       user: user._id,
       phoneNumber,
-      message: `Pickup reminder: ${formatLondonDate(startDate)} ${formatLondonTime(startDate)} at ${office.name || "our office"}. ${customerReservationsSmsUrl()}`,
+      message: `Success Van Hire reminder: Your van pickup is on ${formatLondonDate(startDate)} at ${formatLondonTime(startDate)} from ${office.name || "our office"}. Details: ${customerReservationsSmsUrl()}`,
       scheduledFor: reminderFor,
     });
   }
@@ -133,7 +133,7 @@ export async function rescheduleReturnNotifications(reservationId: string) {
       reservation: reservationId,
       user: user._id,
       phoneNumber,
-      message: `Return reminder: ${formatLondonDate(returnAt)} ${formatLondonTime(returnAt)} at ${office?.name || "our office"}. ${customerReservationsSmsUrl()}`,
+      message: `Success Van Hire reminder: Please return your van on ${formatLondonDate(returnAt)} at ${formatLondonTime(returnAt)} to ${office?.name || "our office"}. Details: ${customerReservationsSmsUrl()}`,
       scheduledFor: reminderAt,
     });
     console.log(
@@ -144,7 +144,7 @@ export async function rescheduleReturnNotifications(reservationId: string) {
 
 export async function sendStatusNotification(
   reservationId: string,
-  status: "confirmed" | "canceled" | "delivered" | "completed"
+  status: "confirmed" | "canceled" | "delivered"
 ) {
   const reservation = await Reservation.findById(reservationId)
     .populate("user")
@@ -165,7 +165,7 @@ export async function sendStatusNotification(
     reservation.endDate
   );
 
-  const vehicleInfo = vehicle?.number ? ` Reg: ${vehicle.number}.` : "";
+  const vehicleInfo = vehicle?.number ? ` Vehicle: ${vehicle.number}.` : "";
   const cancelReason =
     typeof reservation.cancelReason === "string" &&
     reservation.cancelReason.trim()
@@ -173,10 +173,11 @@ export async function sendStatusNotification(
       : "";
 
   const messages = {
-    confirmed: `Booking confirmed. Choose and pay your deposit: ${customerReservationsSmsUrl()}`,
-    canceled: `Booking cancelled.${cancelReason ? ` ${cancelReason}.` : ""} Help: 020 3011 1198`,
-    delivered: `Van collected.${vehicleInfo} Return: ${formatLondonDate(returnAt)} ${formatLondonTime(returnAt)} UK. Emergency/breakdown: 020 3011 1198. ${customerReservationsSmsUrl()}`,
-    completed: "Thanks for choosing Success Van Hire. Please review us: https://g.page/r/CZcNuTEcLJMAEBM/review",
+    confirmed: reservation.perInvoice
+      ? `Your booking is confirmed. We’ll prepare your per-invoice agreement for signing: ${customerReservationsSmsUrl()}`
+      : `Your booking is confirmed. Please choose your rental fee option and make payment in My Reservations: ${customerReservationsSmsUrl()}`,
+    canceled: `Your booking has been cancelled.${cancelReason ? ` ${cancelReason}.` : ""} If you need help, call 020 3011 1198.`,
+    delivered: `Handover complete.${vehicleInfo} Return by ${formatLondonDate(returnAt)} at ${formatLondonTime(returnAt)} (UK). Emergency or breakdown: 020 3011 1198. ${customerReservationsSmsUrl()}`,
   };
 
   // Send SMS immediately, don't save to database
@@ -219,7 +220,7 @@ export async function sendReservationEditedNotification(reservationId: string) {
   try {
     await sendSMS(
       phoneNumber.replace("+", ""),
-      `Your booking was updated. Check details: ${customerReservationsSmsUrl()}`
+      `Your reservation has been updated by our team. View the latest details: ${customerReservationsSmsUrl()}`
     );
   } catch (error) {
     console.log(
@@ -278,7 +279,7 @@ export async function scheduleRefundDueOwnerNotifications(
   const refundAmount = Number(reservation.refund.refundAmount || 0).toFixed(2);
   const bookingReference =
     reservation.reservationCode || reservation._id.toString();
-  const message = `Refund due: ${bookingReference}, ${customerName}, £${refundAmount}, ${vehicleLabel}. Check admin dashboard.`;
+  const message = `Refund due for ${bookingReference}: ${customerName}, £${refundAmount}, ${vehicleLabel}. Please check the admin dashboard.`;
 
   for (const owner of owners) {
     const phoneNumber = owner.phoneData?.phoneNumber;

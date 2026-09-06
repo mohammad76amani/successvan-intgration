@@ -265,13 +265,15 @@ export function printReservationReceipt(
     0,
   );
   const depositDiscount = Number(deposit?.discountAmount || 0);
+  const serviceCharge = Number(reservation.serviceCharge ?? 1) || 0;
   const rentalBalance = Math.max(
     0,
     Number(reservation.totalPrice || 0) +
       depositDiscount -
       addOnsTotal -
       pickupExtensionPrice -
-      returnExtensionPrice,
+      returnExtensionPrice -
+      serviceCharge,
   );
   const assignedVehicleName =
     vehicle.title || vehicleSnapshot.title || category.name || "-";
@@ -754,6 +756,10 @@ export function printReservationReceipt(
             <div class="price-row">
               <span>Return extension (either out of working time or weekend time)</span>
               <strong>${formatCurrency(returnExtensionPrice)}</strong>
+            </div>
+            <div class="price-row">
+              <span>Service charge</span>
+              <strong>${formatCurrency(serviceCharge)}</strong>
             </div>
             ${
               depositDiscount > 0

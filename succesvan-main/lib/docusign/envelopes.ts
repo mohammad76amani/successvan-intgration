@@ -45,17 +45,17 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
   const signHereTabs = [
     // Authorised-driver declaration on page 2.
     fromObject(docusign.SignHere, {
-      ...positioned("2", "266", "374"),
+      ...positioned("2", "266", "366"),
       scaleValue: "0.35",
     }),
-    // PCN / TfL liability acknowledgement on page 3.
+    // PCN / TfL liability acknowledgement on the signature page.
     fromObject(docusign.SignHere, {
-      ...positioned("3", "170", "98"),
+      ...positioned("4", "170", "98"),
       scaleValue: "0.3",
     }),
-    // Final General Declaration signature on page 3.
+    // Final General Declaration signature on the signature page.
     fromObject(docusign.SignHere, {
-      ...positioned("3", "170", "231"),
+      ...positioned("4", "170", "231"),
       scaleValue: "0.35",
     }),
   ];
@@ -66,19 +66,19 @@ export function buildRentalAgreementEnvelope(input: EnvelopeContractInput) {
       width: "68",
     }),
     fromObject(docusign.DateSigned, {
-      ...positioned("3", "435", "81"),
+      ...positioned("4", "435", "81"),
       fontSize: "Size7",
       width: "100",
     }),
     fromObject(docusign.DateSigned, {
-      ...positioned("3", "170", "267"),
+      ...positioned("4", "170", "267"),
       fontSize: "Size7",
       width: "100",
     }),
   ];
   const initialHereTabs = [
     fromObject(docusign.InitialHere, {
-      ...positioned("2", "262", "294"),
+      ...positioned("2", "262", "286"),
       scaleValue: "0.5",
     }),
   ];

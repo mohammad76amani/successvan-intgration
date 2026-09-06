@@ -83,6 +83,7 @@ export type ContractPdfReservation = {
   pickupTime?: string;
   returnTime?: string;
   totalPrice?: number;
+  perInvoice?: boolean;
   reservationCode?: string;
   deposit?: {
     amount?: number;
@@ -235,7 +236,14 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   );
   const page = doc.getPage(0);
   const page2 = doc.getPage(1);
-  const page3 = doc.getPage(2);
+  // Keep the existing signature page's geometry intact. Additional terms are
+  // inserted before it so no signature field or footer has to be repositioned.
+  const signaturePageTemplate = doc.getPage(2);
+  const termsPage = doc.insertPage(2, [
+    signaturePageTemplate.getWidth(),
+    signaturePageTemplate.getHeight(),
+  ]);
+  const page3 = doc.getPage(3);
   const ink = rgb(0.04, 0.04, 0.04);
   const white = rgb(1, 1, 1);
   const topY = (targetPage: typeof page, top: number, size = 7) =>
@@ -362,6 +370,29 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
       color: ink,
     });
   };
+  const wrapText = (
+    value: string,
+    width: number,
+    selectedFont: typeof font,
+    size: number,
+  ) => {
+    const lines: string[] = [];
+    for (const paragraph of value.split("\n")) {
+      const words = paragraph.trim().split(/\s+/).filter(Boolean);
+      let line = "";
+      words.forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && selectedFont.widthOfTextAtSize(candidate, size) > width) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      });
+      if (line) lines.push(line);
+    }
+    return lines;
+  };
   const money = (value: unknown) => `£${Number(value || 0).toFixed(2)}`;
   const durationLabel = [
     `${term.days} day${term.days === 1 ? "" : "s"}`,
@@ -371,12 +402,14 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     .join(", ");
   const depositPaymentMethod =
     reservation.deposit?.option === "full"
-      ? "Full deposit - bank transfer"
+      ? "Full rental fee - bank transfer"
       : reservation.deposit?.option === "secure"
-        ? "Safe & secure deposit"
+        ? "Safe & secure rental fee"
         : reservation.deposit?.option === "office"
-          ? "Pay at office"
-          : "-";
+          ? "Rental fee payable at office"
+          : reservation.perInvoice
+            ? "Per invoice"
+            : "-";
   const additionalDriverIncluded = hasAdditionalDriverAddOn(
     reservation.addOns,
   );
@@ -477,7 +510,7 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
   drawGrid(page, [34.2, 167.4, 300.6, 433.8, 567], 424.7, [10.9]);
   drawGrid(page, [34.2, 167.4, 567], 435.6, [21.7]);
   cellText(page, "Rental Fee:", 34.2, 424.7, 133.2, 10.9, 7.2);
-  cellText(page, money(reservation.totalPrice), 167.4, 424.7, 133.2, 10.9, 7.2);
+  cellText(page, reservation.perInvoice ? "Per invoice" : money(reservation.totalPrice), 167.4, 424.7, 133.2, 10.9, 7.2);
   cellText(page, "Deposit:", 300.6, 424.7, 133.2, 10.9, 7.2);
   cellText(page, money(refundableDeposit), 433.8, 424.7, 133.2, 10.9, 7.2);
   cellText(page, "Payment Method:", 34.2, 435.6, 133.2, 21.7, 7.2);
@@ -510,6 +543,75 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     end: { x: 567, y: page.getHeight() - 604.6 },
     thickness: 0.65,
     color: ink,
+  });
+
+  // Supplemental clauses present in the latest agreement draft but absent
+  // from the established template. Existing clauses are deliberately not
+  // repeated, keeping the agreement readable and the original styling intact.
+  centeredText(termsPage, "ADDITIONAL GENERAL TERMS AND CONDITIONS", 38, {
+    bold: true,
+    size: 11,
+  });
+  centeredText(
+    termsPage,
+    "These terms form part of the Vehicle Hire Agreement.",
+    55,
+    { italic: true, size: 7.5 },
+  );
+
+  const supplementalTerms = [
+    {
+      heading: "1. AGREEMENT AND RENTAL TERM",
+      body: "The Rental Agreement, these General Terms and Conditions, the vehicle handover/condition record and any written booking confirmation together form the agreement between the parties. The Rental Term runs from the time the Hirer or Driver takes possession until the vehicle is returned to and accepted by the Lessor, including any agreed extension.",
+    },
+    {
+      heading: "2. COLLECTION, CONDITION AND RETURN",
+      body: "The Hirer must inspect the vehicle at collection and promptly report any damage, defect or discrepancy not recorded on the handover record. The vehicle, keys, documents and equipment must be returned to the agreed location at the agreed date and time, in substantially the same condition as supplied, allowing for fair wear and tear. The Lessor may inspect and photograph the exterior, interior, wheels, tyres, glass, underbody, load area and equipment. Where an out-of-hours return prevents reasonable inspection, the Lessor may inspect when practicable and notify the Hirer of subsequently identified damage or loss. Keys, documents or the vehicle must not be left at an unauthorised location unless specifically instructed by the Lessor.",
+    },
+    {
+      heading: "3. USE AND HIRER OBLIGATIONS",
+      body: "The Hirer must take reasonable care of the vehicle, secure it when unattended, use the correct fuel, avoid overloading, secure all loads and comply with applicable road-traffic, vehicle and Operator's Licence requirements. Unless expressly authorised in writing, the Hirer must not sub-hire or lend the vehicle, permit an unauthorised driver, race, speed-test, drive off-road, use it unlawfully, tow where prohibited, carry goods or passengers unlawfully, modify it or arrange repairs except emergency action reasonably necessary for safety.",
+    },
+    {
+      heading: "4. EXTENSIONS AND LATE RETURN",
+      body: "Any extension must be agreed by the Lessor before the original return time and may be subject to additional rental, insurance, deposit and other agreed charges. Continued possession does not itself constitute an agreed extension. If the vehicle is not returned when required without an agreed extension, the Hirer may be responsible for additional rental, recovery and other reasonable losses or costs to the extent permitted by law.",
+    },
+    {
+      heading: "5. PAYMENT, DEPOSIT AND MILEAGE EVIDENCE",
+      body: "The deposit is security for sums properly due and is not a damage or insurance excess waiver. Where card payment is used, the Hirer authorises charges properly due under this Agreement, subject to the card agreement and applicable law. The Lessor will account for the deposit after reasonable post-hire checks and return any undisputed balance through its normal process. Mileage may be calculated from the odometer and/or other reliable mileage information reasonably available to the Lessor.",
+    },
+    {
+      heading: "6. INSURANCE, DAMAGE, BREAKDOWN AND RECOVERY",
+      body: "Where the Lessor does not arrange insurance, the Hirer must obtain appropriate comprehensive motor insurance before use and ensure every authorised driver is covered. The Hirer must immediately report any collision, impact, damage, theft, warning light, breakdown or defect and must stop using the vehicle where continued driving could cause further damage or create a safety risk. Recovery, storage or repair costs caused by misuse, negligence, unauthorised use or breach may be charged to the Hirer to the extent permitted by law. The Lessor is not responsible for business, income or consequential loss arising from breakdown, accident, detention or unavailability, except where liability cannot lawfully be excluded.",
+    },
+    {
+      heading: "7. FUEL, CLEANING, KEYS AND EQUIPMENT",
+      body: "The vehicle must be returned with the agreed fuel level and in a reasonably clean condition. Reasonable replenishment, disclosed service or administration, and exceptional cleaning costs may be charged. The Hirer is responsible for loss or damage to supplied keys, documents, tools, equipment and accessories where caused by their act, omission, negligence or breach, and must not duplicate them or interfere with vehicle security, tracking or immobilisation equipment.",
+    },
+    {
+      heading: "8. ACCIDENTS, THEFT AND INCIDENTS",
+      body: "The Hirer must promptly notify the Lessor, the police where required and the relevant insurer where applicable; obtain and provide reasonable details of vehicles, drivers, witnesses and circumstances; not admit liability or settle for the Lessor without authority; and cooperate with claims, investigations and vehicle recovery.",
+    },
+    {
+      heading: "9. TERMINATION AND REPLACEMENT VEHICLES",
+      body: "Where permitted by law, the Lessor may terminate the hire or require immediate return for non-payment, materially inaccurate information, unauthorised or unlawful use, material safety or insurance risk, or material breach. Following a lawful demand, reasonable possession-recovery steps may be taken and reasonable related costs charged to the extent permitted by law. Accrued rights remain unaffected. If a replacement vehicle is supplied, this Agreement continues unless varied in writing; the Hirer must inspect it and promptly report apparent damage or defects.",
+    },
+    {
+      heading: "10. DATA AND GENERAL PROVISIONS",
+      body: "The Lessor may retain hire records, condition records, photographs and correspondence for legitimate business, legal, insurance and regulatory purposes, subject to data-protection law. The Hirer is responsible for ensuring every authorised driver complies with this Agreement. If any provision is invalid or unenforceable, the remaining provisions continue. No variation is effective unless agreed by the Lessor, except where law requires otherwise. Nothing excludes mandatory liability or statutory rights.",
+    },
+  ];
+
+  let termsTop = 78;
+  supplementalTerms.forEach(({ heading, body }) => {
+    text(termsPage, heading, 39.7, termsTop, 527, { bold: true, size: 7.6 });
+    termsTop += 11;
+    const lines = wrapText(body, 527, font, 7.15);
+    lines.forEach((line) => {
+      text(termsPage, line, 39.7, termsTop, 527, { size: 7.15 });
+      termsTop += 8.7;
+    });
+    termsTop += 5;
   });
 
   // Page 3 has ample space, so rebuild both signing blocks with proper room
@@ -598,8 +700,9 @@ export async function generateRentalAgreementPdf(input: ContractPdfInput) {
     { size: 8.5 },
   );
 
-  [page, page2, page3].forEach((targetPage, index) => {
-    text(targetPage, `${index + 1}/3`, 553, 775, 25, { size: 6 });
+  [page, page2, termsPage, page3].forEach((targetPage, index) => {
+    cover(targetPage, 548, 770, 34, 15);
+    text(targetPage, `${index + 1}/4`, 553, 775, 25, { size: 6 });
   });
 
   const buffer = Buffer.from(await doc.save());

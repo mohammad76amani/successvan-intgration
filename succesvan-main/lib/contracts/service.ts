@@ -480,7 +480,8 @@ async function recreateEnvelopeForEmbeddedSigning(
     auditTrail?: Array<Record<string, unknown>>;
     save: () => Promise<unknown>;
   },
-  customerId: string,
+  actorId: string,
+  source: "customer" | "admin" = "customer",
 ) {
   if (contract.status === "completed") {
     throw new ContractIntegrationError(
@@ -516,8 +517,8 @@ async function recreateEnvelopeForEmbeddedSigning(
   addAudit(
     contract,
     "docusign_envelope_recreate_started",
-    "customer",
-    customerId,
+    source,
+    actorId,
     { reason: "UNKNOWN_ENVELOPE_RECIPIENT" },
   );
   await contract.save();
@@ -1363,10 +1364,12 @@ export async function sendContract(contractId: string, actor: ActorInput) {
 export async function createContractSigningUrl(
   contractId: string,
   customerId: string,
-  options?: { returnUrl?: string },
+  options?: { returnUrl?: string; adminActorId?: string },
 ) {
   await connect();
-  const contract = await getContractForCustomer(contractId, customerId);
+  const contract = options?.adminActorId
+    ? await getContractWithFiles(contractId)
+    : await getContractForCustomer(contractId, customerId);
 
   if (!canGenerateSigningUrl(contract.status)) {
     throw new ContractIntegrationError(
@@ -1399,11 +1402,14 @@ export async function createContractSigningUrl(
   } catch (error) {
     if (!isUnknownEnvelopeRecipient(error)) throw error;
 
-    await recreateEnvelopeForEmbeddedSigning(contract, customerId);
-    const repairedContract = await getContractForCustomer(
-      contractId,
-      customerId,
+    await recreateEnvelopeForEmbeddedSigning(
+      contract,
+      options?.adminActorId || customerId,
+      options?.adminActorId ? "admin" : "customer",
     );
+    const repairedContract = options?.adminActorId
+      ? await getContractWithFiles(contractId)
+      : await getContractForCustomer(contractId, customerId);
     if (!repairedContract.docusign?.envelopeId) {
       throw new ContractIntegrationError(
         "DOCUSIGN_ENVELOPE_NOT_FOUND",
@@ -1425,7 +1431,12 @@ export async function createContractSigningUrl(
   }
 
   signingContract.status = "signing";
-  addAudit(signingContract, "signing_url_requested", "customer", customerId);
+  addAudit(
+    signingContract,
+    "signing_url_requested",
+    options?.adminActorId ? "admin" : "customer",
+    options?.adminActorId || customerId,
+  );
   await signingContract.save();
 
   return { url };

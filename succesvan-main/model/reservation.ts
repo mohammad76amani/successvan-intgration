@@ -65,6 +65,7 @@ const reservationSchema = new mongoose.Schema(
     pickupTime: { type: String }, // Time as HH:MM (what user selected)
     returnTime: { type: String }, // Time as HH:MM (what user selected)
     totalPrice: { type: Number, required: true },
+    serviceCharge: { type: Number, default: 1, min: 0 },
     status: {
       type: String,
       enum: RESERVATION_STATUSES,
@@ -85,9 +86,49 @@ const reservationSchema = new mongoose.Schema(
       },
     ],
     cancelReason: { type: String, trim: true },
+    cancellationSettlement: {
+      paymentOption: { type: String, enum: ["full", "secure"] },
+      paidAmount: { type: Number, min: 0 },
+      hoursBeforePickup: { type: Number },
+      window: {
+        type: String,
+        enum: [
+          "over_72_hours",
+          "between_24_and_72_hours",
+          "under_24_hours",
+        ],
+      },
+      policyDeductionPercent: { type: Number, min: 0, max: 100 },
+      agreedDeductionPercent: { type: Number, min: 0, max: 100 },
+      deductionAmount: { type: Number, min: 0 },
+      refundAmount: { type: Number, min: 0 },
+      status: {
+        type: String,
+        enum: ["pending", "refunded"],
+      },
+      calculatedAt: { type: Date },
+      calculatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     driverAge: { type: Number, required: true },
     selectedGear: { type: String, enum: ["manual", "automatic"] },
     messege: { type: String },
+    // Private operational note. Never expose this field through customer APIs.
+    adminNote: { type: String, trim: true },
+    vehicleIssueNotes: [
+      {
+        note: { type: String, trim: true, required: true },
+        imageUrl: { type: String, trim: true, required: true },
+        status: {
+          type: String,
+          enum: ["pending", "accepted", "refused"],
+          default: "pending",
+        },
+        createdAt: { type: Date, default: Date.now },
+        reviewedAt: { type: Date },
+        reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        reviewReason: { type: String, trim: true },
+      },
+    ],
     pickupExtensionPrice: { type: Number, default: 0 },
     returnExtensionPrice: { type: Number, default: 0 },
     rentalExtensions: [
@@ -123,8 +164,8 @@ const reservationSchema = new mongoose.Schema(
     isManualPrice: { type: Boolean, default: false },
     manualPricePerDay: { type: Number },
     manualPriceNote: { type: String },
-    // Per-invoice: admin creates the reservation with no price; the final
-    // total is entered when the admin marks the reservation as completed.
+    // Per-invoice reservations intentionally keep monetary contract fields
+    // unpriced and bypass the online rental-fee step.
     perInvoice: { type: Boolean, default: false },
     reservationType: { type: String, enum: ["Office", "Website", "App"] },
     insuranceArrangement: {
@@ -156,6 +197,8 @@ const reservationSchema = new mongoose.Schema(
       failureReason: { type: String, trim: true },
       // Snapshot of the full-pay discount promised when the option was chosen.
       discountPercent: { type: Number, min: 0, max: 100 },
+      cancellationPolicyAcceptedAt: { type: Date },
+      cancellationPolicyVersion: { type: String, trim: true },
       // Reconciliation created when an admin changes an already-paid full
       // booking before handover.
       priceAdjustment: {

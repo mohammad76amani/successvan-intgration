@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { RESERVATION_SERVICE_CHARGE } from "@/lib/reservation-pricing";
 
 interface PricingTier {
   minDays: number;
@@ -18,6 +19,7 @@ interface PriceCalculationResult {
   returnExtensionPrice?: number;
   addOnsPrice?: number;
   specialDaysPrice?: number;
+  serviceCharge: number;
   specialDaysInfo?: Array<{
     date: string;
     price: number;
@@ -152,7 +154,8 @@ export function usePriceCalculation(
       }
     }
 
-    const totalPrice = daysPrice + gearExtraPrice + extraHoursPrice + pickupExtensionPrice + returnExtensionPrice + addOnsPrice + specialDaysPrice;
+    const serviceCharge = RESERVATION_SERVICE_CHARGE;
+    const totalPrice = daysPrice + gearExtraPrice + extraHoursPrice + pickupExtensionPrice + returnExtensionPrice + addOnsPrice + specialDaysPrice + serviceCharge;
 
     // Build breakdown
     let breakdown = "";
@@ -182,6 +185,7 @@ export function usePriceCalculation(
     if (specialDaysPrice > 0) {
       breakdown += ` + (Special Days £${specialDaysPrice})`;
     }
+    breakdown += ` + (Service charge £${serviceCharge.toFixed(2)})`;
 
     // Log calculation details
     console.log('=== Price Calculation ===');
@@ -218,6 +222,7 @@ export function usePriceCalculation(
       addOnsPrice,
       specialDaysPrice,
       specialDaysInfo,
+      serviceCharge,
     });
   }, [startDate, endDate, JSON.stringify(pricingTiers), extraHoursRate, pickupExtensionPrice, returnExtensionPrice, gearExtraCostPerDay, addOnsPrice, sellOffer, JSON.stringify(specialDays)]);
 

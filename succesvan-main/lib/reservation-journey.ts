@@ -23,6 +23,7 @@ import {
   type PublicJourneyStep,
 } from "@/lib/reservation-status";
 import { formatDateTimeInLondon } from "@/lib/englandTime";
+import { reservationCancellationCalculation } from "@/lib/rental-cancellation-policy";
 
 export const threeCalendarDaysAfter = (
   value?: Date | string,
@@ -117,10 +118,12 @@ const buildSteps = (
   status: ReservationStatus,
 ): ReservationJourneyStep[] => {
   const officeDepositSelected = reservation.deposit?.option === "office";
+  const perInvoice = Boolean(reservation.perInvoice);
   const waitingForVehicleAfterOfficePay =
-    officeDepositSelected &&
+    (officeDepositSelected || perInvoice) &&
     ["confirmed", "deposit_pending", "deposit_paid"].includes(status);
-  const waitingForDeposit = status === "confirmed" && !officeDepositSelected;
+  const waitingForDeposit =
+    status === "confirmed" && !officeDepositSelected && !perInvoice;
   const problem = isProblemStatus(status);
   // For a canceled/expired booking, the journey stopped at the step
   // of the last healthy status in the history.
@@ -142,7 +145,8 @@ const buildSteps = (
   const journeyDone = status === "completed";
   const actionRequired =
     ACTION_REQUIRED_STATUSES.includes(status) &&
-    !waitingForVehicleAfterOfficePay;
+    !waitingForVehicleAfterOfficePay &&
+    !perInvoice;
 
   return PUBLIC_JOURNEY_STEPS.map((key, idx) => {
     let state: JourneyStepState;
@@ -156,8 +160,10 @@ const buildSteps = (
     return {
       key,
       label:
-        waitingForVehicleAfterOfficePay && key === "deposit"
-          ? "Pay at office"
+        perInvoice && key === "deposit"
+          ? "Per invoice"
+          : waitingForVehicleAfterOfficePay && key === "deposit"
+            ? "Pay at office"
           : waitingForVehicleAfterOfficePay && key === "vehicle_assignment"
             ? "Vehicle assignment"
             : PUBLIC_STEP_LABELS[key],
@@ -196,6 +202,7 @@ const buildNextAction = (
   }
 
   const officeDepositSelected = reservation.deposit?.option === "office";
+  const perInvoice = Boolean(reservation.perInvoice);
   switch (status) {
     case "pending":
       return {
@@ -208,6 +215,14 @@ const buildNextAction = (
       };
     case "confirmed":
     case "deposit_pending":
+      if (perInvoice) {
+        return {
+          type: "none",
+          title: "Agreement being prepared",
+          description:
+            "No online rental fee is required. We’ll assign your vehicle and prepare a per-invoice rental agreement for signing.",
+        };
+      }
       if (reservation.deposit?.status === "failed") {
         return {
           type: "pay_deposit",
@@ -225,16 +240,16 @@ const buildNextAction = (
           type: "none",
           title: "Vehicle assignment pending",
           description:
-            "Your pay-at-office choice is saved. We’ll assign your van before collection. When you arrive at the office, you’ll pay the deposit, sign the agreement, and complete vehicle handover.",
+            "Your pay-at-office choice is saved. We’ll assign your van before collection. When you arrive at the office, you’ll pay the rental fee, sign the agreement, and complete vehicle handover.",
           buttonLabel: "View Collection Details",
           href: "#collection",
         };
       }
       return {
         type: "pay_deposit",
-        title: "Pay your deposit",
-        description: "Pay your deposit to secure your booking.",
-        buttonLabel: "Pay Deposit",
+        title: "Pay your rental fee",
+        description: "Choose a rental fee option to secure your booking.",
+        buttonLabel: "Pay Rental Fee",
         href: "#deposit",
       };
     case "deposit_paid":
@@ -243,7 +258,7 @@ const buildNextAction = (
         title: "Vehicle assignment pending",
         description: officeDepositSelected
           ? "We’ll assign your van before collection. When you arrive at the office, we’ll complete the agreement and handover with you."
-          : "Your deposit is received. We’ll assign your van next, then your contract will be ready to sign.",
+          : "Your rental fee is received. We’ll assign your van next, then your contract will be ready to sign.",
       };
     case "contract_pending":
       return {
@@ -323,12 +338,17 @@ const buildNextAction = (
       };
     case "canceled":
     case "expired":
+      const cancellationReturn = reservation.cancellationSettlement?.calculatedAt
+        ? reservation.cancellationSettlement
+        : reservationCancellationCalculation(reservation);
       return {
         type: "contact_support",
         title: status === "canceled" ? "Booking canceled" : "Booking expired",
         description:
-          reservation.cancelReason?.trim() ||
-          "This booking is no longer active. Contact us if you have any questions.",
+          status === "canceled" && cancellationReturn
+            ? `Cancellation confirmed. £${Number(cancellationReturn.refundAmount || 0).toFixed(2)} is due back after the agreed ${Number(cancellationReturn.agreedDeductionPercent || 0)}% deduction.`
+            : reservation.cancelReason?.trim() ||
+              "This booking is no longer active. Contact us if you have any questions.",
         buttonLabel: "Contact Support",
         href: "/customerDashboard#support",
       };

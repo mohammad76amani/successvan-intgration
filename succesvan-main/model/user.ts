@@ -54,6 +54,15 @@ const userSchema = new mongoose.Schema(
       addressSource: { type: String, enum: ["ideal_postcodes", "manual"] },
       postcodeValidated: { type: Boolean, default: false },
     },
+    debtFlag: {
+      active: { type: Boolean, default: false },
+      amount: { type: Number, min: 0, default: 0 },
+      reservation: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation" },
+      reason: { type: String, trim: true },
+      flaggedAt: { type: Date },
+      clearedAt: { type: Date },
+      clearedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
   },
   { timestamps: true }
 );

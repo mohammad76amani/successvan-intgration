@@ -270,6 +270,7 @@ export interface Reservation {
   pickupTime?: string;
   returnTime?: string;
   totalPrice: number;
+  serviceCharge?: number;
   status: ReservationStatus;
   statusHistory?: Array<{
     status: ReservationStatus;
@@ -278,8 +279,32 @@ export interface Reservation {
     note?: string;
   }>;
   cancelReason?: string;
+  cancellationSettlement?: {
+    paymentOption?: "full" | "secure";
+    paidAmount?: number;
+    hoursBeforePickup?: number;
+    window?: "over_72_hours" | "between_24_and_72_hours" | "under_24_hours";
+    policyDeductionPercent?: number;
+    agreedDeductionPercent?: number;
+    deductionAmount?: number;
+    refundAmount?: number;
+    status?: "pending" | "refunded";
+    calculatedAt?: Date | string;
+    calculatedBy?: string;
+  };
   driverAge: number;
   messege?: string;
+  adminNote?: string;
+  vehicleIssueNotes?: Array<{
+    _id?: string;
+    note: string;
+    imageUrl: string;
+    status: "pending" | "accepted" | "refused";
+    createdAt: string | Date;
+    reviewedAt?: string | Date;
+    reviewedBy?: string;
+    reviewReason?: string;
+  }>;
   addOns?: Array<{
     addOn?: AddOn;
     quantity: number;
@@ -333,6 +358,8 @@ export interface Reservation {
     verifiedBy?: string;
     failureReason?: string;
     discountPercent?: number;
+    cancellationPolicyAcceptedAt?: Date | string;
+    cancellationPolicyVersion?: string;
     priceAdjustment?: {
       previousTotal?: number;
       revisedTotal?: number;
@@ -550,6 +577,15 @@ export interface User {
     extractedAt?: string | Date;
   };
   avatar?: string;
+  debtFlag?: {
+    active?: boolean;
+    amount?: number;
+    reservation?: string;
+    reason?: string;
+    flaggedAt?: string | Date;
+    clearedAt?: string | Date;
+    clearedBy?: string;
+  };
 }
 
 // van --------------------------------------------------------------------------------------------

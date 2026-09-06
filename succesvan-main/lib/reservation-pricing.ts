@@ -1,0 +1,1 @@
+export const RESERVATION_SERVICE_CHARGE = 1;

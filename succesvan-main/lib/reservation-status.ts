@@ -102,15 +102,14 @@ export const SLOT_BLOCKING_STATUSES: ReservationStatus[] = [
 // Customers may only cancel while the booking is under review.
 export const CUSTOMER_CANCELABLE_STATUSES: ReservationStatus[] = ["pending"];
 
-// Map journey statuses onto the four legacy SMS notifications.
+// Map journey statuses onto status SMS notifications.
 // Statuses not listed here don't trigger an SMS.
 export const NOTIFIABLE_STATUS_MAP: Partial<
-  Record<ReservationStatus, "confirmed" | "canceled" | "delivered" | "completed">
+  Record<ReservationStatus, "confirmed" | "canceled" | "delivered">
 > = {
   confirmed: "confirmed",
   canceled: "canceled",
   delivered: "delivered",
-  completed: "completed",
 };
 
 // Simplified public journey shown to customers.
@@ -153,7 +152,7 @@ export const STATUS_TO_PUBLIC_STEP: Record<ReservationStatus, PublicJourneyStep>
 export const PUBLIC_STEP_LABELS: Record<PublicJourneyStep, string> = {
   submitted: "Submitted",
   confirmed: "Confirmed",
-  deposit: "Deposit",
+  deposit: "Rental Fee",
   vehicle_assignment: "Assign Vehicle",
   contract: "Contract",
   collection: "Collection",
@@ -166,8 +165,8 @@ export const PUBLIC_STEP_LABELS: Record<PublicJourneyStep, string> = {
 export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   pending: "Pending Review",
   confirmed: "Booking Confirmed",
-  deposit_pending: "Deposit Payment",
-  deposit_paid: "Deposit Paid",
+  deposit_pending: "Rental Fee Payment",
+  deposit_paid: "Rental Fee Paid",
   contract_pending: "Contract Signing",
   contract_signed: "Contract Signed",
   ready_for_collection: "Ready for Collection",
@@ -257,9 +256,9 @@ export const DEPOSIT_OPTIONS = ["full", "secure", "office"] as const;
 export type DepositOption = (typeof DEPOSIT_OPTIONS)[number];
 
 export const DEPOSIT_OPTION_LABELS: Record<DepositOption, string> = {
-  full: "Full deposit (bank transfer)",
-  secure: "Safe & secure deposit",
-  office: "Pay at office",
+  full: "Full rental fee (bank transfer)",
+  secure: "Safe & secure rental fee",
+  office: "Rental fee at office",
 };
 
 // Refund lifecycle stored on the reservation.
