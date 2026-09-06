@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     await connect();
 
     const reservations = await Reservation.find({ user: userId })
+      .select("-adminNote")
       .populate({
         path: "office",
         model: Office,

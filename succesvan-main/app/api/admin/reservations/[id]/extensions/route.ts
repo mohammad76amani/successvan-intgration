@@ -143,7 +143,7 @@ export async function POST(
       if (contract.customerPhone) {
         await sendSMS(
           contract.customerPhone,
-          `Extension contract ${contract.contractNumber} is ready to sign: ${customerReservationsSmsUrl()}`,
+          `Your extension agreement ${contract.contractNumber} is ready. Please review and sign it in My Reservations: ${customerReservationsSmsUrl()}`,
         );
       }
     } catch (smsError) {

@@ -111,7 +111,7 @@ export default function JourneyDetailCards({
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <CompactCard
         icon={<FiCreditCard />}
-        title="Deposit"
+        title="Rental fee"
         highlight={journey.mainStatus === "deposit_pending"}
         lines={
           deposit

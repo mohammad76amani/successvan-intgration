@@ -31,6 +31,8 @@ import LicenceDetailsReviewModal, {
 } from "../LicenceDetailsReviewModal";
 import EvidenceThumbnail from "@/components/ui/EvidenceThumbnail";
 import { useModalAccessibility } from "@/hooks/useModalAccessibility";
+import VehicleIssueReports from "@/components/reservations/VehicleIssueReports";
+import { reservationCancellationCalculation } from "@/lib/rental-cancellation-policy";
 
 export type JourneySectionId =
   | "summary"
@@ -935,6 +937,7 @@ export default function JourneyAccordions({
     [...journey.steps].reverse().find((step) => step.state === "completed") ||
     journey.steps[0];
   const depositStepActive =
+    !reservation.perInvoice &&
     reservation.deposit?.option !== "office" &&
     journey.steps.some(
       (step) =>
@@ -988,7 +991,7 @@ export default function JourneyAccordions({
         ];
       }
       return [
-        { label: "Deposit", value: money(journey.deposit?.amount) },
+        { label: "Rental fee", value: money(journey.deposit?.amount) },
         {
           label: "Option",
           value:
@@ -1007,7 +1010,7 @@ export default function JourneyAccordions({
     }
     if (status === "deposit_paid") {
       return [
-        { label: "Deposit", value: money(reservation.deposit?.amount) },
+        { label: "Rental fee", value: money(reservation.deposit?.amount) },
         {
           label: "Payment status",
           value: reservation.deposit?.status?.replace(/_/g, " ") || "Paid",
@@ -1126,6 +1129,48 @@ export default function JourneyAccordions({
             refund?.status !== "completed" && refund?.expectedBy
               ? compactDate(refund.expectedBy)
               : refund?.reference || "Pending",
+        },
+      ];
+    }
+    if (status === "canceled") {
+      const settlement = reservation.cancellationSettlement?.calculatedAt
+        ? reservation.cancellationSettlement
+        : reservationCancellationCalculation(reservation);
+      if (!settlement) {
+        return [
+          { label: "Booking", value: "Canceled" },
+          { label: "Reference", value: journey.bookingReference },
+          ...(reservation.cancelReason
+            ? [{ label: "Reason", value: reservation.cancelReason }]
+            : []),
+        ];
+      }
+      return [
+        { label: "Booking", value: "Canceled" },
+        { label: "Reference", value: journey.bookingReference },
+        ...(reservation.cancelReason
+          ? [{ label: "Reason", value: reservation.cancelReason }]
+          : []),
+        {
+          label: "Rental fee paid",
+          value: money(settlement.paidAmount),
+        },
+        {
+          label: "Agreed deduction",
+          value: `${Number(settlement.agreedDeductionPercent || 0)}% · -${money(settlement.deductionAmount)}`,
+          tone: "deduction" as const,
+        },
+        {
+          label: "Amount returning to you",
+          value: money(settlement.refundAmount),
+          tone: "refund" as const,
+        },
+        {
+          label: "Return status",
+          value:
+            settlement.status === "refunded"
+              ? "Returned"
+              : "Pending processing",
         },
       ];
     }
@@ -1591,6 +1636,11 @@ export default function JourneyAccordions({
           </a>
         )}
       </Section>
+
+      <VehicleIssueReports
+        reservation={reservation}
+        onUpdated={onDepositUpdated}
+      />
 
       {/* ── Vehicle inspection ─────────────────────────────── */}
       {showInspection && (

@@ -506,6 +506,7 @@ export default function ReservationJourneyPage({
   );
   const pickupExtension = Number(reservation.pickupExtensionPrice) || 0;
   const returnExtension = Number(reservation.returnExtensionPrice) || 0;
+  const serviceCharge = Number(reservation.serviceCharge ?? 1) || 0;
   const finalTotal = Number(reservation.totalPrice) || 0;
   const depositDiscountPercent =
     reservation.deposit?.option === "full"
@@ -521,7 +522,8 @@ export default function ReservationJourneyPage({
       depositDiscountAmount -
       addOnsTotal -
       pickupExtension -
-      returnExtension,
+      returnExtension -
+      serviceCharge,
   );
 
   const journeyContent = (
@@ -743,6 +745,10 @@ export default function ReservationJourneyPage({
                       <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-400">
                         <span>Return extension</span>
                         <span>{money(returnExtension)}</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-4 rounded-lg px-1 py-0.5 text-slate-300">
+                        <span>Service charge</span>
+                        <span>{money(serviceCharge)}</span>
                       </div>
                       {depositDiscountPercent > 0 && (
                         <div className="flex items-start justify-between gap-4 rounded-lg border border-emerald-400/10 bg-emerald-500/[0.05] px-2 py-1.5 text-emerald-300">

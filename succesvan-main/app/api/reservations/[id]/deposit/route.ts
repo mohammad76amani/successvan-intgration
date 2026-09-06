@@ -7,8 +7,9 @@ import { customerReservationsSmsUrl, sendSMS } from "@/lib/sms";
 import { requireAuth } from "@/lib/auth";
 import { canAccessDashboard } from "@/lib/roles";
 import { DEPOSIT_OPTIONS, type DepositOption } from "@/lib/reservation-status";
+import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
 
-// Customer chooses how to cover the deposit and (for bank transfers)
+// Customer chooses how to pay the rental fee and (for bank transfers)
 // uploads the payment slip. The admin verifies the payment and moves the
 // reservation to deposit_paid from the dashboard.
 export async function POST(
@@ -22,11 +23,12 @@ export async function POST(
     const body = (await req.json()) as {
       option?: string;
       receiptUrl?: string;
+      cancellationPolicyAccepted?: boolean;
     };
 
     const option = body.option as DepositOption;
     if (!option || !DEPOSIT_OPTIONS.includes(option)) {
-      return errorResponse(`Invalid deposit option: ${body.option}`, 400);
+      return errorResponse(`Invalid rental fee option: ${body.option}`, 400);
     }
 
     const reservation = await Reservation.findById(id).populate("category");
@@ -36,6 +38,37 @@ export async function POST(
       String(reservation.user) !== String(auth.userId)
     ) {
       return errorResponse("Forbidden", 403);
+    }
+
+    if (reservation.perInvoice) {
+      return errorResponse(
+        "This is a per-invoice reservation and has no online rental fee step.",
+        409,
+      );
+    }
+
+    const pickupDay = parseStorageDate(reservation.startDateDisplay);
+    const pickupAt =
+      pickupDay && reservation.pickupTime
+        ? new Date(createLondonDateTime(pickupDay, reservation.pickupTime))
+        : new Date(reservation.startDate);
+    const isWithin24Hours =
+      Number.isFinite(pickupAt.getTime()) &&
+      pickupAt.getTime() - Date.now() < 24 * 60 * 60 * 1000;
+    const isWithin48Hours =
+      Number.isFinite(pickupAt.getTime()) &&
+      pickupAt.getTime() - Date.now() < 48 * 60 * 60 * 1000;
+    if (isWithin24Hours && option !== "office") {
+      return errorResponse(
+        "Online rental fee payment is unavailable within 24 hours of pickup. Please pay at the office.",
+        409,
+      );
+    }
+    if (option !== "office" && body.cancellationPolicyAccepted !== true) {
+      return errorResponse(
+        "Read and accept the rental-fee cancellation policy before continuing.",
+        400,
+      );
     }
 
     const categoryDeposit = (
@@ -50,7 +83,12 @@ export async function POST(
 
     const discountPercent = Math.min(
       100,
-      Math.max(0, Number(categoryDeposit?.fullPayDiscountPercent) || 0),
+      Math.max(
+        0,
+        isWithin48Hours
+          ? 0
+          : Number(categoryDeposit?.fullPayDiscountPercent) || 0,
+      ),
     );
     const originalAmount = Math.max(
       0,
@@ -63,7 +101,14 @@ export async function POST(
     );
     const discountAmount =
       option === "full"
-        ? Math.round(originalAmount * (discountPercent / 100) * 100) / 100
+        ? Math.round(
+            Math.max(
+              0,
+              originalAmount - Number(reservation.serviceCharge || 0),
+            ) *
+              (discountPercent / 100) *
+              100,
+          ) / 100
         : 0;
     const amount =
       option === "full"
@@ -100,6 +145,10 @@ export async function POST(
       // "pending" = waiting for admin verification of the transfer.
       status: receiptUrl ? "pending" : "not_paid",
       discountPercent: option === "full" ? discountPercent : 0,
+      cancellationPolicyAcceptedAt:
+        option === "office" ? undefined : new Date(),
+      cancellationPolicyVersion:
+        option === "office" ? undefined : "2026-09-rental-fee-v1",
     };
 
     // Full payment settles the complete booking at the discounted price. If a
@@ -118,7 +167,7 @@ export async function POST(
           status: "deposit_pending",
           changedAt: new Date(),
           source: "customer",
-          note: "Customer uploaded deposit receipt. Admin verification required.",
+          note: "Customer uploaded rental fee receipt. Admin verification required.",
         },
       ];
     }
@@ -133,7 +182,7 @@ export async function POST(
             try {
               await sendSMS(
                 admin.phoneData.phoneNumber.replace("+", ""),
-                `Deposit receipt uploaded for reservation ${reservation.reservationCode || id}. Verify in the admin dashboard.`,
+                `Rental fee receipt uploaded for reservation ${reservation.reservationCode || id}. Verify in the admin dashboard.`,
               );
             } catch (smsError) {
               console.log("Admin deposit SMS error:", smsError);
@@ -182,7 +231,7 @@ export async function PATCH(
     const reservation = await Reservation.findById(id);
     if (!reservation) return errorResponse("Reservation not found", 404);
     if (reservation.deposit?.status !== "pending") {
-      return errorResponse("This deposit is not awaiting verification", 409);
+      return errorResponse("This rental fee is not awaiting verification", 409);
     }
 
     const now = new Date();
@@ -201,7 +250,7 @@ export async function PATCH(
           status: "deposit_paid",
           changedAt: now,
           source: "admin",
-          note: "Deposit receipt verified",
+          note: "Rental fee receipt verified",
         });
       }
     } else {
@@ -234,8 +283,8 @@ export async function PATCH(
         const reference = reservation.reservationCode || id;
         const message =
           body.action === "approve"
-            ? `Deposit approved for ${reference}. We will assign your van and prepare the contract. ${customerReservationsSmsUrl()}`
-            : `Deposit rejected for ${reference}. Reason: ${reservation.deposit.failureReason}. Upload a new receipt: ${customerReservationsSmsUrl()}`;
+            ? `Your rental fee for ${reference} is approved. We will now assign your vehicle and prepare your agreement. Follow progress: ${customerReservationsSmsUrl()}`
+            : `Your rental fee receipt for ${reference} was not approved. Reason: ${reservation.deposit.failureReason}. Please upload a new receipt: ${customerReservationsSmsUrl()}`;
         await sendSMS(phoneNumber, message);
       }
     } catch (smsError) {

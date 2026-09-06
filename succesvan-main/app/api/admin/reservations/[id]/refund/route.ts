@@ -238,6 +238,32 @@ export async function POST(
           ? "refund_processing"
           : "deposit_review";
 
+    if (body.action === "complete" && refundAmount < 0) {
+      const customerWithDebt = await User.findById(existing.user).select(
+        "debtFlag",
+      );
+      const debtWasClearedForThisReservation =
+        !customerWithDebt?.debtFlag?.active &&
+        String(customerWithDebt?.debtFlag?.reservation || "") === String(existing._id) &&
+        Boolean(customerWithDebt?.debtFlag?.clearedAt);
+      if (!debtWasClearedForThisReservation) {
+        await User.findByIdAndUpdate(existing.user, {
+          $set: {
+            "debtFlag.active": true,
+            "debtFlag.amount": Math.abs(refundAmount),
+            "debtFlag.reservation": existing._id,
+            "debtFlag.reason": `Outstanding balance for ${existing.reservationCode || id}`,
+            "debtFlag.flaggedAt": new Date(),
+          },
+          $unset: { "debtFlag.clearedAt": 1, "debtFlag.clearedBy": 1 },
+        });
+        return errorResponse(
+          "Customer debt must be cleared before completing this reservation",
+          409,
+        );
+      }
+    }
+
     if (body.action === "complete" && !String(body.reference || "").trim()) {
       return errorResponse("Refund authorization number is required", 400);
     }
@@ -289,6 +315,22 @@ export async function POST(
     existing.markModified("refund.additionalCharges");
     const reservation = await existing.save();
 
+    if (body.action === "approve" && refundAmount < 0) {
+      await User.findByIdAndUpdate(existing.user, {
+        $set: {
+          "debtFlag.active": true,
+          "debtFlag.amount": Math.abs(refundAmount),
+          "debtFlag.reservation": existing._id,
+          "debtFlag.reason": `Outstanding balance for ${existing.reservationCode || id}`,
+          "debtFlag.flaggedAt": now,
+        },
+        $unset: {
+          "debtFlag.clearedAt": 1,
+          "debtFlag.clearedBy": 1,
+        },
+      });
+    }
+
     if (body.action === "approve") {
       const linkedVehicleId =
         existing.vehicle || existing.vehicleSnapshot?.vehicleId;
@@ -323,14 +365,14 @@ export async function POST(
           if (body.action === "approve") {
             message =
               refundAmount > 0 && expectedBy
-                ? `Refund £${refundAmount.toFixed(2)} for ${bookingReference} is due by ${formatLondonDate(expectedBy)}. Details: ${dashboardUrl}`
-                : `Deposit review started for ${bookingReference}. Details: ${dashboardUrl}`;
+                ? `Your £${refundAmount.toFixed(2)} deposit refund for reservation ${bookingReference} is being processed. Expected by ${formatLondonDate(expectedBy)}. Details: ${dashboardUrl}`
+                : `Your deposit for reservation ${bookingReference} is under review. View refund and deduction details: ${dashboardUrl}`;
           } else if (refundAmount < 0) {
-            message = `${bookingReference}: £${Math.abs(refundAmount).toFixed(2)} remains due after deductions. Please pay at our office. Details: ${dashboardUrl}`;
+            message = `The deposit review for ${bookingReference} is complete. £${Math.abs(refundAmount).toFixed(2)} remains payable after deductions. Please pay at our office. Details: ${dashboardUrl}`;
           } else if (refundAmount === 0) {
-            message = `Deposit review complete for ${bookingReference}. Nothing to refund or pay. Details: ${dashboardUrl}`;
+            message = `The deposit review for ${bookingReference} is complete. There is no refund or balance to pay. Details: ${dashboardUrl}`;
           } else {
-            message = `Refund £${refundAmount.toFixed(2)} sent for ${bookingReference}. Allow 3 working days. Details: ${dashboardUrl}`;
+            message = `Your £${refundAmount.toFixed(2)} refund for ${bookingReference} has been sent. It should reach your account within 3 working days. Details: ${dashboardUrl}`;
           }
 
           await sendSMS(phoneNumber, message);
@@ -339,28 +381,6 @@ export async function POST(
         console.log(
           `Refund ${body.action} customer SMS error:`,
           smsError instanceof Error ? smsError.message : "Unknown error",
-        );
-      }
-    }
-
-    // Send the review request independently so a failure in the financial
-    // status SMS does not prevent this completion message (or vice versa).
-    if (body.action === "complete") {
-      try {
-        const customer = await User.findById(existing.user).select("phoneData");
-        const phoneNumber = customer?.phoneData?.phoneNumber;
-        if (phoneNumber) {
-          await sendSMS(
-            phoneNumber,
-            "Thanks for choosing Success Van Hire. Please review us: https://g.page/r/CZcNuTEcLJMAEBM/review",
-          );
-        }
-      } catch (reviewSmsError) {
-        console.log(
-          "Completed reservation review SMS error:",
-          reviewSmsError instanceof Error
-            ? reviewSmsError.message
-            : "Unknown error",
         );
       }
     }

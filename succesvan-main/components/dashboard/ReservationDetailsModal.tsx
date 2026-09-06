@@ -102,6 +102,7 @@ interface ReservationDetailsModalProps {
   reservation: Reservation | null;
   isOpen: boolean;
   onClose: () => void;
+  onEdit?: (reservation: Reservation) => void;
   layerClassName?: string;
 }
 
@@ -114,6 +115,7 @@ export default function ReservationDetailsModal({
   reservation,
   isOpen,
   onClose,
+  onEdit,
   layerClassName = "z-50",
 }: ReservationDetailsModalProps) {
   const [addOns, setAddOns] = useState<AddOn[]>([]);
@@ -183,6 +185,7 @@ export default function ReservationDetailsModal({
   const gearTotalPrice = priceCalc ? gearExtraCost * priceCalc.totalDays : 0;
   const specialDaysPrice = Number(priceCalc?.specialDaysPrice || 0);
   const reservationTotalPrice = Number(reservation?.totalPrice || 0);
+  const serviceCharge = Number(reservation?.serviceCharge ?? 1) || 0;
   const isPerInvoice = Boolean(reservation?.perInvoice);
   const isPerInvoicePending = isPerInvoice && reservationTotalPrice <= 0;
 
@@ -419,7 +422,15 @@ export default function ReservationDetailsModal({
               </p>
             </div>
             <div className="shrink-0 flex items-center gap-2 ml-2">
-           
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(reservation)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                >
+                  <FiEdit3 className="text-sm" /> Edit
+                </button>
+              )}
     
               <button
                 onClick={() => printReservationReceipt(reservation, contracts)}
@@ -964,6 +975,18 @@ export default function ReservationDetailsModal({
                           )}
                         </div>
                       )}
+
+                      <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-white">Service charge</p>
+                            <p className="mt-0.5 text-[11px] text-gray-400">Applied to every priced reservation</p>
+                          </div>
+                          <span className="shrink-0 text-sm font-bold text-white">
+                            {formatCurrency(serviceCharge)}
+                          </span>
+                        </div>
+                      </div>
 
                       {specialDaysPrice > 0 &&
                         priceCalc.specialDaysInfo &&

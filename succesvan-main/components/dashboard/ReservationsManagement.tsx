@@ -16,6 +16,8 @@ import {
   FiAlertTriangle,
   FiRefreshCw,
   FiSmartphone,
+  FiFileText,
+  FiEdit3,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import DynamicTableView from "./DynamicTableView";
@@ -57,6 +59,12 @@ import {
   parseStorageDate,
 } from "@/lib/englandTime";
 import { hasAdditionalDriverAddOn } from "@/lib/additional-driver";
+import { RESERVATION_SERVICE_CHARGE } from "@/lib/reservation-pricing";
+import VehicleIssueReports from "@/components/reservations/VehicleIssueReports";
+import {
+  calculateRentalCancellation,
+  reservationCancellationCalculation,
+} from "@/lib/rental-cancellation-policy";
 
 type MutateFn = () => Promise<void>;
 
@@ -79,6 +87,56 @@ const formatLondonTime = (value: string | Date) =>
 
 const isImageFileUrl = (url: string) =>
   /\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i.test(url);
+
+const saveReservationContact = async (reservation: Reservation) => {
+  const firstName = String(reservation.user?.name || "Customer").trim();
+  const lastName = String(reservation.user?.lastName || "").trim();
+  const phone = String(reservation.user?.phoneData?.phoneNumber || "").trim();
+  if (!phone) return showToast.error("Customer phone number is missing");
+  const pickupDate =
+    reservation.startDateDisplay ||
+    formatLondonDate(String(reservation.startDate));
+  const pickup = `${pickupDate} ${reservation.pickupTime || formatLondonTime(reservation.startDate)}`;
+  const contactName = `${lastName} ${firstName} ${pickupDate}`
+    .replace(/\s+/g, " ")
+    .trim();
+  const reference = reservation.reservationCode || reservation._id || "Reservation";
+  const escapeVCard = (value: string) => value.replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
+  const content = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    // Some phones display the structured N field instead of FN, so keep the
+    // complete requested contact label in both fields.
+    `N:${escapeVCard(contactName)};;;;`,
+    `FN:${escapeVCard(contactName)}`,
+    `TEL;TYPE=CELL:${phone}`,
+    `NOTE:${escapeVCard(`SuccessVan ${reference} · Pickup ${pickup}`)}`,
+    "END:VCARD",
+  ].join("\r\n");
+  const file = new File([content], `${reference}-contact.vcf`, { type: "text/vcard" });
+  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: contactName,
+      });
+      return;
+    } catch (error) {
+      // Desktop browsers and restricted devices can expose Web Share while
+      // denying it. Fall through to a normal vCard download in that case.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast.success("Contact file downloaded");
+};
 
 function DepositVerificationBadge({
   reservation,
@@ -182,6 +240,7 @@ function ReservationStepManagerModal({
   onAssignVehicle,
   onReservationUpdated,
   isSubmitting,
+  openAdminNoteInitially = false,
 }: {
   reservation: Reservation | null;
   isOpen: boolean;
@@ -215,6 +274,7 @@ function ReservationStepManagerModal({
   ) => Promise<void>;
   onReservationUpdated: (reservation: Reservation) => void;
   isSubmitting: boolean;
+  openAdminNoteInitially?: boolean;
 }) {
   const [isReservationDetailsOpen, setIsReservationDetailsOpen] =
     useState(false);
@@ -237,6 +297,11 @@ function ReservationStepManagerModal({
   const [additionalDriverName, setAdditionalDriverName] = useState("");
   const [additionalDriverLicenceNumber, setAdditionalDriverLicenceNumber] =
     useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const [adminNoteOpen, setAdminNoteOpen] = useState(false);
+  const [adminNoteBusy, setAdminNoteBusy] = useState(false);
+  const [debtBusy, setDebtBusy] = useState(false);
+  const [cancellationPercent, setCancellationPercent] = useState("0");
   const additionalDriverSelected = hasAdditionalDriverAddOn(
     reservation?.addOns as never,
   );
@@ -263,6 +328,35 @@ function ReservationStepManagerModal({
     setAdditionalDriverLicenceNumber(
       reservation.additionalDriver?.licenceNumber || "",
     );
+    setAdminNote(reservation.adminNote || "");
+    setAdminNoteOpen(openAdminNoteInitially);
+    const option = reservation.deposit?.option;
+    const categorySecureAmount = Number(
+      (reservation.category as { deposit?: { securePayPrice?: number } })
+        ?.deposit?.securePayPrice || 0,
+    );
+    const paidAmount =
+      Number(reservation.deposit?.amount || 0) ||
+      (option === "full"
+        ? Number(reservation.totalPrice || 0)
+        : option === "secure"
+          ? categorySecureAmount
+          : 0);
+    if (["full", "secure"].includes(String(option)) && paidAmount > 0) {
+      const pickupDay = parseStorageDate(reservation.startDateDisplay);
+      const pickupAt =
+        pickupDay && reservation.pickupTime
+          ? new Date(createLondonDateTime(pickupDay, reservation.pickupTime))
+          : new Date(reservation.startDate);
+      const preview = calculateRentalCancellation({
+        option: option as "full" | "secure",
+        paidAmount,
+        pickupAt,
+      });
+      setCancellationPercent(String(preview.policyDeductionPercent));
+    } else {
+      setCancellationPercent("0");
+    }
   }, [
     isOpen,
     reservation?._id,
@@ -272,7 +366,107 @@ function ReservationStepManagerModal({
     categoryHandoverDeposit,
     reservation?.additionalDriver?.name,
     reservation?.additionalDriver?.licenceNumber,
+    reservation?.adminNote,
+    reservation?.deposit?.amount,
+    reservation?.deposit?.option,
+    reservation?.pickupTime,
+    reservation?.startDate,
+    reservation?.startDateDisplay,
+    openAdminNoteInitially,
   ]);
+
+  const cancellationPreview = useMemo(() => {
+    const option = reservation?.deposit?.option;
+    const categorySecureAmount = Number(
+      (reservation?.category as { deposit?: { securePayPrice?: number } })
+        ?.deposit?.securePayPrice || 0,
+    );
+    const paidAmount =
+      Number(reservation?.deposit?.amount || 0) ||
+      (option === "full"
+        ? Number(reservation?.totalPrice || 0)
+        : option === "secure"
+          ? categorySecureAmount
+          : 0);
+    if (
+      !reservation ||
+      !["full", "secure"].includes(String(option)) ||
+      !(
+        ["paid", "held", "refund_processing"].includes(
+          String(reservation.deposit?.status),
+        ) ||
+        (reservation.deposit?.status === "pending" &&
+          Boolean(reservation.deposit?.receiptUrl))
+      ) ||
+      paidAmount <= 0
+    ) {
+      return null;
+    }
+    const pickupDay = parseStorageDate(reservation.startDateDisplay);
+    const pickupAt =
+      pickupDay && reservation.pickupTime
+        ? new Date(createLondonDateTime(pickupDay, reservation.pickupTime))
+        : new Date(reservation.startDate);
+    return calculateRentalCancellation({
+      option: option as "full" | "secure",
+      paidAmount,
+      pickupAt,
+      agreedDeductionPercent: Number(cancellationPercent),
+    });
+  }, [reservation, cancellationPercent]);
+  const displayedCancellationSettlement =
+    reservation?.cancellationSettlement?.calculatedAt
+      ? reservation.cancellationSettlement
+      : reservation?.status === "canceled"
+        ? reservationCancellationCalculation(reservation)
+        : null;
+
+  const saveAdminNote = async () => {
+    if (!reservation?._id) return;
+    const reservationId = reservation._id;
+    setAdminNoteBusy(true);
+    try {
+      const response = await fetch(`/api/reservations/${reservationId}`, {
+        method: "PATCH",
+        headers: clientAuthHeaders(true),
+        body: JSON.stringify({ adminNote: adminNote.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || "Could not save admin note");
+      }
+      onReservationUpdated(payload.data);
+      showToast.success("Admin note saved");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Could not save admin note");
+    } finally {
+      setAdminNoteBusy(false);
+    }
+  };
+
+  const clearCustomerDebt = async () => {
+    const userId = reservation?.user?._id;
+    if (!userId) return;
+    setDebtBusy(true);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/debt`, {
+        method: "PATCH",
+        headers: clientAuthHeaders(true),
+        body: JSON.stringify({ reason: "Outstanding reservation balance settled" }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || "Could not clear debt");
+      onReservationUpdated({
+        ...reservation,
+        user: { ...reservation.user, debtFlag: payload.data.debtFlag },
+      });
+      showToast.success("Customer debt flag cleared");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Could not clear debt");
+    } finally {
+      setDebtBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen || !reservation?._id) {
@@ -333,6 +527,7 @@ function ReservationStepManagerModal({
         ? Number(savedPriceAdjustment?.creditAmount || 0)
         : 0;
   const canAssignVehicle =
+    Boolean(reservation.perInvoice) ||
     reservation.status === "deposit_paid" ||
     deposit?.status === "paid" ||
     deposit?.option === "office";
@@ -439,6 +634,29 @@ function ReservationStepManagerModal({
       setContractDocumentBusy(false);
     }
   };
+  const openAdminSigning = async (selectedContract: SafeContractSummary) => {
+    setContractDocumentBusy(true);
+    try {
+      const response = await fetch(
+        `/api/admin/contracts/${selectedContract._id}/signing-url`,
+        {
+          method: "POST",
+          headers: clientAuthHeaders(true),
+          body: JSON.stringify({
+            returnUrl: `${window.location.origin}/contracts/signing-complete?source=admin`,
+          }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload.success || !payload.data?.url) {
+        throw new Error(payload.error || "Could not open DocuSign");
+      }
+      window.location.href = payload.data.url;
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Could not open DocuSign");
+      setContractDocumentBusy(false);
+    }
+  };
 
   return (
     <>
@@ -541,6 +759,16 @@ function ReservationStepManagerModal({
                           <p className="mt-1 text-[11px] font-semibold capitalize text-slate-500">{item.status.replaceAll("_", " ")}</p>
                         </div>
                         <div className="flex flex-wrap gap-2 sm:justify-end">
+                      {["ready", "sent", "delivered", "viewed", "signing"].includes(item.status) && (
+                        <button
+                          type="button"
+                          disabled={contractDocumentBusy}
+                          onClick={() => void openAdminSigning(item)}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#fe9a00] px-3 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          <FiEdit3 /> Sign for customer
+                        </button>
+                      )}
                       {item.files.signed && (
                         <button
                           type="button"
@@ -586,20 +814,88 @@ function ReservationStepManagerModal({
               )}
             </div>
 
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
+              <button
+                type="button"
+                onClick={() => setAdminNoteOpen((open) => !open)}
+                className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <span className="flex items-center gap-2 text-sm font-bold text-white">
+                  <FiFileText className="text-[#fe9a00]" /> Admin note
+                </span>
+                <span className="text-xs text-slate-400">
+                  {adminNoteOpen ? "Hide" : adminNote.trim() ? "View / edit" : "+"}
+                </span>
+              </button>
+              {adminNoteOpen && (
+                <div className="border-t border-white/10 p-4">
+                  <p className="mb-2 text-xs text-slate-400">Visible to admins only.</p>
+                  <textarea
+                    value={adminNote}
+                    onChange={(event) => setAdminNote(event.target.value)}
+                    rows={4}
+                    placeholder="Add an internal note for this reservation"
+                    className="w-full resize-y rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-[#fe9a00]/70"
+                  />
+                  <button
+                    type="button"
+                    disabled={adminNoteBusy}
+                    onClick={() => void saveAdminNote()}
+                    className="mt-3 min-h-10 rounded-lg bg-[#fe9a00] px-4 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {adminNoteBusy ? "Saving..." : "Save admin note"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <VehicleIssueReports
+              reservation={reservation}
+              admin
+              onUpdated={async () => {
+                const response = await fetch(
+                  `/api/reservations/${reservation._id}`,
+                  { headers: clientAuthHeaders(), cache: "no-store" },
+                );
+                const payload = await response.json();
+                if (response.ok && payload.success) {
+                  onReservationUpdated(payload.data);
+                }
+              }}
+            />
+
+            {reservation.user?.debtFlag?.active && (
+              <div className="rounded-2xl border border-red-400/30 bg-red-500/[0.10] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-red-200">Customer account has outstanding debt</p>
+                    <p className="mt-1 text-xs text-red-100/75">£{Number(reservation.user.debtFlag.amount || 0).toFixed(2)} · {reservation.user.debtFlag.reason || "Previous reservation balance"}</p>
+                  </div>
+                  <button type="button" disabled={debtBusy} onClick={() => void clearCustomerDebt()} className="min-h-10 rounded-lg border border-red-300/25 bg-red-400/15 px-4 text-xs font-black text-red-100 disabled:opacity-50">
+                    {debtBusy ? "Clearing…" : "Mark debt settled"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {reservation.status === "pending" && (
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+              <div>
                 <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                   <h3 className="text-lg font-bold text-white">
                     Review booking
                   </h3>
                   <p className="mt-1 text-sm text-gray-400">
                     Confirm the reservation when the details are OK. The
-                    customer will then continue to the deposit step.
+                    customer will then continue to the {reservation.perInvoice ? "contract" : "rental fee"} step.
                   </p>
                   <button
                     disabled={isSubmitting}
                     onClick={() =>
-                      onStatusChange(reservation, "deposit_pending")
+                      onStatusChange(
+                        reservation,
+                        reservation.perInvoice ? "confirmed" : "deposit_pending",
+                        { adminNote: adminNote.trim() },
+                      )
                     }
                     className="mt-4 min-h-11 w-full touch-manipulation rounded-xl border border-[#ffb247]/30 bg-linear-to-r from-[#fe9a00] to-[#ff7a00] px-4 py-3 text-sm font-black text-white shadow-[0_10px_28px_rgba(254,154,0,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(254,154,0,0.25)] active:translate-y-0 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                   >
@@ -607,39 +903,17 @@ function ReservationStepManagerModal({
                   </button>
                 </div>
 
-                <div className="rounded-2xl border border-red-400/20 bg-linear-to-br from-red-500/[0.13] to-red-500/[0.055] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-red-300/[0.04] sm:p-5">
-                  <h3 className="text-lg font-bold text-red-100">
-                    Cancel reservation
-                  </h3>
-                  <textarea
-                    value={cancelReason}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                    rows={3}
-                    placeholder="Reason shown in admin record"
-                    className="mt-3 min-h-24 w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-3 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-red-300/70 focus:ring-4 focus:ring-red-300/10"
-                  />
-                  <button
-                    disabled={isSubmitting || !cancelReason.trim()}
-                    onClick={() =>
-                      onStatusChange(reservation, "canceled", {
-                        cancelReason: cancelReason.trim(),
-                      })
-                    }
-                    className="mt-3 min-h-11 w-full touch-manipulation rounded-xl border border-red-400/20 bg-red-500/15 px-4 py-3 text-sm font-bold text-red-200 shadow-sm transition-all duration-200 hover:border-red-400/30 hover:bg-red-500/25 active:scale-[0.99] disabled:opacity-50"
-                  >
-                    Cancel with reason
-                  </button>
-                </div>
               </div>
             )}
 
-            {(reservation.status === "confirmed" ||
+            {!reservation.perInvoice &&
+              (reservation.status === "confirmed" ||
               reservation.status === "deposit_pending") && (
               <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.16)] ring-1 ring-inset ring-white/[0.025] sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-bold text-white">
-                      Deposit step
+                      Rental fee step
                     </h3>
                     <p className="mt-1 text-sm text-gray-400">
                       Customer option:{" "}
@@ -668,7 +942,7 @@ function ReservationStepManagerModal({
                         >
                           <img
                             src={deposit.receiptUrl}
-                            alt="Uploaded deposit receipt"
+                            alt="Uploaded rental fee receipt"
                             className="h-full w-full object-cover transition group-hover:scale-105"
                           />
                           <span className="absolute inset-x-0 bottom-0 bg-black/70 py-1 text-center text-[10px] font-bold text-white">
@@ -732,20 +1006,20 @@ function ReservationStepManagerModal({
                         onClick={() => onVerifyDeposit(reservation, "reject")}
                         className="min-h-11 touch-manipulation rounded-xl border border-red-400/20 bg-red-500/[0.11] px-4 py-3 text-sm font-bold text-red-200 shadow-sm transition-all duration-200 hover:border-red-400/30 hover:bg-red-500/20 active:scale-[0.99] disabled:opacity-50"
                       >
-                        Refuse deposit
+                        Refuse rental fee
                       </button>
                       <button
                         disabled={depositBusy}
                         onClick={() => onVerifyDeposit(reservation, "approve")}
                         className="min-h-11 touch-manipulation rounded-xl border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-sm font-bold text-emerald-200 shadow-sm transition-all duration-200 hover:border-emerald-400/30 hover:bg-emerald-500/25 active:scale-[0.99] disabled:opacity-50"
                       >
-                        Accept deposit
+                        Accept rental fee
                       </button>
                     </div>
                   </div>
                 ) : !deposit?.receiptUrl ? (
                   <p className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
-                    Waiting for the customer to choose a deposit option and
+                    Waiting for the customer to choose a rental fee option and
                     upload payment receipt. If they choose office pay, continue
                     from vehicle assignment when they arrive.
                   </p>
@@ -1028,6 +1302,113 @@ function ReservationStepManagerModal({
               </div>
             )}
 
+            {reservation.status === "canceled" &&
+              displayedCancellationSettlement && (
+                <div className="rounded-2xl border border-red-400/20 bg-white/[0.035] p-4 sm:p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-red-300">Cancellation settlement</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                    <div className="rounded-xl bg-black/20 p-3">
+                      <p className="text-[10px] uppercase text-slate-500">Paid</p>
+                      <p className="mt-1 font-black text-white">£{Number(displayedCancellationSettlement.paidAmount || 0).toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-xl bg-black/20 p-3">
+                      <p className="text-[10px] uppercase text-slate-500">Agreed deduction</p>
+                      <p className="mt-1 font-black text-red-300">{Number(displayedCancellationSettlement.agreedDeductionPercent || 0)}%</p>
+                    </div>
+                    <div className="rounded-xl bg-black/20 p-3">
+                      <p className="text-[10px] uppercase text-slate-500">Deducted</p>
+                      <p className="mt-1 font-black text-red-300">£{Number(displayedCancellationSettlement.deductionAmount || 0).toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3">
+                      <p className="text-[10px] uppercase text-emerald-200/70">Return to customer</p>
+                      <p className="mt-1 font-black text-emerald-300">£{Number(displayedCancellationSettlement.refundAmount || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {!["canceled", "completed", "expired", "delivered", "vehicle_returned", "return_inspection", "deposit_review", "refund_processing"].includes(
+              reservation.status,
+            ) && (
+              <div className="rounded-2xl border border-red-400/20 bg-linear-to-br from-red-500/[0.12] to-red-500/[0.04] p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-bold text-red-100">Cancel reservation</h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Record the agreed rental-fee deduction and show the customer their return amount.
+                    </p>
+                  </div>
+                  {cancellationPreview && (
+                    <span className="rounded-full border border-red-300/20 bg-red-500/10 px-3 py-1 text-xs font-bold text-red-200">
+                      Policy: {cancellationPreview.policyDeductionPercent}% deduction
+                    </span>
+                  )}
+                </div>
+
+                {cancellationPreview && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <label className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Agreed deduction</span>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={cancellationPercent}
+                          onChange={(event) => setCancellationPercent(event.target.value)}
+                          className="min-h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#070d19] px-3 text-sm font-bold text-white outline-none focus:border-red-300/60"
+                        />
+                        <span className="font-bold text-slate-400">%</span>
+                      </div>
+                    </label>
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Deduction</p>
+                      <p className="mt-2 text-xl font-black text-red-300">£{cancellationPreview.deductionAmount.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-200/70">Return to customer</p>
+                      <p className="mt-2 text-xl font-black text-emerald-300">£{cancellationPreview.refundAmount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  rows={3}
+                  placeholder="Cancellation reason shown to the customer"
+                  className="mt-4 min-h-24 w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-red-300/70"
+                />
+                <button
+                  disabled={
+                    isSubmitting ||
+                    !cancelReason.trim() ||
+                    Boolean(
+                      cancellationPreview &&
+                        (!Number.isFinite(Number(cancellationPercent)) ||
+                          Number(cancellationPercent) < 0 ||
+                          Number(cancellationPercent) > 100),
+                    )
+                  }
+                  onClick={() =>
+                    onStatusChange(reservation, "canceled", {
+                      cancelReason: cancelReason.trim(),
+                      ...(cancellationPreview
+                        ? {
+                            cancellationAgreedDeductionPercent:
+                              Number(cancellationPercent),
+                          }
+                        : {}),
+                    })
+                  }
+                  className="mt-3 min-h-11 w-full rounded-xl border border-red-400/20 bg-red-500/15 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  {isSubmitting ? "Canceling..." : "Confirm cancellation"}
+                </button>
+              </div>
+            )}
+
             <ReservationOperationsPanel
               reservation={reservation}
               onUpdated={onReservationUpdated}
@@ -1046,7 +1427,7 @@ function ReservationStepManagerModal({
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/85 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="w-full max-w-4xl rounded-t-2xl border border-white/10 bg-[#0b1224] p-3 shadow-2xl sm:rounded-2xl sm:p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="font-bold text-white">Deposit receipt</p>
+              <p className="font-bold text-white">Rental fee receipt</p>
               <button
                 type="button"
                 onClick={() => setReceiptPreviewUrl(null)}
@@ -1057,7 +1438,7 @@ function ReservationStepManagerModal({
             </div>
             <img
               src={receiptPreviewUrl}
-              alt="Deposit receipt preview"
+              alt="Rental fee receipt preview"
               className="max-h-[78dvh] w-full rounded-xl object-contain sm:max-h-[76vh]"
             />
           </div>
@@ -1159,8 +1540,7 @@ export default function ReservationsManagement() {
   const [manualTotalPrice, setManualTotalPrice] = useState("");
   // Per-invoice: reservation has no price until it is completed.
   const [editPerInvoice, setEditPerInvoice] = useState(false);
-  const [isPerInvoicePriceOpen, setIsPerInvoicePriceOpen] = useState(false);
-  const [perInvoicePrice, setPerInvoicePrice] = useState("");
+  const [openAdminNoteInitially, setOpenAdminNoteInitially] = useState(false);
 
   const selectedCategory = useMemo(() => {
     return categories.find((c) => c._id === editCategory);
@@ -1388,7 +1768,8 @@ export default function ReservationsManagement() {
           pickupExtensionPrice +
           returnExtensionPrice +
           automaticGearPrice +
-          addOnsCost;
+          addOnsCost +
+          RESERVATION_SERVICE_CHARGE;
 
         return parseFloat(total.toFixed(2));
       }
@@ -1467,6 +1848,10 @@ export default function ReservationsManagement() {
           parts.push(`add-ons £${addOnsCost.toFixed(2)}`);
         }
 
+        parts.push(
+          `service charge £${RESERVATION_SERVICE_CHARGE.toFixed(2)}`,
+        );
+
         return `${parts.join(" + ")} (Manual daily price)`;
       }
     }
@@ -1488,9 +1873,12 @@ export default function ReservationsManagement() {
 
   const requiresFreshContract = Boolean(
     selectedReservation?.vehicle &&
-    ["contract_pending", "contract_signed", "ready_for_collection"].includes(
-      selectedReservation.status,
-    ),
+    [
+      "contract_pending",
+      "contract_signed",
+      "ready_for_collection",
+      "handover_in_progress",
+    ].includes(selectedReservation.status),
   );
 
   const proposedBaseTotal = editPerInvoice
@@ -1669,11 +2057,12 @@ export default function ReservationsManagement() {
     setIsDetailOpen(true);
   };
 
-  const handleOpenStepManager = (item: Reservation) => {
+  const handleOpenStepManager = (item: Reservation, openNote = false) => {
     prepareReservationForAdminActions(item);
     setStepManagerReservation(item);
     setDepositTransactionRef("");
     setDepositFailureReason("");
+    setOpenAdminNoteInitially(openNote);
     setIsStepManagerOpen(true);
   };
 
@@ -1793,24 +2182,6 @@ export default function ReservationsManagement() {
   const handleStatusChange = async (options?: { totalPrice?: number }) => {
     if (!selectedReservation || !newStatus) return;
 
-    // Per-invoice reservations need a final price before they can be completed.
-    // Honor both the saved flag and the live edit toggle.
-    const isPerInvoiceReservation =
-      Boolean((selectedReservation as any).perInvoice) || editPerInvoice;
-    if (
-      newStatus === "completed" &&
-      isPerInvoiceReservation &&
-      options?.totalPrice === undefined
-    ) {
-      setPerInvoicePrice(
-        selectedReservation.totalPrice
-          ? String(selectedReservation.totalPrice)
-          : "",
-      );
-      setIsPerInvoicePriceOpen(true);
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -1837,8 +2208,6 @@ export default function ReservationsManagement() {
       setIsStatusOpen(false);
       setNewStatus("");
       setCancelReason("");
-      setIsPerInvoicePriceOpen(false);
-      setPerInvoicePrice("");
       if (mutateRef.current) mutateRef.current();
       setIsDetailOpen(false);
     } catch (error) {
@@ -1847,16 +2216,6 @@ export default function ReservationsManagement() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleConfirmPerInvoicePrice = async () => {
-    const price = parseFloat(perInvoicePrice);
-    if (isNaN(price) || price < 0) {
-      showToast.error("Enter a valid total price");
-      return;
-    }
-    setIsPerInvoicePriceOpen(false);
-    await handleStatusChange({ totalPrice: price });
   };
 
   const handleDepositVerification = async (action: "approve" | "reject") => {
@@ -1894,7 +2253,9 @@ export default function ReservationsManagement() {
       setDepositFailureReason("");
       await mutateRef.current?.();
       showToast.success(
-        action === "approve" ? "Deposit verified" : "Deposit receipt rejected",
+        action === "approve"
+          ? "Rental fee verified"
+          : "Rental fee receipt rejected",
       );
     } catch (error) {
       showToast.error(
@@ -1911,20 +2272,6 @@ export default function ReservationsManagement() {
     extra: Record<string, unknown> = {},
   ) => {
     if (!reservation?._id) return;
-
-    if (
-      status === "completed" &&
-      (reservation as any).perInvoice &&
-      extra.totalPrice === undefined
-    ) {
-      setSelectedReservation(reservation);
-      setNewStatus(status);
-      setPerInvoicePrice(
-        reservation.totalPrice ? String(reservation.totalPrice) : "",
-      );
-      setIsPerInvoicePriceOpen(true);
-      return;
-    }
 
     setIsSubmitting(true);
     try {
@@ -2187,12 +2534,38 @@ export default function ReservationsManagement() {
           {
             key: "user",
             label: "Customer",
-            render: (value: any) => value?.name || "-",
+            render: (value: any) =>
+              [value?.name, value?.lastName].filter(Boolean).join(" ") || "-",
           },
           {
             key: "user",
             label: "Phone",
-            render: (value: any) => value?.phoneData?.phoneNumber || "-",
+            render: (value: any, row?: Reservation) => (
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <span>{value?.phoneData?.phoneNumber || "-"}</span>
+                {row && value?.phoneData?.phoneNumber && (
+                  <button
+                    type="button"
+                    onClick={() => void saveReservationContact(row)}
+                    title="Save customer contact"
+                    aria-label="Save customer contact"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-[#fe9a00]/30 hover:bg-[#fe9a00]/10 hover:text-[#fe9a00]"
+                  >
+                    <FiDownload className="text-sm" />
+                  </button>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "user",
+            label: "Account",
+            render: (value: any) =>
+              value?.debtFlag?.active ? (
+                <span className="inline-flex rounded-full border border-red-400/25 bg-red-500/10 px-2 py-1 text-[10px] font-black text-red-300">Debt £{Number(value.debtFlag.amount || 0).toFixed(2)}</span>
+              ) : (
+                <span className="text-xs text-slate-500">Clear</span>
+              ),
           },
           {
             key: "category",
@@ -2346,10 +2719,28 @@ export default function ReservationsManagement() {
           },
           {
             key: "deposit",
-            label: "Deposit",
+            label: "Rental fee",
             render: (_value: Reservation["deposit"], row?: Reservation) => (
               <DepositVerificationBadge reservation={row} />
             ),
+          },
+          {
+            key: "adminNote",
+            label: "Note",
+            render: (_value: string, row?: Reservation) =>
+              row ? (
+                <button
+                  type="button"
+                  onClick={() => handleOpenStepManager(row, true)}
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                    row.adminNote
+                      ? "border-sky-400/25 bg-sky-500/10 text-sky-300"
+                      : "border-white/10 bg-white/[0.04] text-slate-400"
+                  }`}
+                >
+                  <FiFileText /> {row.adminNote ? "View note" : "+"}
+                </button>
+              ) : "-",
           },
           {
             key: "_id",
@@ -3545,7 +3936,7 @@ export default function ReservationsManagement() {
               {selectedReservation.deposit && (
                 <div className="rounded-2xl border border-white/10 bg-linear-to-br from-white/[0.075] to-white/[0.025] p-4 shadow-[0_12px_32px_rgba(0,0,0,0.14)] ring-1 ring-inset ring-white/[0.025] sm:p-5 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-white font-semibold">Deposit</h3>
+                    <h3 className="text-white font-semibold">Rental fee</h3>
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-gray-200 capitalize">
                       {selectedReservation.deposit.status?.replace(/_/g, " ")}
                     </span>
@@ -3656,25 +4047,13 @@ export default function ReservationsManagement() {
                 {isStatusOpen && (
                   <div className="mt-3 space-y-2">
                     <CustomSelect
-                      options={ADMIN_STATUS_OPTIONS}
+                      options={ADMIN_STATUS_OPTIONS.filter(
+                        (option) => option._id !== "canceled",
+                      )}
                       value={newStatus}
                       onChange={setNewStatus}
                       placeholder="Select new status"
                     />
-                    {newStatus === "canceled" && (
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-300 mb-1">
-                          Cancel reason
-                        </label>
-                        <textarea
-                          value={cancelReason}
-                          onChange={(e) => setCancelReason(e.target.value)}
-                          rows={3}
-                          placeholder="Add the reason for canceling this reservation"
-                          className="w-full resize-none rounded-xl border border-white/10 bg-[#070d19]/75 px-3.5 py-2.5 text-sm text-white shadow-inner outline-none placeholder:text-slate-500 transition focus:border-[#fe9a00]/70 focus:ring-4 focus:ring-[#fe9a00]/10"
-                        />
-                      </div>
-                    )}
                     <button
                       onClick={() => handleStatusChange()}
                       disabled={isSubmitting || !newStatus}
@@ -3706,6 +4085,7 @@ export default function ReservationsManagement() {
         onClose={() => {
           setIsStepManagerOpen(false);
           setStepManagerReservation(null);
+          setOpenAdminNoteInitially(false);
         }}
         onStatusChange={handleStepStatusChange}
         onVerifyDeposit={submitDepositVerification}
@@ -3727,64 +4107,8 @@ export default function ReservationsManagement() {
           void mutateRef.current?.();
         }}
         isSubmitting={isSubmitting}
+        openAdminNoteInitially={openAdminNoteInitially}
       />
-
-      {/* Per-Invoice final price modal (shown when completing a per-invoice reserve) */}
-      {isPerInvoicePriceOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-5">
-          <div className="w-full max-w-md rounded-t-[28px] border border-white/10 bg-linear-to-b from-[#1a294a] to-[#0b1324] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.58)] ring-1 ring-inset ring-white/[0.04] sm:rounded-[28px] sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">
-                Enter final total price
-              </h3>
-              <button
-                onClick={() => {
-                  setIsPerInvoicePriceOpen(false);
-                  setPerInvoicePrice("");
-                }}
-                className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-xl transition-colors hover:bg-white/10 active:bg-white/15"
-              >
-                <FiX className="text-white text-xl" />
-              </button>
-            </div>
-            <p className="text-gray-400 text-sm mb-4">
-              This is a per-invoice reservation. Enter the final total before
-              marking it as completed.
-            </p>
-            <label className="text-white text-sm font-semibold mb-2 block">
-              Total Price (£)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              autoFocus
-              value={perInvoicePrice}
-              onChange={(e) => setPerInvoicePrice(e.target.value)}
-              placeholder="0.00"
-              className="mb-4 min-h-11 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white focus:border-[#fe9a00] focus:outline-none focus:ring-2 focus:ring-[#fe9a00]/20"
-            />
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={() => {
-                  setIsPerInvoicePriceOpen(false);
-                  setPerInvoicePrice("");
-                }}
-                className="min-h-11 flex-1 touch-manipulation rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20 active:bg-white/25"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmPerInvoicePrice}
-                disabled={isSubmitting || !perInvoicePrice}
-                className="min-h-11 flex-1 touch-manipulation rounded-xl bg-[#fe9a00] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#e68a00] active:bg-[#d77f00] disabled:opacity-50"
-              >
-                {isSubmitting ? "Completing..." : "Save & Complete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reservation Details Modal */}
       <ReservationDetailsModal
@@ -3793,6 +4117,11 @@ export default function ReservationsManagement() {
         onClose={() => {
           setDetailsModalOpen(false);
           setSelectedReservationForDetails(null);
+        }}
+        onEdit={(item) => {
+          setDetailsModalOpen(false);
+          setSelectedReservationForDetails(null);
+          handleViewDetails(item);
         }}
       />
     </div>

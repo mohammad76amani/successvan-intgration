@@ -45,6 +45,7 @@ export async function GET(
       _id: reservationId,
       user: userId,
     })
+      .select("-adminNote")
       .populate("user", "-password")
       .populate("office")
       .populate("category")
@@ -76,6 +77,7 @@ export async function GET(
           _id: reservationId,
           user: userId,
         })
+          .select("-adminNote")
           .populate("user", "-password")
           .populate("office")
           .populate("category")

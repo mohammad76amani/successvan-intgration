@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import User from "@/model/user";
 import { canAccessDashboard } from "@/lib/roles";
 import { withLastReservations } from "@/lib/ticketLastReservation";
+import { sendSMS } from "@/lib/sms";
 
 type TokenPayload = {
   userId: string;
@@ -96,6 +97,29 @@ export async function POST(request: NextRequest) {
     });
 
     await ticket.save();
+
+    // Ticket creation must succeed even if an SMS provider is temporarily down.
+    try {
+      const admins = await User.find({ role: { $in: ["admin", "owner"] } })
+        .select("phoneData")
+        .lean();
+      await Promise.allSettled(
+        admins
+          .map((admin) => admin.phoneData?.phoneNumber)
+          .filter((phoneNumber): phoneNumber is string => Boolean(phoneNumber))
+          .map((phoneNumber) =>
+            sendSMS(
+              phoneNumber.replace("+", ""),
+              `New support ticket: ${subject}. Check it in the SuccessVan admin dashboard.`,
+            ),
+          ),
+      );
+    } catch (smsError) {
+      console.log(
+        "New ticket admin SMS error:",
+        smsError instanceof Error ? smsError.message : "Unknown error",
+      );
+    }
 
     return NextResponse.json({ success: true, data: ticket }, { status: 201 });
   } catch (error) {

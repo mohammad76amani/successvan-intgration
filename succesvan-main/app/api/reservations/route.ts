@@ -11,6 +11,7 @@ import { canAccessDashboard } from "@/lib/roles";
 import { formatDateInputInLondon } from "@/lib/englandTime";
 import { normalizeReservationStatus } from "@/lib/reservation-status";
 import type { PipelineStage } from "mongoose";
+import { RESERVATION_SERVICE_CHARGE } from "@/lib/reservation-pricing";
 
 type NumberRangeFilter = { $gte?: number; $lte?: number };
 type DateRangeFilter = { $gte?: Date; $lte?: Date };
@@ -342,6 +343,10 @@ export async function POST(req: NextRequest) {
       ...reservationData,
       user: user._id,
       totalPrice: reservationData.totalPrice || 0,
+      serviceCharge: RESERVATION_SERVICE_CHARGE,
+      adminNote: isDashboardUser
+        ? String(reservationData.adminNote || "").trim()
+        : undefined,
       // Dashboard-created bookings have already been reviewed by staff.
       // Website bookings still enter the normal pending-review flow.
       status: initialStatus,
@@ -358,7 +363,7 @@ export async function POST(req: NextRequest) {
       vehicle: undefined,
       vehicleSnapshot: undefined,
       contract: undefined,
-      ...(submittedDeposit
+      ...(submittedDeposit && !reservationData.perInvoice
         ? {
             deposit: {
               amount: submittedDeposit.amount,
@@ -377,14 +382,16 @@ export async function POST(req: NextRequest) {
 
     const hasLicence =
       user.licenceAttached?.front && user.licenceAttached?.back;
-    const licenceMessage = hasLicence ? "" : " Add licence to dashboard.";
+    const licenceMessage = hasLicence ? "" : " Please upload your licence.";
     // Send creation SMS
     try {
       await sendSMS(
         user.phoneData.phoneNumber.replace("+", ""),
         isDashboardUser
-          ? `Hi ${user.name}, booking confirmed. Choose and pay your deposit.${licenceMessage} ${customerReservationsSmsUrl()}`
-          : `Hi ${user.name}, booking received and pending review.${licenceMessage} successvanhire.co.uk/register`,
+          ? reservationData.perInvoice
+            ? `Hi ${user.name}, your booking is confirmed. We’ll prepare your per-invoice agreement for signing.${licenceMessage} ${customerReservationsSmsUrl()}`
+            : `Hi ${user.name}, your booking is confirmed. Choose a rental fee option and pay in My Reservations.${licenceMessage} ${customerReservationsSmsUrl()}`
+          : `Hi ${user.name}, we have received your booking and it is now under review.${licenceMessage} successvanhire.co.uk/register`,
       );
     } catch (error) {
       console.log(
@@ -398,7 +405,7 @@ export async function POST(req: NextRequest) {
       try {
         await sendSMS(
           admin.phoneData.phoneNumber,
-          "New booking received. Check admin dashboard.",
+          "A new reservation has been received. Please check the admin dashboard.",
         );
       } catch (error) {
         console.log(

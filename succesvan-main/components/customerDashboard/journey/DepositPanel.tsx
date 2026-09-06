@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   FiCopy,
   FiDownload,
@@ -9,6 +10,7 @@ import {
   FiClock,
   FiPercent,
   FiAlertCircle,
+  FiX,
 } from "react-icons/fi";
 import { showToast } from "@/lib/toast";
 import type { Reservation } from "@/types/type";
@@ -17,6 +19,7 @@ import {
   DEPOSIT_OPTION_LABELS,
   type DepositOption,
 } from "@/lib/reservation-status";
+import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
 
 function Row({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
@@ -72,6 +75,11 @@ export default function DepositPanel({
   );
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [policyOption, setPolicyOption] = useState<DepositOption | null>(null);
+  const [policyChecked, setPolicyChecked] = useState(false);
+  const [policyAccepted, setPolicyAccepted] = useState(
+    Boolean(deposit?.cancellationPolicyAcceptedAt),
+  );
 
   const settled =
     deposit?.status === "paid" ||
@@ -87,6 +95,21 @@ export default function DepositPanel({
     DEPOSIT_PAYMENT_DETAILS.sortCode && DEPOSIT_PAYMENT_DETAILS.accountNumber,
   );
   const transferDetailsAvailable = hasBankAccount;
+  const pickupDay = parseStorageDate(reservation.startDateDisplay);
+  const pickupAt =
+    pickupDay && reservation.pickupTime
+      ? new Date(createLondonDateTime(pickupDay, reservation.pickupTime))
+      : new Date(reservation.startDate);
+  const isWithin24Hours =
+    Number.isFinite(pickupAt.getTime()) &&
+      pickupAt.getTime() - Date.now() < 24 * 60 * 60 * 1000;
+  const isWithin48Hours =
+    Number.isFinite(pickupAt.getTime()) &&
+    pickupAt.getTime() - Date.now() < 48 * 60 * 60 * 1000;
+
+  useEffect(() => {
+    if (isWithin24Hours && !settled) setSelected("office");
+  }, [isWithin24Hours, settled]);
 
   const fullOriginalAmount =
     deposit?.option === "full" && deposit.originalAmount !== undefined
@@ -94,10 +117,20 @@ export default function DepositPanel({
       : (reservation.totalPrice ?? 0);
   const fullDiscountPercent = Math.min(
     100,
-    Math.max(0, Number(config.fullPayDiscountPercent) || 0),
+    Math.max(
+      0,
+      isWithin48Hours ? 0 : Number(config.fullPayDiscountPercent) || 0,
+    ),
   );
   const fullDiscountAmount =
-    Math.round(fullOriginalAmount * (fullDiscountPercent / 100) * 100) / 100;
+    Math.round(
+      Math.max(
+        0,
+        fullOriginalAmount - Number(reservation.serviceCharge || 0),
+      ) *
+        (fullDiscountPercent / 100) *
+        100,
+    ) / 100;
   const fullPaymentAmount =
     Math.round((fullOriginalAmount - fullDiscountAmount) * 100) / 100;
 
@@ -150,7 +183,12 @@ export default function DepositPanel({
 
   const handleSubmit = async () => {
     if (!selected) {
-      showToast.error("Please choose a deposit option");
+      showToast.error("Please choose a rental fee option");
+      return;
+    }
+    if (selected !== "office" && !policyAccepted) {
+      setPolicyOption(selected);
+      showToast.error("Please read and accept the cancellation policy");
       return;
     }
     if (selected !== "office" && !transferDetailsAvailable) {
@@ -175,14 +213,18 @@ export default function DepositPanel({
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
-        body: JSON.stringify({ option: selected, receiptUrl }),
+        body: JSON.stringify({
+          option: selected,
+          receiptUrl,
+          cancellationPolicyAccepted: selected === "office" || policyAccepted,
+        }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Request failed");
 
       showToast.success(
         selected === "office"
-          ? "Noted — you'll pay the deposit at the office."
+          ? "Noted — you'll pay the rental fee at the office."
           : "Receipt uploaded! We'll verify your payment shortly.",
       );
       onUpdated();
@@ -275,7 +317,7 @@ export default function DepositPanel({
           {settled && (
             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-3 text-sm text-green-400">
               <FiCheckCircle className="shrink-0" />
-              Deposit{" "}
+              Rental fee{" "}
               {deposit?.status === "paid"
                 ? "received"
                 : deposit?.status?.replace(/_/g, " ")}
@@ -414,25 +456,27 @@ export default function DepositPanel({
       price: fullPaymentAmount,
       originalPrice: fullDiscountPercent > 0 ? fullOriginalAmount : undefined,
       note:
-        fullDiscountPercent > 0
+        isWithin48Hours && Number(config.fullPayDiscountPercent || 0) > 0
+          ? "The early-payment discount is available only when paying at least 48 hours before pickup."
+          : fullDiscountPercent > 0
           ? `Pay in full now and save £${fullDiscountAmount.toFixed(2)}. You pay £${fullPaymentAmount.toFixed(2)} instead of £${fullOriginalAmount.toFixed(2)}.`
           : "Pay the full booking total now by bank transfer.",
       badge:
-        (config.fullPayDiscountPercent ?? 0) > 0
-          ? `${config.fullPayDiscountPercent}% off your rental`
+        fullDiscountPercent > 0
+          ? `${fullDiscountPercent}% off your rental`
           : undefined,
     },
     {
       key: "secure",
       title: DEPOSIT_OPTION_LABELS.secure,
       price: config.securePayPrice ?? 0,
-      note: "Smaller one-off fee instead of the full deposit. Non-refundable.",
+      note: "A smaller, non-refundable rental fee instead of paying in full.",
     },
     {
       key: "office",
       title: DEPOSIT_OPTION_LABELS.office,
       price: config.officePayPrice ?? 0,
-      note: "Pay the deposit when you collect the van at the office.",
+      note: "Pay the rental fee when you collect the van at the office.",
     },
   ];
 
@@ -460,11 +504,20 @@ export default function DepositPanel({
 
       {/* Options */}
       <div className="space-y-2">
-        {options.map((option) => (
+        {options
+          .filter((option) => !isWithin24Hours || option.key === "office")
+          .map((option) => (
           <button
             key={option.key}
             type="button"
-            onClick={() => setSelected(option.key)}
+            onClick={() => {
+              if (option.key === "office" || policyAccepted) {
+                setSelected(option.key);
+                return;
+              }
+              setPolicyChecked(false);
+              setPolicyOption(option.key);
+            }}
             className={`w-full text-left rounded-xl border p-3 transition-colors cursor-pointer ${
               selected === option.key
                 ? "border-[#fe9a00] bg-[#fe9a00]/10"
@@ -493,8 +546,84 @@ export default function DepositPanel({
               </span>
             )}
           </button>
-        ))}
+          ))}
       </div>
+      {isWithin24Hours && (
+        <p className="rounded-lg border border-amber-400/25 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
+          Pickup is within 24 hours, so the rental fee must be paid at the office.
+        </p>
+      )}
+
+      {policyOption &&
+        policyOption !== "office" &&
+        typeof document !== "undefined" &&
+        createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[#0b1224] shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#fe9a00]">Before you pay</p>
+                <h3 className="mt-1 text-xl font-black text-white">Rental-fee cancellation policy</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPolicyOption(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/15"
+                aria-label="Close cancellation policy"
+              >
+                <FiX />
+              </button>
+            </div>
+
+            <div className="space-y-3 p-5 text-sm leading-6 text-slate-300">
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3">
+                <p className="font-bold text-emerald-200">More than 72 hours before pickup</p>
+                <p className="text-emerald-100/80">Your paid rental fee is returned in full.</p>
+              </div>
+              <div className="rounded-xl border border-[#fe9a00]/25 bg-[#fe9a00]/10 p-3">
+                <p className="font-bold text-orange-200">Between 24 and 72 hours before pickup</p>
+                <p className="mt-1 font-semibold text-orange-100">Full rental fee:</p>
+                <ul className="list-disc space-y-0.5 pl-5 text-orange-100/80">
+                  <li>Paid amount up to £200: 75% deduction</li>
+                  <li>Paid amount above £200 and below £500: 50% deduction</li>
+                  <li>Paid amount of £500 or more: 10% deduction</li>
+                </ul>
+                <p className="mt-2 text-orange-100/80">
+                  <span className="font-semibold text-orange-100">Safe-secure rental fee:</span>{" "}
+                  100% deduction.
+                </p>
+              </div>
+              <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3">
+                <p className="font-bold text-red-200">Less than 24 hours before pickup</p>
+                <p className="text-red-100/80">The paid rental fee is deducted in full.</p>
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                <input
+                  type="checkbox"
+                  checked={policyChecked}
+                  onChange={(event) => setPolicyChecked(event.target.checked)}
+                  className="mt-1 h-4 w-4 accent-[#fe9a00]"
+                />
+                <span>I have read and accept the rental-fee cancellation policy.</span>
+              </label>
+              <button
+                type="button"
+                disabled={!policyChecked}
+                onClick={() => {
+                  setSelected(policyOption);
+                  setPolicyAccepted(true);
+                  setPolicyOption(null);
+                }}
+                className="min-h-12 w-full rounded-xl bg-[#fe9a00] px-4 font-black text-white transition hover:bg-[#ffab2e] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Accept and continue
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Bank details + receipt upload for transfer options */}
       {selected && selected !== "office" && (

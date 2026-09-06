@@ -145,14 +145,25 @@ export async function POST(
       const customer = await User.findById(existing.user).select("phoneData");
       const phoneNumber = customer?.phoneData?.phoneNumber;
       if (phoneNumber) {
-        await sendSMS(
-          phoneNumber,
-          `Van returned and inspected for ${existing.reservationCode || id}. View inspection and deposit review: ${customerReservationsSmsUrl()}`,
-        );
+        const messages = [
+          `We have received and inspected the vehicle for reservation ${existing.reservationCode || id}. View the inspection and deposit review details: ${customerReservationsSmsUrl()}`,
+          "Thank you for choosing Success Van Hire. We would appreciate your feedback: https://g.page/r/CZcNuTEcLJMAEBM/review",
+        ];
+
+        for (const message of messages) {
+          try {
+            await sendSMS(phoneNumber, message);
+          } catch (smsError) {
+            console.log(
+              "Return inspection customer SMS error:",
+              smsError instanceof Error ? smsError.message : "Unknown error",
+            );
+          }
+        }
       }
     } catch (smsError) {
       console.log(
-        "Return inspection SMS error:",
+        "Return inspection customer lookup error:",
         smsError instanceof Error ? smsError.message : "Unknown error",
       );
     }

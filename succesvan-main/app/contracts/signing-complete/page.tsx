@@ -15,14 +15,19 @@ export default function SigningCompletePage() {
       const contractId = new URLSearchParams(window.location.search).get(
         "contractId",
       );
+      const source = new URLSearchParams(window.location.search).get("source");
+      const isAdminSigning = source === "admin";
       const token = localStorage.getItem("token");
 
       if (contractId && token) {
         for (let attempt = 0; attempt < 5 && !cancelled; attempt += 1) {
           try {
             const response = await fetch(
-              `/api/contracts/${contractId}/status?refresh=true`,
+              isAdminSigning
+                ? `/api/admin/contracts/${contractId}/refresh-status`
+                : `/api/contracts/${contractId}/status?refresh=true`,
               {
+                method: isAdminSigning ? "POST" : "GET",
                 cache: "no-store",
                 headers: { Authorization: `Bearer ${token}` },
               },
@@ -45,7 +50,11 @@ export default function SigningCompletePage() {
       }
 
       if (!cancelled) {
-        window.location.replace("/customerDashboard?contractSigned=1#reserves");
+        window.location.replace(
+          isAdminSigning
+            ? "/dashboard?contractSigned=1"
+            : "/customerDashboard?contractSigned=1#reserves",
+        );
       }
     };
 

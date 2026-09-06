@@ -22,6 +22,8 @@ import {
   hasAdditionalDriverAddOn,
   validateAdditionalDriver,
 } from "@/lib/additional-driver";
+import { createLondonDateTime, parseStorageDate } from "@/lib/englandTime";
+import { calculateRentalCancellation } from "@/lib/rental-cancellation-policy";
 
 export async function GET(
   req: NextRequest,
@@ -45,6 +47,11 @@ export async function GET(
     if (!canAccessDashboard(auth.role) && String(ownerId) !== String(auth.userId)) {
       return errorResponse("Forbidden", 403);
     }
+    if (!canAccessDashboard(auth.role)) {
+      const customerReservation = reservation.toObject();
+      delete customerReservation.adminNote;
+      return successResponse(customerReservation);
+    }
     return successResponse(reservation);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
@@ -65,18 +72,24 @@ export async function PATCH(
     const { id } = await params;
     const body = (await req.json()) as Record<string, unknown>;
     
-    const oldReservation = await Reservation.findById(id).populate(
-      "addOns.addOn",
-    );
+    const oldReservation = await Reservation.findById(id)
+      .populate("addOns.addOn")
+      .populate("category");
     if (!oldReservation) return errorResponse("Reservation not found", 404);
     const isCustomerRequest = !canAccessDashboard(auth.role);
+    if (!isCustomerRequest && body.adminNote !== undefined) {
+      body.adminNote = String(body.adminNote || "").trim();
+    }
     const isAssignedPreHandoverAdminEdit =
       !isCustomerRequest &&
       body.adminEdited === true &&
       Boolean(oldReservation.vehicle) &&
-      ["contract_pending", "contract_signed", "ready_for_collection"].includes(
-        oldReservation.status,
-      );
+      [
+        "contract_pending",
+        "contract_signed",
+        "ready_for_collection",
+        "handover_in_progress",
+      ].includes(oldReservation.status);
     if (
       isCustomerRequest &&
       String(oldReservation.user) !== String(auth.userId)
@@ -116,7 +129,12 @@ export async function PATCH(
         );
         const discountAmount =
           Math.round(
-            requestedBaseTotal * (discountPercent / 100) * 100,
+            Math.max(
+              0,
+              requestedBaseTotal - Number(oldReservation.serviceCharge || 0),
+            ) *
+              (discountPercent / 100) *
+              100,
           ) / 100;
         const revisedTotal =
           Math.round((requestedBaseTotal - discountAmount) * 100) / 100;
@@ -161,6 +179,97 @@ export async function PATCH(
       }
       body.status = normalized;
     }
+
+    if (
+      !isCustomerRequest &&
+      body.status === "completed" &&
+      Number(oldReservation.refund?.refundAmount) < 0
+    ) {
+      const debtAmount = Math.abs(Number(oldReservation.refund.refundAmount));
+      const customer = await User.findById(oldReservation.user).select("debtFlag");
+      const debtWasClearedForThisReservation =
+        !customer?.debtFlag?.active &&
+        String(customer?.debtFlag?.reservation || "") === String(oldReservation._id) &&
+        Boolean(customer?.debtFlag?.clearedAt);
+      if (!debtWasClearedForThisReservation) {
+        await User.findByIdAndUpdate(oldReservation.user, {
+          $set: {
+            "debtFlag.active": true,
+            "debtFlag.amount": debtAmount,
+            "debtFlag.reservation": oldReservation._id,
+            "debtFlag.reason": `Outstanding balance for ${oldReservation.reservationCode || id}`,
+            "debtFlag.flaggedAt": new Date(),
+          },
+          $unset: { "debtFlag.clearedAt": 1, "debtFlag.clearedBy": 1 },
+        });
+        return errorResponse(
+          "Customer debt must be cleared before completing this reservation",
+          409,
+        );
+      }
+    }
+
+    if (!isCustomerRequest && body.status === "canceled") {
+      const option = oldReservation.deposit?.option;
+      const categoryDeposit = (
+        oldReservation.category as unknown as {
+          deposit?: { securePayPrice?: number };
+        }
+      )?.deposit;
+      const recordedAmount = Math.max(
+        0,
+        Number(oldReservation.deposit?.amount) || 0,
+      );
+      const paidAmount =
+        recordedAmount > 0
+          ? recordedAmount
+          : option === "full"
+            ? Math.max(0, Number(oldReservation.totalPrice) || 0)
+            : option === "secure"
+              ? Math.max(0, Number(categoryDeposit?.securePayPrice) || 0)
+              : 0;
+      const isPaidRentalFee =
+        ["full", "secure"].includes(String(option)) &&
+        (["paid", "held", "refund_processing"].includes(
+          String(oldReservation.deposit?.status),
+        ) ||
+          (oldReservation.deposit?.status === "pending" &&
+            Boolean(oldReservation.deposit?.receiptUrl))) &&
+        paidAmount > 0;
+
+      if (isPaidRentalFee) {
+        const suppliedPercent = Number(body.cancellationAgreedDeductionPercent);
+        if (
+          !Number.isFinite(suppliedPercent) ||
+          suppliedPercent < 0 ||
+          suppliedPercent > 100
+        ) {
+          return errorResponse(
+            "Enter the agreed rental-fee deduction percentage between 0 and 100.",
+            400,
+          );
+        }
+        const pickupDay = parseStorageDate(oldReservation.startDateDisplay);
+        const pickupAt =
+          pickupDay && oldReservation.pickupTime
+            ? new Date(createLondonDateTime(pickupDay, oldReservation.pickupTime))
+            : new Date(oldReservation.startDate);
+        const calculatedAt = new Date();
+        body.cancellationSettlement = {
+          ...calculateRentalCancellation({
+            option: option as "full" | "secure",
+            paidAmount,
+            pickupAt,
+            canceledAt: calculatedAt,
+            agreedDeductionPercent: suppliedPercent,
+          }),
+          status: "pending",
+          calculatedAt,
+          calculatedBy: auth.userId,
+        };
+      }
+    }
+    delete body.cancellationAgreedDeductionPercent;
 
     // Keep compatibility with the legacy misspelled Reservation field. The
     // model and dashboard currently read `messege`, while some clients may
@@ -312,6 +421,7 @@ export async function PATCH(
     }
 
     const depositAllowsVehicleAssignment =
+      Boolean(oldReservation.perInvoice) ||
       oldReservation.status === "deposit_paid" ||
       oldReservation.deposit?.status === "paid" ||
       oldReservation.deposit?.option === "office";
@@ -321,7 +431,7 @@ export async function PATCH(
       !depositAllowsVehicleAssignment
     ) {
       return errorResponse(
-        "The deposit must be verified, or the customer must choose pay at office, before assigning a vehicle.",
+        "The rental fee must be verified, or the customer must choose pay at office, before assigning a vehicle.",
         409,
       );
     }
@@ -608,7 +718,7 @@ export async function PATCH(
           if (phoneNumber) {
             await sendSMS(
               phoneNumber.replace("+", ""),
-              `Van assigned. Reg: ${vehicleRegistration}. Your contract is ready to sign: ${customerReservationsSmsUrl()}`,
+              `Your vehicle has been assigned (registration: ${vehicleRegistration}). Your rental agreement is ready to review and sign: ${customerReservationsSmsUrl()}`,
             );
           }
 
